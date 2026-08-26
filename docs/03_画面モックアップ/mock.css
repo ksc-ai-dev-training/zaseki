@@ -1356,6 +1356,10 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
    フロアマップ（.floor-overview）・期間ビュー表（.period-matrix）は既存のoverflow-x:autoで
    横スクロールにより情報量を落とさず表示する。
    --------------------------------------------------------- */
+/* 拡大・縮小ボタン（.floor-zoom-controls）はスマホ幅専用のUIのため、PC幅では非表示にする
+   （実体のあるコンテンツ量が少なく画面を圧迫しないよう、有効化はメディアクエリ側でのみ行う）。 */
+.floor-zoom-controls { display: none; }
+
 @media (max-width: 640px) {
   .sidebar { width: 0; min-width: 0; height: 0; overflow: visible; position: static; }
   .sidebar-brand { display: none; }
@@ -1442,20 +1446,47 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
 
   .modal-overlay { padding: 12px; }
 
-  /* 座席の拡大・縮小をピンチ操作でできるようにする（2026-08-26追加、要望に対応）。
+  /* 座席の拡大・縮小をできるようにする（2026-08-26追加・同日再訂正、「ピンチが効かない」
+     「初期表示が大きすぎる」との指摘を受け、ボタン操作を主手段として追加し、初期倍率も
+     固定値（0.42）ではなく画面幅に自動フィットする方式に変更した）。
      .floor-zoom-viewportがピンチ・パン用のスクロールコンテナ、.floor-overview自体は
-     transform:scaleで拡縮する（拡縮率はJSがtouch/pointerイベントで--pinch-scaleに書き込む）。
-     初期値（全体表示=0.42、NORTH/EAST/WEST単体タブ=1）もJS側で.floor-overviewのidを見て設定する。 */
+     transform:scaleで拡縮する（拡縮率はJSが--pinch-scaleに書き込む）。
+     ピンチ操作（2本指）は補助的に有効のままとする。 */
   .floor-zoom-viewport {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y;
+    position: relative;
   }
   .floor-overview {
     overflow: visible;
     transform: scale(var(--pinch-scale, 1));
     transform-origin: top left;
   }
+  /* 拡大・縮小ボタン。ピンチ操作が効かない環境でも確実に操作できるよう、タップのみで完結する
+     明示的なUIとして追加した（2026-08-26追加）。下部の固定ナビ（.sidebar-nav、高さ58px）と
+     重ならないよう、その上にフロート表示する。 */
+  .floor-zoom-controls {
+    display: flex;
+    position: fixed;
+    right: 14px;
+    bottom: 74px;
+    z-index: 55;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .floor-zoom-controls .zoom-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1;
+    box-shadow: var(--shadow-md);
+  }
+  .floor-zoom-controls .zoom-btn:active { background: var(--bg-muted); }
 
   /* 縮小表示では座席タイルの枠線・補助文字（seat-tag）が潰れて視認性が落ちるため、
      縮小される前の実寸を太く・濃くしておき、縮小後も判別できるようにする（2026-08-25追加）。
