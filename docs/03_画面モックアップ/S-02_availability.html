@@ -917,10 +917,13 @@ function closeListCancelModal() {
      には一切影響しない。 -->
 <script>
 try {
-  var PINCH_MIN = 0.15;
+  var MOBILE_DEFAULT_SCALE = 0.45;
+  // これより縮小すると座席タイル内の文字がつぶれて文字化けのように見えるため、
+  // 縮小方向の下限を初期表示の倍率に固定した（2026-08-26追加。拡大方向〔PINCH_MAX〕は
+  // 従来どおりで、ピンチで拡大のみできる）。
+  var PINCH_MIN = MOBILE_DEFAULT_SCALE;
   var PINCH_MAX = 3;
   var PINCH_HIDE_TAG_BELOW = 0.6;
-  var MOBILE_DEFAULT_SCALE = 0.45;
 
   var currentScale = function () {
     var overview = document.getElementById('floor-overview');
