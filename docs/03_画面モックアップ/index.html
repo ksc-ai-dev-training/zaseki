@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zaseki 画面モックアップ一覧</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<script src="../_sidenav.js"></script>
+
+<div class="index-page">
+  <div class="index-header">
+    <div class="brand-mark">Z</div>
+    <h1>Zaseki 画面モックアップ一覧</h1>
+  </div>
+  <p class="index-lead">本社座席予約システム（Zaseki）の画面モックアップ（静的HTML）です。各カードをクリックすると画面イメージを確認できます。</p>
+
+  <div class="mock-cards">
+    <a class="mock-card" href="S-01_login.html">
+      <div class="card-top"><span class="card-id">S-01</span><span class="card-name">ログイン</span></div>
+      <div class="card-roles"><span class="badge badge-role role-member">全員</span></div>
+      <div class="card-desc">Google認証（許可ドメイン: kogasoftware.com）によるログイン。</div>
+    </a>
+    <a class="mock-card" href="S-02_availability.html">
+      <div class="card-top"><span class="card-id">S-02</span><span class="card-name">空き状況・予約</span></div>
+      <div class="card-roles"><span class="badge badge-role role-member">全員</span></div>
+      <div class="card-desc">日付・エリア別の空き状況確認と予約登録・変更・取消。周期予約、自分の予約一覧、期間ビューも同画面。</div>
+    </a>
+    <a class="mock-card" href="S-04_project-seat-request.html">
+      <div class="card-top"><span class="card-id">S-04</span><span class="card-name">プロジェクト座席</span></div>
+      <div class="card-roles"><span class="badge badge-role role-member">PM（PL）</span></div>
+      <div class="card-desc">出社曜日アンケートへの回答、メンバーへの代理予約、「席決め」権限の付与・剥奪。</div>
+    </a>
+    <a class="mock-card" href="S-05_proxy-select.html">
+      <div class="card-top"><span class="card-id">S-05</span><span class="card-name">固定座席の指定</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">固定座席利用者の座席の指定（登録・変更・取消）。</div>
+    </a>
+    <a class="mock-card" href="S-06_admin-menu.html">
+      <div class="card-top"><span class="card-id">S-06</span><span class="card-name">管理メニュー</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">各管理画面への入口。座席数・予約状況等のサマリー表示。</div>
+    </a>
+    <a class="mock-card" href="S-07_seat-master.html">
+      <div class="card-top"><span class="card-id">S-07</span><span class="card-name">座席マスタ管理</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">座席の追加・編集・削除（廃止）。</div>
+    </a>
+    <a class="mock-card" href="S-08_role-master.html">
+      <div class="card-top"><span class="card-id">S-08</span><span class="card-name">権限・役割管理</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">利用者ロール、プロジェクト単位のPM・PL・SL、エリア責任者・副責任者、役割マスタの管理。</div>
+    </a>
+    <a class="mock-card" href="S-09_project-seat-allocation.html">
+      <div class="card-top"><span class="card-id">S-09</span><span class="card-name">プロジェクト座席（エリア担当）</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span><span class="badge badge-role role-member">エリア責任者・副責任者</span></div>
+      <div class="card-desc">担当エリア割当、必要座席数の確認、出社曜日アンケートの実施・調整、座席範囲の割当。</div>
+    </a>
+    <a class="mock-card" href="S-10_seat-history.html">
+      <div class="card-top"><span class="card-id">S-10</span><span class="card-name">座席状況の履歴照会</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">過去（直近1か月）の座席状況を参照専用で確認。</div>
+    </a>
+    <a class="mock-card" href="S-11_proxy-booking.html">
+      <div class="card-top"><span class="card-id">S-11</span><span class="card-name">代理予約・取消</span></div>
+      <div class="card-roles"><span class="badge badge-role role-admin">管理部</span></div>
+      <div class="card-desc">フリー座席の代理予約、および座席種別を問わない代理取消・解除。</div>
+    </a>
+  </div>
+</div>
+
+</body>
+</html>
