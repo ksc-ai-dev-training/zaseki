@@ -94,10 +94,6 @@
         <span class="legend-item"><span class="legend-swatch" style="background:var(--bg-muted);border-color:var(--border)"></span>柱・ロッカー・部屋（予約対象外）</span>
       </div>
 
-      <div class="floor-zoom-controls">
-        <button class="zoom-btn" type="button" onclick="zoomBy(-0.15)" aria-label="縮小">－</button>
-        <button class="zoom-btn" type="button" onclick="zoomBy(0.15)" aria-label="拡大">＋</button>
-      </div>
       <div class="floor-zoom-viewport" id="floor-zoom-viewport">
       <div class="floor-overview" id="floor-overview">
 
@@ -912,13 +908,13 @@ function closeListCancelModal() {
 
 </script>
 
-<!-- フロアマップの拡大・縮小は、上のscriptで何かエラーが起きても影響を受けないよう、
+<!-- フロアマップ（座席の図）の拡大・縮小は、上のscriptで何かエラーが起きても影響を受けないよう、
      独立したscriptタグに分離している（2026-08-26追加、複数回にわたり要望を受け調整）。
-     「拡大・縮小ができない」「初期表示が大きすぎる」との指摘を受け、
-     ①ボタン（－／＋）をタップのみで確実に操作できる主手段として追加し、
-     ②初期倍率は固定の小さめの値とし、必要な部分は＋ボタンで個別に拡大する運用にした
-       （画面幅への自動フィット計算はoverflow:visible環境での測定が信頼できず廃止）。
-     2本指ピンチも補助的に有効なままとする（環境によっては効かない場合がある）。 -->
+     一時期は+/-ボタンも用意したが、「指2本でできるようにしたい。+/-は要らない」との要望を
+     受けて削除し、2本指ピンチのみに一本化した（2026-08-26再訂正。ボタンが必要だったのは
+     この機能全体が実行されていなかった別のバグが原因で、ピンチ自体はバグを直せば機能する）。
+     拡大・縮小の対象は#floor-overview（座席の図そのもの）のみで、他の要素（自分の予約欄等）
+     には一切影響しない。 -->
 <script>
 try {
   var PINCH_MIN = 0.15;
@@ -936,9 +932,6 @@ try {
     overview.style.setProperty('--pinch-scale', String(scale));
     overview.classList.toggle('zoomed-out', scale < PINCH_HIDE_TAG_BELOW);
     return scale;
-  };
-  window.zoomBy = function (delta) {
-    applyPinchScale(currentScale() + delta);
   };
   window.resetPinchZoom = function () {
     if (window.innerWidth > 640) return; // PC幅では縮小しない（従来どおり等倍表示のまま）

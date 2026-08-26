@@ -1356,10 +1356,6 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
    フロアマップ（.floor-overview）・期間ビュー表（.period-matrix）は既存のoverflow-x:autoで
    横スクロールにより情報量を落とさず表示する。
    --------------------------------------------------------- */
-/* 拡大・縮小ボタン（.floor-zoom-controls）はスマホ幅専用のUIのため、PC幅では非表示にする
-   （実体のあるコンテンツ量が少なく画面を圧迫しないよう、有効化はメディアクエリ側でのみ行う）。 */
-.floor-zoom-controls { display: none; }
-
 @media (max-width: 640px) {
   .sidebar { width: 0; min-width: 0; height: 0; overflow: visible; position: static; }
   .sidebar-brand { display: none; }
@@ -1446,15 +1442,15 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
 
   .modal-overlay { padding: 12px; }
 
-  /* 座席の拡大・縮小をできるようにする（2026-08-26追加・複数回訂正）。
-     .floor-zoom-viewportがピンチ・パン用のスクロールコンテナ、.floor-overview自体は
-     拡縮率をJSが--pinch-scaleに書き込む対象。
-     当初はtransform:scaleを使っていたが、transformはレイアウト上の専有サイズ（高さ等）を
-     変えないため、縮小しても下の「自分の予約」欄との間に元のサイズ分の余白が残ってしまう
-     問題があった（2026-08-26再々々再訂正、「座席図から自分の予約の表までの余白をなくして
-     ほしい」との指摘を受けて対応）。zoomプロパティ（Chrome/Edge/Safari/Firefox 126+対応）は
-     専有サイズごと拡縮するため、この余白問題が起きない。ピンチ操作（2本指）は補助的に
-     有効のままとする。 */
+  /* 座席の図（フロアマップ）のみを2本指ピンチで拡大・縮小できるようにする
+     （2026-08-26追加・複数回訂正。「+/-ボタンは要らない、指2本でできるようにしたい」との
+     要望を受け、一時期用意していたボタンは削除しピンチ操作のみに一本化した）。
+     .floor-zoom-viewportがピンチ・パン用のスクロールコンテナ、.floor-overview（座席の図
+     そのもの）自体が拡縮対象で、拡縮率はJSが--pinch-scaleに書き込む。
+     zoomプロパティ（Chrome/Edge/Safari/Firefox 126+対応）を使用。当初はtransform:scaleを
+     使っていたが、transformはレイアウト上の専有サイズ（高さ等）を変えないため、縮小しても
+     下の「自分の予約」欄との間に元のサイズ分の余白が残ってしまう問題があった。zoomは
+     専有サイズごと拡縮するためこの問題が起きない。 */
   .floor-zoom-viewport {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
@@ -1464,30 +1460,6 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
   .floor-overview {
     zoom: var(--pinch-scale, 1);
   }
-  /* 拡大・縮小ボタン。ピンチ操作が効かない環境でも確実に操作できるよう、タップのみで完結する
-     明示的なUIとして追加した（2026-08-26追加）。下部の固定ナビ（.sidebar-nav、高さ58px）と
-     重ならないよう、その上にフロート表示する。 */
-  .floor-zoom-controls {
-    display: flex;
-    position: fixed;
-    right: 14px;
-    bottom: 74px;
-    z-index: 55;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .floor-zoom-controls .zoom-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 1px solid var(--border-strong);
-    background: var(--bg);
-    color: var(--text);
-    font-size: 20px;
-    line-height: 1;
-    box-shadow: var(--shadow-md);
-  }
-  .floor-zoom-controls .zoom-btn:active { background: var(--bg-muted); }
 
   /* 縮小表示では座席タイルの枠線・補助文字（seat-tag）が潰れて視認性が落ちるため、
      縮小される前の実寸を太く・濃くしておき、縮小後も判別できるようにする（2026-08-25追加）。
