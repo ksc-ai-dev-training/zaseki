@@ -933,9 +933,28 @@ try {
     overview.classList.toggle('zoomed-out', scale < PINCH_HIDE_TAG_BELOW);
     return scale;
   };
+  // 全体表示（フィルタなし）では、スマホ幅で最初にEAST・WESTエリアが見えるようにする
+  // （2026-08-26追加、「NORTHが最初に映ってしまう」との要望に対応）。
+  // NORTHは左端に配置されているため、初期スクロール位置をNORTH列の幅ぶん右にずらす。
+  // NORTH/EAST/WESTの左右の並び順自体は実際のフロアマップの配置（FR-04-2）に合わせて
+  // いるため変更しない。単体エリアタブでは常に先頭（scrollLeft=0）に戻す。
+  function scrollToEastWestIfAll() {
+    var overview = document.getElementById('floor-overview');
+    var viewport = document.getElementById('floor-zoom-viewport');
+    var isSingleAreaTab = overview.classList.contains('filter-north') ||
+      overview.classList.contains('filter-east') ||
+      overview.classList.contains('filter-west');
+    if (isSingleAreaTab) {
+      viewport.scrollLeft = 0;
+      return;
+    }
+    var northCol = overview.querySelector('.north-column');
+    if (northCol) viewport.scrollLeft = northCol.offsetWidth;
+  }
   window.resetPinchZoom = function () {
     if (window.innerWidth > 640) return; // PC幅では縮小しない（従来どおり等倍表示のまま）
     applyPinchScale(MOBILE_DEFAULT_SCALE);
+    scrollToEastWestIfAll();
   };
 
   var viewport = document.getElementById('floor-zoom-viewport');
