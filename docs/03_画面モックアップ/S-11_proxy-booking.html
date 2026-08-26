@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-11 代理予約・取消 | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item active" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">千</span>
+        <div>
+          <div class="user-name">千田 太郎 <span class="badge badge-role role-admin">管理部</span></div>
+          <div class="user-mail">t.chida@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>代理予約・取消（対象者選択）</h1>
+        <span class="screen-id">S-11</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <div class="panel" style="margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">代理予約する対象者を選ぶ</div>
+        </div>
+        <div class="panel-body">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <input type="search" placeholder="氏名で検索（登録済みの利用者が対象）">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>氏名</th><th>雇用形態</th><th>現在の座席利用状況</th><th></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">松</span>松本 亮</td>
+                  <td>社員</td>
+                  <td class="cell-sub">固定座席・プロジェクト座席の割当なし（フリー座席を利用）</td>
+                  <td><a class="btn btn-primary btn-sm" href="S-02_availability.html">この人を代理予約する</a></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">渡</span>渡辺 舞</td>
+                  <td>BP</td>
+                  <td class="cell-sub">固定座席・プロジェクト座席の割当なし（フリー座席を利用）</td>
+                  <td><a class="btn btn-primary btn-sm" href="S-02_availability.html">この人を代理予約する</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">座席の予約・割当を代理で取り消す</div>
+        </div>
+        <div class="panel-body">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <input type="search" placeholder="氏名で検索">
+            </div>
+            <span class="filter-label">座席種別</span>
+            <select style="width:140px">
+              <option>すべて</option>
+              <option>フリー座席</option>
+              <option>固定座席</option>
+              <option>プロジェクト座席</option>
+            </select>
+            <span class="filter-label">表示期間</span>
+            <input type="month" value="2026-08" style="width:130px">
+            <span>〜</span>
+            <input type="month" value="2026-10" style="width:130px">
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>氏名</th>
+                  <th>座席種別</th>
+                  <th>日付</th>
+                  <th>座席</th>
+                  <th>エリア</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">松</span>松本 亮</td>
+                  <td><span class="chip">フリー座席</span> <span class="cell-sub">単発</span></td>
+                  <td><span class="cell-main">2026-08-24（月）</span></td>
+                  <td>G2</td>
+                  <td>EAST</td>
+                  <td><button class="btn btn-danger-ghost btn-sm" type="button" onclick="openProxyCancelModal('取消','松本 亮','フリー座席','2026-08-24（月）','G2')">取消</button></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">渡</span>渡辺 舞</td>
+                  <td><span class="chip">フリー座席</span> <span class="cell-sub">周期予約・毎週火</span></td>
+                  <td><span class="cell-main">2026-08-25（火）</span></td>
+                  <td>L2</td>
+                  <td>WEST</td>
+                  <td><button class="btn btn-danger-ghost btn-sm" type="button" onclick="openProxyCancelModal('取消','渡辺 舞','フリー座席','2026-08-25（火）','L2')">取消</button></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">渡</span>渡辺 舞</td>
+                  <td><span class="chip">フリー座席</span> <span class="cell-sub">周期予約・毎週火</span></td>
+                  <td><span class="cell-main">2026-09-01（火）</span></td>
+                  <td>L2</td>
+                  <td>WEST</td>
+                  <td><button class="btn btn-danger-ghost btn-sm" type="button" onclick="openProxyCancelModal('取消','渡辺 舞','フリー座席','2026-09-01（火）','L2')">取消</button></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">田</span>田中 一郎</td>
+                  <td><span class="chip">固定座席</span></td>
+                  <td class="cell-sub">恒久的な割当（日付なし）</td>
+                  <td>A1</td>
+                  <td>NORTH</td>
+                  <td><button class="btn btn-danger-ghost btn-sm" type="button" onclick="openProxyCancelModal('解除','田中 一郎','固定座席','－','A1')">解除</button></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
+                  <td><span class="chip">プロジェクト座席</span> <span class="cell-sub">基盤刷新プロジェクト・周期予約</span></td>
+                  <td><span class="cell-main">2026-10-06（火）</span></td>
+                  <td>N1</td>
+                  <td>WEST</td>
+                  <td><button class="btn btn-danger-ghost btn-sm" type="button" onclick="openProxyCancelModal('取消','高橋 美咲','プロジェクト座席','2026-10-06（火）','N1')">取消</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="proxy-cancel-modal" onclick="if(event.target===this)closeProxyCancelModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="proxy-cancel-title">予約の取消（代理）</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeProxyCancelModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="def-grid">
+        <div class="def-row wide"><dt>対象者</dt><dd id="proxy-cancel-name">松本 亮</dd></div>
+        <div class="def-row wide"><dt>座席種別</dt><dd id="proxy-cancel-type">フリー座席</dd></div>
+        <div class="def-row wide"><dt>日付</dt><dd id="proxy-cancel-date">2026-08-24（月）</dd></div>
+        <div class="def-row wide"><dt>座席</dt><dd id="proxy-cancel-seat">G2</dd></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeProxyCancelModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" id="proxy-cancel-submit" onclick="closeProxyCancelModal()">取消する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 代理取消の確認モーダル開閉（静的モック確認用の最小限のJS）。
+// kindは「取消」（フリー座席・プロジェクト座席、日付単位）または「解除」（固定座席、恒久的な割当）。
+function openProxyCancelModal(kind, name, seatType, date, seat) {
+  document.getElementById('proxy-cancel-title').textContent = (kind === '解除' ? '座席の解除（代理）' : '予約の取消（代理）');
+  document.getElementById('proxy-cancel-name').textContent = name;
+  document.getElementById('proxy-cancel-type').textContent = seatType;
+  document.getElementById('proxy-cancel-date').textContent = date;
+  document.getElementById('proxy-cancel-seat').textContent = seat;
+  document.getElementById('proxy-cancel-help').textContent = (kind === '解除' ? 'この固定座席の割当を解除します。よろしいですか？' : 'この予約を取り消します。よろしいですか？');
+  document.getElementById('proxy-cancel-submit').textContent = (kind === '解除' ? '解除する' : '取消する');
+  document.getElementById('proxy-cancel-modal').classList.add('open');
+}
+function closeProxyCancelModal() {
+  document.getElementById('proxy-cancel-modal').classList.remove('open');
+}
+</script>
+
+</body>
+</html>

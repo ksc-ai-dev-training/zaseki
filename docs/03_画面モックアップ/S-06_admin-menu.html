@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-06 管理メニュー | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item active" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">千</span>
+        <div>
+          <div class="user-name">千田 太郎 <span class="badge badge-role role-admin">管理部</span></div>
+          <div class="user-mail">t.chida@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>管理メニュー</h1>
+        <span class="screen-id">S-06</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-label">総座席数</div>
+          <div class="stat-value">83<span class="stat-unit">席</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">稼働エリア数</div>
+          <div class="stat-value">3<span class="stat-unit">エリア</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">登録利用者数</div>
+          <div class="stat-value">198<span class="stat-unit">名</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">管理部人数</div>
+          <div class="stat-value">4<span class="stat-unit">名</span></div>
+        </div>
+      </div>
+
+      <div class="mock-cards">
+        <a class="mock-card" href="S-05_proxy-select.html">
+          <div class="card-top">
+            <span class="card-id">S-05</span>
+          </div>
+          <div class="card-name">固定座席の指定</div>
+          <div class="card-desc">固定座席利用者の座席を指定する（FR-01-5）。プロジェクトメンバーへの代理予約はプロジェクト座席画面（S-04）で行う。</div>
+        </a>
+        <a class="mock-card" href="S-11_proxy-booking.html">
+          <div class="card-top">
+            <span class="card-id">S-11</span>
+          </div>
+          <div class="card-name">代理予約・取消</div>
+          <div class="card-desc">プロジェクトメンバー・固定座席利用者のいずれにも該当しない利用者について、通常の座席（フリー座席）を一時的に代理予約・代理取消する（FR-01-5・FR-01-7、2026-08-21追加。固定座席の指定〔S-05〕とは目的が異なるため分離した独立画面）。</div>
+        </a>
+        <a class="mock-card" href="S-07_seat-master.html">
+          <div class="card-top">
+            <span class="card-id">S-07</span>
+          </div>
+          <div class="card-name">座席マスタ管理</div>
+          <div class="card-desc">座席の追加・編集・廃止を行う（FR-06-1, FR-06-2）。</div>
+        </a>
+        <a class="mock-card" href="S-08_role-master.html">
+          <div class="card-top">
+            <span class="card-id">S-08</span>
+          </div>
+          <div class="card-name">権限・役割管理</div>
+          <div class="card-desc">利用者への役割（管理部）の割当、プロジェクトメンバーへのPM・PL設定、PJ席決担当の指定、エリアごとのエリア責任者・副責任者の指定を行う（2026-08-21追加）。</div>
+        </a>
+        <a class="mock-card" href="S-09_project-seat-allocation.html">
+          <div class="card-top">
+            <span class="card-id">S-09</span>
+          </div>
+          <div class="card-name">プロジェクト座席（エリア担当）</div>
+          <div class="card-desc">管理部はプロジェクトを担当エリアに割り当てる（FR-03-1）。必要座席数の確認・出社曜日アンケートの実施・調整・座席の島の割当（FR-03-2〜6）は、担当エリアのエリア責任者・副責任者が行う（2026-08-21訂正。エリア責任者制度の復活に伴い主体を変更。画面自体はサイドバーの「プロジェクト座席（エリア担当）」からも遷移できる）。</div>
+        </a>
+        <a class="mock-card" href="S-10_seat-history.html">
+          <div class="card-top">
+            <span class="card-id">S-10</span>
+          </div>
+          <div class="card-name">座席状況の履歴照会</div>
+          <div class="card-desc">日付を指定して、過去の座席状況をフロアマップ形式で参照専用表示する。照会範囲は直近1か月（要件定義書10.1節D12、2026-08-21訂正。D10のデータ保持期間とは別建て）。</div>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

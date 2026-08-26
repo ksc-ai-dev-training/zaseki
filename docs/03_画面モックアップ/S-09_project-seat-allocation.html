@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-09 プロジェクト座席（エリア担当） | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item active" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">千</span>
+        <div>
+          <div class="user-name">千田 太郎 <span class="badge badge-role role-admin">管理部</span> <span class="badge badge-role role-member">EAST・WESTエリア責任者</span></div>
+          <div class="user-mail">t.chida@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>プロジェクト座席</h1>
+        <span class="screen-id">S-09</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <div class="panel" style="margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">プロジェクトの担当エリア割当（管理部）</div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>プロジェクト</th><th>対象四半期</th><th>担当エリア</th><th></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="cell-main">経費精算システム刷新プロジェクト</td>
+                  <td>2027-04-01 〜 2027-06-30</td>
+                  <td class="cell-sub">未割当</td>
+                  <td>
+                    <select style="width:140px">
+                      <option value="">エリアを選択</option>
+                      <option value="north">NORTH</option>
+                      <option value="east">EAST</option>
+                      <option value="west">WEST</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="assignArea()">割り当てる</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" id="tab-q-all" type="button" onclick="setQuarterFilter('all')">すべて</button>
+        <button class="tab" id="tab-q-2026-10" type="button" onclick="setQuarterFilter('2026-10')">2026年10〜12月</button>
+        <button class="tab" id="tab-q-2027-01" type="button" onclick="setQuarterFilter('2027-01')">2027年1〜3月</button>
+        <button class="tab" id="tab-q-2027-04" type="button" onclick="setQuarterFilter('2027-04')">2027年4〜6月</button>
+        <button class="tab" id="tab-q-2027-07" type="button" onclick="setQuarterFilter('2027-07')">2027年7〜9月</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="project-quarter-table">
+          <thead><tr><th>プロジェクト</th><th>PM（PL）</th><th>対象四半期</th><th>必要座席数</th><th>状態</th><th></th></tr></thead>
+          <tbody>
+            <tr data-quarter="2026-10">
+              <td class="cell-main">Zaseki研修プロジェクト</td>
+              <td>千田 太郎</td>
+              <td>2026-10-01 〜 2026-12-31</td>
+              <td class="cell-main">4名</td>
+              <td><span class="badge badge-status-on">座席割当済み（D1〜D4）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" disabled>完了</button></td>
+            </tr>
+            <tr data-quarter="2026-10">
+              <td class="cell-main">経歴書刷新プロジェクト</td>
+              <td>鈴木 花子</td>
+              <td>2026-10-01 〜 2026-12-31</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">曜日確定済み（座席の島の割当待ち）</span></td>
+              <td><a class="btn btn-primary btn-sm" href="S-02_availability.html">座席の島を割り当てる</a> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">Zaseki研修プロジェクト</td>
+              <td>千田 太郎</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">4名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（4/4件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('Zaseki研修プロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">新人研修サポートプロジェクト<span class="note-icon" title="備考: 新人メンバーの研修日程の都合上、火曜は出社できるメンバーが少ないです"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span></td>
+              <td>田中 一郎</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（4/4件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('新人研修サポートプロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">経歴書刷新プロジェクト</td>
+              <td>鈴木 花子</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（4/4件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('経歴書刷新プロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">基盤刷新プロジェクト</td>
+              <td>高橋 美咲</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">4名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（4/4件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('基盤刷新プロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">経理システム更新プロジェクト</td>
+              <td>森田 陽子</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（4/4件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('経理システム更新プロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-01">
+              <td class="cell-main">受発注システム刷新プロジェクト<span class="note-icon" title="備考: 第一・第二希望とも他プロジェクトと重複した場合、木・金であれば調整可能です"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span></td>
+              <td>佐々木 健</td>
+              <td>2027-01-01 〜 2027-03-31</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">アンケート回答受付中（3/3件）</span></td>
+              <td><button class="btn btn-secondary btn-sm" type="button" onclick="sendReminder('受発注システム刷新プロジェクト')">リマインドを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-04">
+              <td class="cell-main">経歴書刷新プロジェクト</td>
+              <td>鈴木 花子</td>
+              <td>2027-04-01 〜 2027-06-30</td>
+              <td class="cell-main">3名</td>
+              <td><span class="badge badge-status-off">アンケート未送信</span></td>
+              <td><button class="btn btn-primary btn-sm" type="button" onclick="openSurveyModal()">アンケートを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-04">
+              <td class="cell-main">基盤刷新プロジェクト</td>
+              <td>高橋 美咲</td>
+              <td>2027-04-01 〜 2027-06-30</td>
+              <td class="cell-main">4名</td>
+              <td><span class="badge badge-status-off">アンケート未送信</span></td>
+              <td><button class="btn btn-primary btn-sm" type="button" onclick="openSurveyModal()">アンケートを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+            <tr data-quarter="2027-07">
+              <td class="cell-main">Zaseki研修プロジェクト</td>
+              <td>千田 太郎</td>
+              <td>2027-07-01 〜 2027-09-30</td>
+              <td class="cell-main">4名</td>
+              <td><span class="badge badge-status-off">アンケート未送信</span></td>
+              <td><button class="btn btn-primary btn-sm" type="button" onclick="openSurveyModal()">アンケートを送る</button> <button class="btn btn-secondary btn-sm" type="button" onclick="openHeadcountModal()">人数を修正</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="weekday-matrix-panel">
+        <div class="panel-header">
+          <div class="panel-title">出社曜日の調整表（対象四半期: 2027-01-01 〜 2027-03-31）</div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table class="table weekday-matrix">
+              <thead><tr><th>プロジェクト</th><th>人数</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="cell-main">Zaseki研修プロジェクト</td>
+                  <td>4名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">新人研修サポートプロジェクト<br><span class="cell-sub">備考: 新人メンバーの研修日程の都合上、火曜は出社できるメンバーが少ないです</span></td>
+                  <td>3名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice2">②</span></label></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">経歴書刷新プロジェクト</td>
+                  <td>3名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">基盤刷新プロジェクト</td>
+                  <td>4名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice2">②</span></label></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">経理システム更新プロジェクト</td>
+                  <td>3名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" onchange="toggleExceptionBadge(this)"><span class="wd-badge exception" style="display:none">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked><span class="wd-badge-group"><span class="wd-badge choice1">①</span><span class="wd-badge choice2">②</span></span></label></td>
+                </tr>
+
+                <tr>
+                  <td class="cell-main">受発注システム刷新プロジェクト<br><span class="cell-sub">備考: 第一・第二希望とも他プロジェクトと重複した場合、木・金であれば調整可能です</span></td>
+                  <td>3名</td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge-group"><span class="wd-badge choice1">①</span><span class="wd-badge choice2">②</span></span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice1">①</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox"><span class="wd-badge choice2">②</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked onchange="toggleExceptionBadge(this)"><span class="wd-badge exception">例外</span></label></td>
+                  <td class="wd-cell"><label class="wd-choice"><input type="checkbox" checked onchange="toggleExceptionBadge(this)"><span class="wd-badge exception">例外</span></label></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="search-actions">
+            <button class="btn btn-primary" type="button" onclick="confirmWeekdays()">この内容で全プロジェクトの曜日を確定する</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="headcount-modal" onclick="if(event.target===this)closeModal('headcount-modal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">必要座席数の確認・修正（経歴書刷新プロジェクト）</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeModal('headcount-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="def-grid">
+        <div class="def-row wide"><dt>対象四半期</dt><dd>2027-04-01 〜 2027-06-30</dd></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>必要座席数</label>
+        <input type="number" min="1" value="3" style="width:100px">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeModal('headcount-modal')">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeModal('headcount-modal')">この内容で保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="survey-modal" onclick="if(event.target===this)closeModal('survey-modal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">出社曜日アンケートの送信（基盤刷新プロジェクト）</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeModal('survey-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="def-grid">
+        <div class="def-row wide"><dt>対象四半期</dt><dd>2027-04-01 〜 2027-06-30</dd></div>
+        <div class="def-row wide"><dt>必要座席数</dt><dd>3名<span class="cell-sub">（現状のプロジェクト人数。S-04でPM(PL)が変更すれば自動的に更新される）</span></dd></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeModal('survey-modal')">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeModal('survey-modal')">アンケートを送信する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 各モーダルの開閉（静的モック確認用の最小限のJS）
+function openHeadcountModal() { document.getElementById('headcount-modal').classList.add('open'); }
+function openSurveyModal() { document.getElementById('survey-modal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function confirmWeekdays() {
+  alert('曜日を確定しました（モック）。各プロジェクトの状態が「座席の島の割当待ち」に変わります。');
+}
+function assignArea() {
+  alert('担当エリアを割り当てました（モック）。以降、そのエリアのエリア責任者・副責任者が必要座席数の確認から担当します。');
+}
+function sendReminder(projectName) {
+  alert(projectName + ' の未回答PM（PL）宛に、Slackチャンネルへリマインドを送信しました（モック。FR-03-9、手動送信）。');
+}
+function toggleExceptionBadge(checkbox) {
+  var badge = checkbox.nextElementSibling;
+  badge.style.display = checkbox.checked ? '' : 'none';
+}
+function setQuarterFilter(key) {
+  var rows = document.querySelectorAll('#project-quarter-table tbody tr');
+  rows.forEach(function (row) {
+    row.style.display = (key === 'all' || row.getAttribute('data-quarter') === key) ? '' : 'none';
+  });
+  ['all', '2026-10', '2027-01', '2027-04', '2027-07'].forEach(function (k) {
+    document.getElementById('tab-q-' + k).classList.toggle('active', k === key);
+  });
+}
+</script>
+
+</body>
+</html>

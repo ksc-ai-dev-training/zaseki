@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-04 プロジェクト座席 | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item active" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">吉</span>
+        <div>
+          <div class="user-name">吉村 健二 <span class="badge badge-role role-member">一般</span></div>
+          <div class="user-mail">k.yoshimura@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>プロジェクト座席</h1>
+        <span class="screen-id">S-04</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <h2 class="project-heading">新人研修サポートプロジェクト <span class="project-role">PL</span></h2>
+
+      <div class="table-wrap" style="margin-bottom:20px">
+        <table class="table">
+          <thead><tr><th>対象四半期</th><th>状態</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">2027-01-01 〜 2027-03-31</td><td><span class="badge badge-status-off">曜日アンケート回答受付中</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">出社曜日アンケートの回答</div>
+        </div>
+        <div class="panel-body">
+
+          <div class="field">
+            <label>第一希望（曜日を2つ選択）</label>
+            <div class="checkbox-group">
+              <label class="checkbox-line"><input type="checkbox"> 月</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 火</label>
+              <label class="checkbox-line"><input type="checkbox"> 水</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 木</label>
+              <label class="checkbox-line"><input type="checkbox"> 金</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>第二希望（曜日を2つ選択）</label>
+            <div class="checkbox-group">
+              <label class="checkbox-line"><input type="checkbox" checked> 月</label>
+              <label class="checkbox-line"><input type="checkbox"> 火</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 水</label>
+              <label class="checkbox-line"><input type="checkbox"> 木</label>
+              <label class="checkbox-line"><input type="checkbox"> 金</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>備考（任意）</label>
+            <textarea rows="3" placeholder="エリア責任者への伝達事項があれば入力（例: 出社曜日の希望理由、繁忙期の見込み等）"></textarea>
+          </div>
+          <div class="field">
+            <label>必要座席数の変更希望（現在: 3名）</label>
+            <input type="number" min="1" placeholder="変更後の人数（変更がなければ空欄のまま）" style="width:220px">
+          </div>
+
+          <div class="search-actions">
+            <button class="btn btn-primary" type="button" onclick="submitSurveyResponse()">この内容で回答する</button>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="project-heading">モバイルアプリ刷新プロジェクト <span class="project-role">PL</span></h2>
+
+      <div class="table-wrap" style="margin-bottom:20px">
+        <table class="table">
+          <thead><tr><th>対象四半期</th><th>状態</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">2027-01-01 〜 2027-03-31</td><td><span class="badge badge-status-off">曜日アンケート回答受付中</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">出社曜日アンケートの回答</div>
+        </div>
+        <div class="panel-body">
+
+          <div class="field">
+            <label>第一希望（曜日を2つ選択）</label>
+            <div class="checkbox-group">
+              <label class="checkbox-line"><input type="checkbox"> 月</label>
+              <label class="checkbox-line"><input type="checkbox"> 火</label>
+              <label class="checkbox-line"><input type="checkbox"> 水</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 木</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 金</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>第二希望（曜日を2つ選択）</label>
+            <div class="checkbox-group">
+              <label class="checkbox-line"><input type="checkbox" checked> 月</label>
+              <label class="checkbox-line"><input type="checkbox"> 火</label>
+              <label class="checkbox-line"><input type="checkbox"> 水</label>
+              <label class="checkbox-line"><input type="checkbox"> 木</label>
+              <label class="checkbox-line"><input type="checkbox" checked> 金</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>備考（任意）</label>
+            <textarea rows="3" placeholder="エリア責任者への伝達事項があれば入力（例: 出社曜日の希望理由、繁忙期の見込み等）"></textarea>
+          </div>
+          <div class="field">
+            <label>必要座席数の変更希望（現在: 4名）</label>
+            <input type="number" min="1" placeholder="変更後の人数（変更がなければ空欄のまま）" style="width:220px">
+          </div>
+
+          <div class="search-actions">
+            <button class="btn btn-primary" type="button" onclick="submitSurveyResponse()">この内容で回答する</button>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="project-heading">基盤刷新プロジェクト <span class="project-role">PL</span></h2>
+
+      <div class="table-wrap" style="margin-bottom:20px">
+        <table class="table">
+          <thead><tr><th>対象四半期</th><th>状態</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">2026-10-01 〜 2026-12-31</td><td><span class="badge badge-status-on">座席割当済み（N1〜N4）</span></td><td><a class="btn btn-secondary btn-sm" href="#" onclick="showPreviousQuarter(event)">前回分（2026-07-01〜09-30）を見る</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="prev-quarter-panel" style="display:none; margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">前回分（2026-07-01 〜 09-30）の座席割当</div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>氏名</th><th>座席</th></tr></thead>
+              <tbody>
+                <tr><td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td><td>M5</td></tr>
+                <tr><td><span class="avatar" style="margin-right:8px">中</span>中村 隆</td><td>M7</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px">
+        <div class="panel-header">
+          <div class="panel-title">メンバー管理（席決め権限）</div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>氏名</th><th>役割</th><th>席決め権限</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
+                  <td class="cell-sub">一般メンバー</td>
+                  <td><label class="checkbox-line"><input type="checkbox" checked onchange="toggleSeatAssignRight('高橋美咲', this)"> 席決めを任せる</label></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">中</span>中村 隆</td>
+                  <td class="cell-sub">一般メンバー</td>
+                  <td><label class="checkbox-line"><input type="checkbox" onchange="toggleSeatAssignRight('中村隆', this)"> 席決めを任せる</label></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">メンバーへの座席確保</div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table class="table" id="bulk-assign-table">
+              <thead><tr><th>氏名</th><th>座席の確保状況</th><th>割り当てる座席</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
+                  <td class="cell-sub">未確保</td>
+                  <td>
+                    <select style="width:120px">
+                      <option value="">座席を選択</option>
+                      <option value="N1">N1</option>
+                      <option value="N2">N2</option>
+                      <option value="N3">N3</option>
+                      <option value="N4">N4</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">中</span>中村 隆</td>
+                  <td class="cell-sub">未確保</td>
+                  <td>
+                    <select style="width:120px">
+                      <option value="">座席を選択</option>
+                      <option value="N1">N1</option>
+                      <option value="N2">N2</option>
+                      <option value="N3">N3</option>
+                      <option value="N4">N4</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="search-actions">
+            <button class="btn btn-primary" type="button" onclick="submitBulkSeatAssign()">この内容で一括確保する</button>
+          </div>
+
+          <div id="bulk-assign-result" style="display:none; margin-top:16px">
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>氏名</th><th>座席</th><th>結果</th></tr></thead>
+                <tbody id="bulk-assign-result-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// アンケート回答送信（静的モック確認用の最小限のJS）
+function submitSurveyResponse() {
+  alert('回答しました（モック）。エリア責任者の曜日確定をお待ちください。');
+}
+function toggleSeatAssignRight(name, checkbox) {
+  alert((checkbox.checked ? name + 'に席決め権限を付与しました' : name + 'の席決め権限を外しました') + '（モック。管理部の承認は不要）');
+}
+function showPreviousQuarter(e) {
+  e.preventDefault();
+  document.getElementById('prev-quarter-panel').style.display = '';
+}
+function submitBulkSeatAssign() {
+  var rows = document.querySelectorAll('#bulk-assign-table tbody tr');
+  var picks = []; // { row, name, seat }
+  var seatCounts = {};
+  rows.forEach(function (row) {
+    var select = row.querySelector('select');
+    if (!select || !select.value) { return; } // 未選択のメンバーはスキップ
+    var name = row.querySelector('td').textContent.trim();
+    var seat = select.value;
+    picks.push({ row: row, name: name, seat: seat });
+    seatCounts[seat] = (seatCounts[seat] || 0) + 1;
+  });
+
+  if (picks.length === 0) {
+    alert('座席を選んだメンバーがいません。少なくとも1名の座席を選んでください。');
+    return;
+  }
+
+  var resultBody = document.getElementById('bulk-assign-result-body');
+  resultBody.innerHTML = '';
+  picks.forEach(function (pick) {
+    var duplicated = seatCounts[pick.seat] > 1;
+    var tr = document.createElement('tr');
+    if (duplicated) {
+      tr.innerHTML = '<td>' + pick.name + '</td><td>' + pick.seat + '</td><td><span class="badge badge-status-off">除外（他のメンバーと座席が重複）</span></td>';
+    } else {
+      tr.innerHTML = '<td>' + pick.name + '</td><td>' + pick.seat + '</td><td><span class="badge badge-status-on">確保済み</span></td>';
+      pick.row.querySelector('.cell-sub').textContent = pick.seat + ' に確保済み';
+      pick.row.querySelector('select').disabled = true;
+    }
+    resultBody.appendChild(tr);
+  });
+  document.getElementById('bulk-assign-result').style.display = '';
+}
+</script>
+
+</body>
+</html>

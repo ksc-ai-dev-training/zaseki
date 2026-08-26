@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-10 座席状況の履歴照会 | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item active" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">千</span>
+        <div>
+          <div class="user-name">千田 太郎 <span class="badge badge-role role-admin">管理部</span></div>
+          <div class="user-mail">t.chida@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>座席状況の履歴照会</h1>
+        <span class="screen-id">S-10</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <div class="toolbar">
+        <span class="filter-label">照会する日付</span>
+        <input type="date" id="history-date" value="2026-08-05" min="2026-07-21" max="2026-08-20" onchange="clearHistoryError()">
+        <button class="btn btn-primary btn-sm" type="button" onclick="searchHistory()">検索</button>
+      </div>
+
+      <div id="history-result" style="display:none">
+
+      <div class="tabs">
+        <button class="tab active" id="tab-all" type="button" onclick="setAreaFilter('all')">全体表示</button>
+        <button class="tab" id="tab-north" type="button" onclick="setAreaFilter('north')">NORTHエリア</button>
+        <button class="tab" id="tab-east" type="button" onclick="setAreaFilter('east')">EASTエリア</button>
+        <button class="tab" id="tab-west" type="button" onclick="setAreaFilter('west')">WESTエリア</button>
+      </div>
+
+      <div class="seat-legend">
+        <span class="legend-item"><span class="legend-swatch" style="background:#eff6ff;border:1.5px dashed var(--accent-600)"></span>空き</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#dcdfe4;border-color:#b8bec7"></span>使用中（フリー座席。名前を表示）</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#ede9fe;border-color:#a78bfa"></span>固定座席</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#dcfce7;border-color:#4ade80"></span>プロジェクト座席</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#fef3c7;border-color:#f59e0b"></span>未確定（FR-04-3）</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--text-subtle)"></span>柱（予約対象外）</span>
+      </div>
+
+      <div class="floor-overview" id="floor-overview">
+
+      <div class="north-column">
+
+      <div class="north-side-rooms">
+        <div class="floor-room" style="flex:1">会議室D</div>
+        <div class="floor-room" style="flex:2">ワークラウンジ</div>
+      </div>
+
+      <div id="panel-north">
+        <h3 class="area-heading area-north">NORTHエリア</h3>
+        <div class="floor-block">
+          <div class="seat-block-label">周辺スペース・Bブロック（ロッカー）</div>
+          <div class="seat-grid north-l rows-5">
+            <div class="floor-pillar" title="柱" style="grid-column:9 / span 2;grid-row:1;width:40px;height:36px;justify-self:center;align-self:center">柱</div>
+            <div class="floor-room" style="grid-column:6 / span 2;grid-row:2 / span 4">倉庫</div>
+            <div class="floor-room" style="grid-column:10;grid-row:2 / span 4">キャビネット</div>
+            <div class="seat-tile status-fixed" title="固定座席" style="grid-column:8;grid-row:2">B1<span class="seat-tag">中村</span></div>
+            <div class="seat-tile status-free" style="grid-column:9;grid-row:2">B5</div>
+            <div class="seat-tile status-free" style="grid-column:8;grid-row:3">B2</div>
+            <div class="seat-tile status-free" style="grid-column:9;grid-row:3">B6</div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:8;grid-row:4">B3<span class="seat-tag">松本</span></div>
+            <div class="seat-tile status-project" title="プロジェクト座席（佐藤恵子）" style="grid-column:9;grid-row:4">B7<span class="seat-tag">佐藤(恵)</span></div>
+            <div class="seat-tile status-free" style="grid-column:8;grid-row:5">B4</div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:9;grid-row:5">B8<span class="seat-tag">小林</span></div>
+          </div>
+        </div>
+        <div class="floor-block">
+          <div class="seat-block-label">Aブロック</div>
+          <div class="seat-grid north-l rows-2">
+            <div class="seat-tile status-fixed" title="固定座席（田中一郎）" style="grid-column:3;grid-row:1">A1<span class="seat-tag">田中(一)</span></div>
+            <div class="floor-pillar" title="柱" style="grid-column:4;grid-row:1 / span 2;width:40px;height:36px;justify-self:center;align-self:center">柱</div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:5;grid-row:1">A2<span class="seat-tag">鈴木</span></div>
+            <div class="seat-tile status-free" style="grid-column:6;grid-row:1">A3</div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:1">A4<span class="seat-tag">木村</span></div>
+            <div class="seat-tile status-free" style="grid-column:8;grid-row:1">A5</div>
+            <div class="seat-tile status-project" title="プロジェクト座席（伊藤大輝）" style="grid-column:9;grid-row:1">A6<span class="seat-tag">伊藤(大)</span></div>
+            <div class="floor-pillar" title="柱" style="grid-column:10;grid-row:1 / span 2;width:40px;height:36px;justify-self:center;align-self:center">柱</div>
+            <div class="seat-tile status-pending" title="未確定（プロジェクト座席の決定待ち）" style="grid-column:5;grid-row:2">A7</div>
+            <div class="seat-tile status-free" style="grid-column:6;grid-row:2">A8</div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:2">A9<span class="seat-tag">渡辺</span></div>
+            <div class="seat-tile status-free" style="grid-column:8;grid-row:2">A10</div>
+            <div class="seat-tile status-free" style="grid-column:9;grid-row:2">A11</div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+
+      <div class="floor-overview-stack">
+
+      <div id="panel-east">
+            <h3 class="area-heading area-east">EASTエリア</h3>
+            <div class="floor-divider inset">
+              <div class="floor-room">ロッカー</div>
+              <div class="floor-pillar" title="柱">柱</div>
+            </div>
+            <div class="floor-map map-east">
+              <div class="floor-room locker" style="grid-area:lockL1">ロッカー</div>
+              <div class="floor-room locker" style="grid-area:lockL2">ロッカー</div>
+              <div class="floor-room locker" style="grid-area:lockL3">ロッカー</div>
+              <div class="floor-room locker" style="grid-area:lockR1">ロッカー</div>
+              <div class="floor-room locker" style="grid-area:lockR2">ロッカー</div>
+              <div class="floor-room locker" style="grid-area:lockR3">ロッカー</div>
+              <div class="floor-room-stack" style="grid-area:clinic">
+                <div class="floor-room">女子救護室</div>
+                <div class="floor-room">男子救護室</div>
+                <div class="floor-room">オンライン診療室A</div>
+                <div class="floor-room">オンライン診療室B</div>
+              </div>
+              <div class="floor-block" style="grid-area:blkC">
+                <div class="seat-block-label">Cブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-free">C1</div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋亮太）">C2<span class="seat-tag">高橋(亮)</span></div>
+                  <div class="seat-tile status-free">C3</div>
+                  <div class="seat-tile status-fixed" title="固定座席（山本健太）">C4<span class="seat-tag">山本</span></div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkD">
+                <div class="seat-block-label">Dブロック（Zaseki研修プロジェクトの島）</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-free">D1</div>
+                  <div class="seat-tile status-free">D2</div>
+                  <div class="seat-tile status-occupied" title="使用中">D3<span class="seat-tag">加藤</span></div>
+                  <div class="seat-tile status-free">D4</div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkE">
+                <div class="seat-block-label">Eブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-project" title="プロジェクト座席（田中由美）">E1<span class="seat-tag">田中(由)</span></div>
+                  <div class="seat-tile status-free">E2</div>
+                  <div class="seat-tile status-free">E3</div>
+                  <div class="seat-tile status-pending" title="未確定（プロジェクト座席の決定待ち）">E4</div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkF">
+                <div class="seat-block-label">Fブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-project" title="プロジェクト座席（佐藤次郎・Zaseki研修プロジェクト）">F1<span class="seat-tag">佐藤(次)</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（伊藤さくら・Zaseki研修プロジェクト）">F5<span class="seat-tag">伊藤(さ)</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋直子）">F2<span class="seat-tag">高橋(直)</span></div>
+                  <div class="seat-tile status-occupied" title="使用中">F6<span class="seat-tag">中川</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（田中健太）">F3<span class="seat-tag">田中(健)</span></div>
+                  <div class="seat-tile status-free">F7</div>
+                  <div class="seat-tile status-free">F4</div>
+                  <div class="seat-tile status-occupied" title="使用中">F8<span class="seat-tag">小川</span></div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkG">
+                <div class="seat-block-label">Gブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-free">G1</div>
+                  <div class="seat-tile status-free">G2</div>
+                  <div class="seat-tile status-fixed" title="固定座席">G3<span class="seat-tag">清水</span></div>
+                  <div class="seat-tile status-free">G4</div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkH">
+                <div class="seat-block-label">Hブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-occupied" title="使用中">H1<span class="seat-tag">井上</span></div>
+                  <div class="seat-tile status-free">H2</div>
+                  <div class="seat-tile status-free">H3</div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋大輔）">H4<span class="seat-tag">高橋(大)</span></div>
+                </div>
+              </div>
+              <div class="floor-block" style="grid-area:blkI">
+                <div class="seat-block-label">Iブロック</div>
+                <div class="seat-grid cols-2">
+                  <div class="seat-tile status-free">I1</div>
+                  <div class="seat-tile status-free">I2</div>
+                  <div class="seat-tile status-free">I3</div>
+                  <div class="seat-tile status-free">I4</div>
+                </div>
+              </div>
+            </div>
+      </div>
+
+      <div class="floor-divider">
+        <div class="floor-room">ロッカー</div>
+        <div class="floor-pillar" title="柱">柱</div>
+      </div>
+
+      <div id="panel-west">
+        <h3 class="area-heading area-west">WESTエリア</h3>
+        <div class="floor-map map-west">
+          <div class="floor-room locker" style="grid-area:lockL1">ロッカー</div>
+          <div class="floor-room locker" style="grid-area:lockL2">ロッカー</div>
+          <div class="floor-room locker" style="grid-area:lockL3">ロッカー</div>
+          <div class="floor-room locker" style="grid-area:lockR1">ロッカー</div>
+          <div class="floor-room locker" style="grid-area:lockR2">ロッカー</div>
+          <div class="floor-room locker" style="grid-area:lockR3">ロッカー</div>
+          <div class="floor-room" style="grid-area:server">サーバールーム</div>
+          <div class="floor-room" style="grid-area:sports">運動エリア</div>
+          <div class="floor-block" style="grid-area:blkJ">
+            <div class="seat-block-label">Jブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-fixed" title="固定座席（高橋美咲）">J1<span class="seat-tag">高橋(美)</span></div>
+              <div class="seat-tile status-free">J2</div>
+              <div class="seat-tile status-free">J3</div>
+              <div class="seat-tile status-occupied" title="使用中">J4<span class="seat-tag">斉藤</span></div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkK">
+            <div class="seat-block-label">Kブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-free">K1</div>
+              <div class="seat-tile status-project" title="プロジェクト座席（田中真理）">K2<span class="seat-tag">田中(真)</span></div>
+              <div class="seat-tile status-free">K3</div>
+              <div class="seat-tile status-free">K4</div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkL">
+            <div class="seat-block-label">Lブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-free">L1</div>
+              <div class="seat-tile status-free">L2</div>
+              <div class="seat-tile status-occupied" title="使用中">L3<span class="seat-tag">橋本</span></div>
+              <div class="seat-tile status-free">L4</div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkM">
+            <div class="seat-block-label">Mブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-free">M1</div>
+              <div class="seat-tile status-free">M5</div>
+              <div class="seat-tile status-project" title="プロジェクト座席（高橋里奈）">M2<span class="seat-tag">高橋(里)</span></div>
+              <div class="seat-tile status-free">M6</div>
+              <div class="seat-tile status-free">M3</div>
+              <div class="seat-tile status-pending" title="未確定（プロジェクト座席の決定待ち）">M7</div>
+              <div class="seat-tile status-occupied" title="使用中">M4<span class="seat-tag">村上</span></div>
+              <div class="seat-tile status-free">M8</div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkN">
+            <div class="seat-block-label">Nブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-free">N1</div>
+              <div class="seat-tile status-free">N2</div>
+              <div class="seat-tile status-fixed" title="固定座席">N3<span class="seat-tag">石井</span></div>
+              <div class="seat-tile status-free">N4</div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkO">
+            <div class="seat-block-label">Oブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-occupied" title="使用中">O1<span class="seat-tag">前田</span></div>
+              <div class="seat-tile status-free">O2</div>
+              <div class="seat-tile status-free">O3</div>
+              <div class="seat-tile status-project" title="プロジェクト座席（高橋修）">O4<span class="seat-tag">高橋(修)</span></div>
+            </div>
+          </div>
+          <div class="floor-block" style="grid-area:blkP">
+            <div class="seat-block-label">Pブロック</div>
+            <div class="seat-grid cols-2">
+              <div class="seat-tile status-free">P1</div>
+              <div class="seat-tile status-free">P2</div>
+              <div class="seat-tile status-free">P3</div>
+              <div class="seat-tile status-free">P4</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="floor-divider">
+        <div class="floor-room">ロッカー</div>
+        <div class="floor-pillar" title="柱">柱</div>
+      </div>
+
+      </div>
+      </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// 日付検索→S-02と同じフロアマップを参照専用で表示する最小限のJS（静的モック確認用）
+var weekdayJa = ['日', '月', '火', '水', '木', '金', '土'];
+function formatDateJa(value) {
+  var d = new Date(value + 'T00:00:00');
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + weekdayJa[d.getDay()] + '）';
+}
+function clearHistoryError() {
+  document.getElementById('history-error').style.display = 'none';
+}
+function searchHistory() {
+  var input = document.getElementById('history-date');
+  var value = input.value;
+  var errorEl = document.getElementById('history-error');
+  if (!value || value < input.min || value > input.max) {
+    errorEl.textContent = '照会できるのは ' + formatDateJa(input.min) + ' 〜 ' + formatDateJa(input.max) + ' の範囲のみです（要件定義書10.1節D12、直近1か月）。';
+    errorEl.style.display = 'block';
+    document.getElementById('history-result').style.display = 'none';
+    document.getElementById('history-empty').style.display = '';
+    return;
+  }
+  errorEl.style.display = 'none';
+  document.getElementById('history-date-label').textContent = formatDateJa(value);
+  document.getElementById('history-empty').style.display = 'none';
+  document.getElementById('history-result').style.display = '';
+}
+function setAreaFilter(name) {
+  var overview = document.getElementById('floor-overview');
+  overview.classList.remove('filter-north', 'filter-east', 'filter-west');
+  if (name !== 'all') {
+    overview.classList.add('filter-' + name);
+  }
+  ['all', 'north', 'east', 'west'].forEach(function (n) {
+    document.getElementById('tab-' + n).classList.toggle('active', n === name);
+  });
+}
+</script>
+
+</body>
+</html>

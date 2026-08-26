@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求仕様書 | 本社座席予約システム</title>
+<style>
+/* 設計ドキュメント共通スタイル（C:\keireki\docs\assets\style.css を単体ファイル用にインライン化） */
+:root {
+  --accent-600: #1e40af;
+  --accent-700: #1e3a8a;
+  --accent-100: #dbeafe;
+  --accent-50: #eff6ff;
+  --bg: #ffffff;
+  --bg-subtle: #fafbfc;
+  --bg-muted: #f5f7f9;
+  --border: #e7eaee;
+  --border-strong: #d9dde3;
+  --text: #1a1d21;
+  --text-muted: #60656d;
+  --text-subtle: #8a8f98;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text);
+  background: var(--bg-muted);
+}
+.doc {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 56px 96px;
+  background: var(--bg);
+  min-height: 100vh;
+  box-shadow: 0 0 24px rgba(16, 24, 40, 0.06);
+}
+.cover {
+  border-bottom: 3px solid var(--accent-600);
+  padding-bottom: 24px;
+  margin-bottom: 40px;
+}
+.cover .doc-type {
+  display: inline-block;
+  background: var(--accent-600);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+.cover h1 { font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+.cover .subtitle { color: var(--text-muted); font-size: 14px; margin: 0; }
+.cover .meta {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.cover .note { margin-top: 8px; font-size: 11.5px; color: var(--text-subtle); }
+h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 48px 0 16px;
+  padding: 6px 0 6px 12px;
+  border-left: 4px solid var(--accent-600);
+  color: var(--accent-700);
+}
+h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 32px 0 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; }
+p { margin: 8px 0; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin: 3px 0; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0 20px;
+  font-size: 13px;
+}
+th, td {
+  border: 1px solid var(--border-strong);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--accent-50);
+  color: var(--accent-700);
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+tbody tr:nth-child(even) { background: var(--bg-subtle); }
+td .muted { color: var(--text-muted); }
+code {
+  font-family: "SF Mono", ui-monospace, "Consolas", monospace;
+  font-size: 12.5px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.callout {
+  background: var(--accent-50);
+  border: 1px solid var(--accent-100);
+  border-left: 4px solid var(--accent-600);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.callout.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  border-left-color: #d97706;
+}
+.toc {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 24px;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.toc ol { margin: 4px 0; }
+.toc a { color: var(--accent-700); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+a { color: var(--accent-700); }
+footer.doc-footer {
+  margin-top: 64px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  display: flex;
+  justify-content: space-between;
+}
+@media print {
+  body { background: #fff; }
+  .doc { box-shadow: none; max-width: none; padding: 0; }
+  h2 { break-after: avoid; }
+  table, .callout { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<script src="_sidenav.js"></script>
+<div class="doc">
+
+  <div class="cover">
+    <span class="doc-type">要求仕様書</span>
+    <h1>本社座席予約システム 要求仕様書</h1>
+    <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
+    <div class="meta">
+      <span>作成日: 2026-08-14</span>
+      <span>版数: 1.0</span>
+      <span>作成: コガソフトウェア株式会社</span>
+    </div>
+    <p class="note">本ドキュメントは新人社員向けAI開発研修の題材です</p>
+  </div>
+
+  <h2>改訂履歴</h2>
+  <table>
+    <thead>
+      <tr><th>版数</th><th>日付</th><th>改訂内容</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1.0</td><td>2026-08-14</td><td>初版</td></tr>
+    </tbody>
+  </table>
+
+  <nav class="toc">
+    <strong>目次</strong>
+    <ol>
+      <li><a href="#sec1">はじめに</a></li>
+      <li><a href="#sec2">システム化の対象と範囲</a></li>
+      <li><a href="#sec3">要求事項</a></li>
+      <li><a href="#sec4">制約条件</a></li>
+      <li><a href="#sec5">前提条件・留意事項</a></li>
+      <li><a href="#sec6">用語定義</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="sec1">1. はじめに</h2>
+  <h3>1.1 背景</h3>
+  <p>東京本社はフリーアドレス制を採用しており、全座席について事前予約を必要とする運用となっている。現在この予約はGoogleスプレッドシート「本社座席予約表」で管理されているが、月ごとにシートを作り直す運用負荷、同時編集による書き換え・上書きのリスク、スマートフォンからの操作性の悪さ、予約ルール（複数座席予約の禁止等）をシート上で機械的に担保できないといった課題がある。</p>
+  <h3>1.2 目的</h3>
+  <p>現行スプレッドシートで行っている座席予約業務をWebシステム「本社座席予約システム（コードネーム: Zaseki）」に移行し、社員が出社前にスマートフォンから座席を予約できる状態を実現することを目的とする。</p>
+  <h3>1.3 本書の位置づけ</h3>
+  <p>本書は、発注者が本システムに対して「何をしてほしいか」を要求として示すものである。要求をどのように実現するかの要件定義・設計は、後続の要件定義書・基本設計書にて行う。本書では実現方式・画面構成・データ構造は規定しない。</p>
+
+  <h2 id="sec2">2. システム化の対象と範囲</h2>
+  <h3>2.1 対象業務</h3>
+  <ul>
+    <li>座席の予約・確認・取消</li>
+    <li>固定座席・プロジェクト座席の予約（管理部・エリア責任者・PM による代理予約を含む）</li>
+    <li>日付ごとの座席の空き状況の確認</li>
+    <li>座席・エリアのマスタ管理（フロアレイアウト変更への追従）</li>
+  </ul>
+  <h3>2.2 対象外</h3>
+  <p>以下は本システムの対象外とし、システム化の範囲に含めない。</p>
+  <ul>
+    <li>会議室の予約（Googleカレンダーで管理中）</li>
+    <li>勤怠管理・出社実績の集計（予約実績の参照までを対象とし、勤怠との突合は行わない）</li>
+    <li>入退室管理（入室権限そのものの管理）</li>
+    <li>東京本社以外の拠点の座席管理</li>
+    <li>ロッカー・キャビネット・備品の管理</li>
+  </ul>
+
+  <h2 id="sec3">3. 要求事項</h2>
+  <h3>3.1 機能要求</h3>
+  <table>
+    <thead>
+      <tr><th>要求ID</th><th>要求</th><th>説明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>REQ-F-01</td>
+        <td>現在スプレッドシートで管理している座席予約と同等のことができること</td>
+        <td>日付ごとに、どの座席を誰が使うかを登録・変更・取消・参照できること。現行の座席予約表で行っている運用が、移行によって損なわれないことを求める。<br>現行表: <a href="https://docs.google.com/spreadsheets/d/1TPTIZynfULKh0vxTBhv2lHTKIW7KmNg3D99NOehUu6k/edit?gid=1906841719#gid=1906841719">本社座席予約表</a></td>
+      </tr>
+      <tr>
+        <td>REQ-F-02</td>
+        <td>スマートフォンから座席を予約できること</td>
+        <td>出社前・移動中に予約や取消ができること。社員が日常的に使う主たる操作（空き確認・予約・取消）が、スマートフォンの画面で無理なく完結すること。</td>
+      </tr>
+      <tr>
+        <td>REQ-F-03</td>
+        <td>固定座席や周期的な座席確保を簡単に行えること</td>
+        <td>「毎日」「毎週火・木」のように繰り返し利用する座席を、日ごとに1件ずつ登録しなくても一括で確保できること。現行運用では固定座席利用者やプロジェクト座席が多数を占めており、この登録の手間を減らすことを特に重視する。あわせて、確保済みの周期予約の一部の日だけを取り消せること。</td>
+      </tr>
+      <tr>
+        <td>REQ-F-04</td>
+        <td>座席の空き状況が一目でわかること</td>
+        <td>指定した日付について、どの座席が空いているかを利用者が判断できること。エリア・座席の位置関係が把握できる見せ方が望ましい。</td>
+      </tr>
+      <tr>
+        <td>REQ-F-05</td>
+        <td>座席利用ルールをシステムで担保できること</td>
+        <td>「使用しない座席の予約」「複数座席の予約（固定座席利用者を除く）」「入室権限がないフロアの予約」といった現行ルールに反する予約を、システム側で抑止できること。</td>
+      </tr>
+      <tr>
+        <td>REQ-F-06</td>
+        <td>座席・エリアの構成を管理者が変更できること</td>
+        <td>フロアレイアウトやエリア分けは過去に複数回変更されており、今後も変更される。座席の追加・削除・エリア変更・座席タイプの変更を、開発者の作業を介さず管理部が行えること。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.2 非機能要求</h3>
+  <table>
+    <thead>
+      <tr><th>要求ID</th><th>要求</th><th>説明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>REQ-N-01</td>
+        <td>Google認証により当社のGoogleアカウント保有者しか利用できないこと</td>
+        <td>当社はGoogle Workspaceを利用している。追加のID管理を発生させず、許可ドメインのGoogleアカウントを持つ利用者以外はアクセスできない仕組みとすること。</td>
+      </tr>
+      <tr>
+        <td>REQ-N-02</td>
+        <td>役割により操作範囲を制御できること</td>
+        <td>一般利用者は自分の予約のみ、管理部・エリア責任者・PM は担当範囲の他者分の予約も行える、といった役割に応じた制御ができること。</td>
+      </tr>
+      <tr>
+        <td>REQ-N-03</td>
+        <td>同じ座席が二重に予約されないこと</td>
+        <td>複数の利用者が同時に操作しても、同一日・同一座席の予約が重複して成立しないこと。現行スプレッドシートの同時編集で起きうる上書きの問題を解消すること。</td>
+      </tr>
+      <tr>
+        <td>REQ-N-04</td>
+        <td>既存システム（LCC CRM）の技術構成を踏襲すること</td>
+        <td>社内で運用実績のあるLCC CRMと同一の技術スタック・構成とすることで、保守要員のスキル共通化と運用ノウハウの再利用を図ること。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="sec4">4. 制約条件</h2>
+  <ul>
+    <li><strong>技術構成:</strong> 既存システムLCC CRMの技術構成を踏襲すること（REQ-N-04）。独自の技術選定は行わない。</li>
+    <li><strong>認証基盤:</strong> 認証はGoogleアカウント（許可ドメイン: kogasoftware.com）を前提とすること。</li>
+    <li><strong>利用者:</strong> 社員のほか、契約職員・臨時職員・BP も利用する。社員番号を持たない利用者（BP 等）が存在する。</li>
+    <li><strong>利用規模:</strong> 東京本社の座席は約70席、利用者は200名程度。朝の出社前後に利用が集中する。</li>
+    <li><strong>運用ルール:</strong> 現行の「東京本社の座席利用について」（座席予約表の運用ルールシート）に定めるルールを前提とすること。</li>
+  </ul>
+
+  <h2 id="sec5">5. 前提条件・留意事項</h2>
+  <ul>
+    <li>座席・エリアの構成、予約項目は、現行の <a href="https://docs.google.com/spreadsheets/d/1TPTIZynfULKh0vxTBhv2lHTKIW7KmNg3D99NOehUu6k/edit?gid=1906841719#gid=1906841719">本社座席予約表</a> の内容に基づく。運用ルールは同ファイル内のルールシートを参照すること。</li>
+    <li>本システムは社内利用を前提とし、社外への公開は行わない。</li>
+    <li>現行スプレッドシートからの過去予約データの移行の要否は、別途協議する。</li>
+    <li>現行の座席利用フロー（前月25日までに固定座席・プロジェクト座席、26日以降にフリー座席）を維持するか見直すかは、要求定義フェーズで整理する。</li>
+  </ul>
+
+  <div class="callout">
+    <strong>研修での進め方について</strong><br>
+    本書は「何をしてほしいか」までを示すものであり、画面構成・データ構造・実現方式は意図的に記載していない。それらをどう決めるかが要求定義以降の作業となる。判断に迷う点は、まずAIに相談し、それでも決まらないものはSlack「ai開発研修」チャンネルで質問すること。
+  </div>
+
+  <h2 id="sec6">6. 用語定義</h2>
+  <table>
+    <thead>
+      <tr><th>用語</th><th>定義</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>フリーアドレス</td><td>社員の座席を固定せず、出社日ごとに空いている座席を利用する働き方。</td></tr>
+      <tr><td>固定座席</td><td>利用者を固定した座席。利用者は管理部が出社実績・必要性等を考慮して決定し、管理部が予約を行う。</td></tr>
+      <tr><td>プロジェクト座席</td><td>プロジェクトに割り当てた座席。エリア責任者が出社曜日と座席を決定し、PM（PL）が予約を行う。</td></tr>
+      <tr><td>フリー座席</td><td>固定座席・プロジェクト座席以外の座席。利用者本人が予約を行う。</td></tr>
+      <tr><td>エリア</td><td>座席をまとめた区画（North / East / West 等）。責任者・副責任者が置かれる。</td></tr>
+      <tr><td>エリア責任者 / 副責任者</td><td>エリアの座席管理に責任を負う担当者。責任者は管理部が任命し、副責任者は責任者が任命する。</td></tr>
+      <tr><td>座席番号</td><td>座席を識別する記号（A1、C4、M7 等）。</td></tr>
+      <tr><td>周期的な座席確保</td><td>「毎日」「毎週火・木」のように、繰り返しの規則を指定して複数日分の座席を一括で確保すること。</td></tr>
+      <tr><td>BP</td><td>ビジネスパートナー。社員番号を持たないが座席を利用する。</td></tr>
+      <tr><td>許可ドメイン</td><td>ログインを許可するGoogleアカウントのメールドメイン（kogasoftware.com）。</td></tr>
+      <tr><td>LCC CRM</td><td>社内で運用中の既存システム。本システムはその技術構成を踏襲する。</td></tr>
+      <tr><td>Zaseki</td><td>本システム「本社座席予約システム」のコードネーム。</td></tr>
+    </tbody>
+  </table>
+
+  <footer class="doc-footer">
+    <span>本社座席予約システム（Zaseki）</span>
+    <span>版数 1.0 / 2026-08-14</span>
+  </footer>
+
+</div>
+</body>
+</html>

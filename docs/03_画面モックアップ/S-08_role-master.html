@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-08 権限・役割管理 | Zaseki 画面モックアップ</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <div class="brand-name">Zaseki</div>
+        <div class="brand-sub">本社座席予約システム</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">メニュー</div>
+      <a class="nav-item" href="S-02_availability.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+        空き状況・予約
+      </a>
+      <a class="nav-item" href="S-04_project-seat-request.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+        プロジェクト座席
+      </a>
+      <a class="nav-item" href="S-09_project-seat-allocation.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M13 21V11l6 4v6"/></svg></span>
+        プロジェクト座席（エリア担当）
+      </a>
+      <a class="nav-item active" href="S-06_admin-menu.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理メニュー
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <span class="avatar">千</span>
+        <div>
+          <div class="user-name">千田 太郎 <span class="badge badge-role role-admin">管理部</span></div>
+          <div class="user-mail">t.chida@kogasoftware.com</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="S-01_login.html">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        ログアウト
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1>権限・役割管理</h1>
+        <span class="screen-id">S-08</span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <div class="tabs">
+        <button class="tab active" id="tab-users" type="button" onclick="switchRoleTab('users')">利用者ロール管理</button>
+        <button class="tab" id="tab-projects" type="button" onclick="switchRoleTab('projects')">プロジェクト・PM管理</button>
+        <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">エリア責任者管理</button>
+        <button class="tab" id="tab-customroles" type="button" onclick="switchRoleTab('customroles')">役割マスタ管理</button>
+      </div>
+
+      <div class="tab-panel active" id="panel-users">
+        <div class="toolbar">
+          <div class="search-box">
+            <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+            <input type="search" placeholder="氏名・メールで検索">
+          </div>
+          <span class="filter-label">役割</span>
+          <select style="width:120px">
+            <option>すべて</option>
+            <option>一般</option>
+            <option>管理部</option>
+          </select>
+          <span class="filter-label">在籍状況</span>
+          <select style="width:120px">
+            <option>すべて</option>
+            <option>在籍中</option>
+            <option>休職中</option>
+            <option>退職済み</option>
+          </select>
+          <label class="checkbox-line"><input type="checkbox" id="filter-show-retired" onchange="onToggleShowRetired()">退職済みを表示する</label>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>氏名</th><th>メールアドレス</th><th>雇用形態</th><th>役割</th><th>在籍状況</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
+                <td class="cell-sub">t.chida@kogasoftware.com</td>
+                <td>社員</td>
+                <td><span class="badge badge-role role-admin">管理部</span></td>
+                <td><span class="badge badge-status-on">在籍中</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('千田 太郎','管理部')">編集</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">鈴</span>鈴木 花子</td>
+                <td class="cell-sub">h.suzuki@kogasoftware.com</td>
+                <td>社員</td>
+                <td><span class="badge badge-role role-employee">社員</span></td>
+                <td><span class="badge badge-status-on">在籍中</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('鈴木 花子','一般')">編集</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">田</span>田中 一郎</td>
+                <td class="cell-sub">i.tanaka@kogasoftware.com</td>
+                <td>社員</td>
+                <td><span class="badge badge-role role-employee">社員</span></td>
+                <td><span class="badge badge-status-warn">休職中</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('田中 一郎','一般')">編集</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">佐</span>佐藤 次郎</td>
+                <td class="cell-sub">j.sato@kogasoftware.com</td>
+                <td>契約職員</td>
+                <td><span class="badge badge-role role-ab">AB</span></td>
+                <td><span class="badge badge-status-on">在籍中</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('佐藤 次郎','一般')">編集</button></td>
+              </tr>
+              <tr class="row-retired" style="display:none">
+                <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
+                <td class="cell-sub">m.takahashi@kogasoftware.com</td>
+                <td>BP</td>
+                <td><span class="badge badge-role role-bp">BP</span></td>
+                <td><span class="badge badge-status-off">退職済み</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('高橋 美咲','一般')">編集</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-projects">
+        <div class="toolbar">
+          <button class="btn btn-primary" type="button" style="margin-left:auto" onclick="openProjectEditModal('new')">
+            <span class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+            プロジェクトを追加
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>プロジェクト名</th><th>PM・PL・SL</th><th>PJ席決担当</th><th>メンバー数</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="cell-main">Zaseki研修プロジェクト</td>
+                <td><span class="chip">PM 千田 太郎</span> <span class="chip">PL 鈴木 花子</span> <span class="chip">SL 佐藤 次郎</span></td>
+                <td>千田 太郎</td>
+                <td>4名</td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openProjectEditModal('Zaseki研修プロジェクト')">編集</button></td>
+              </tr>
+              <tr>
+                <td class="cell-main">経歴書刷新プロジェクト</td>
+                <td class="cell-sub">未設定</td>
+                <td class="cell-sub">未設定</td>
+                <td>0名</td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openProjectEditModal('経歴書刷新プロジェクト')">編集</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-areas">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>エリア</th><th>責任者</th><th>副責任者</th><th>Slack通知</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="cell-main">NORTH</td>
+                <td class="cell-sub">未設定</td>
+                <td class="cell-sub">未設定</td>
+                <td class="cell-sub">未設定</td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('NORTH')">編集</button></td>
+              </tr>
+              <tr>
+                <td class="cell-main">EAST</td>
+                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
+                <td class="cell-sub">未設定</td>
+                <td><span class="badge badge-status-on">設定済み</span></td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('EAST')">編集</button></td>
+              </tr>
+              <tr>
+                <td class="cell-main">WEST</td>
+                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
+                <td class="cell-sub">未設定</td>
+                <td class="cell-sub">未設定</td>
+                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('WEST')">編集</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-customroles">
+        <div class="toolbar">
+          <button class="btn btn-primary" type="button" style="margin-left:auto" onclick="openCustomRoleEditModal('new')">
+            <span class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+            役割を追加
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>役割名</th><th>説明</th><th>付与済み利用者数</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="cell-main">セキュリティ担当</td>
+                <td class="cell-sub">オフィスの入退室・座席まわりのセキュリティ対応窓口（仮の登録例）</td>
+                <td>1名</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm" type="button" onclick="openCustomRoleEditModal('セキュリティ担当')">編集</button>
+                  <button class="btn btn-danger-ghost btn-sm" type="button" onclick="deleteCustomRole('セキュリティ担当')">削除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="role-edit-modal" onclick="if(event.target===this)closeRoleEditModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="role-edit-title">利用者情報を編集</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeRoleEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>氏名</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="role-edit-last-name" placeholder="姓" style="width:120px">
+          <input type="text" id="role-edit-first-name" placeholder="名" style="width:120px">
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>雇用形態</label>
+        <select id="role-edit-employment-type">
+          <option>社員</option>
+          <option>契約職員</option>
+          <option>BP</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label class="toggle">
+          <input type="checkbox" id="role-edit-toggle">
+          <span class="track"></span>
+          <span class="toggle-text">管理部ロールを付与する</span>
+        </label>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>在籍状況</label>
+        <select id="role-edit-status" onchange="onRoleEditStatusChange()">
+          <option value="active">在籍中</option>
+          <option value="leave">休職中</option>
+          <option value="retired">退職済み</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>役割マスタのラベル（任意・複数可）</label>
+        <label class="checkbox-line"><input type="checkbox">セキュリティ担当</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeRoleEditModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeRoleEditModal()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="project-edit-modal" onclick="if(event.target===this)closeProjectEditModal()">
+  <div class="modal" style="width:620px">
+    <div class="modal-header">
+      <div class="modal-title" id="project-edit-title">プロジェクトを編集</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeProjectEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>プロジェクト名</label>
+        <input type="text" id="project-edit-name" placeholder="例: Zaseki研修プロジェクト">
+      </div>
+      <div class="field">
+        <label>メンバー・PM／PL・PJ席決担当</label>
+        <div class="table-wrap" style="margin-top:6px">
+          <table class="table">
+            <thead><tr><th>氏名</th><th>役割</th><th>PJ席決担当</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
+                <td>
+                  <select style="width:96px">
+                    <option>なし</option>
+                    <option selected>PM</option>
+                    <option>PL</option>
+                    <option>SL</option>
+                  </select>
+                </td>
+                <td><label class="radio-line"><input type="radio" name="proxy-user" checked></label></td>
+                <td><button class="btn btn-secondary btn-sm" type="button">削除</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">鈴</span>鈴木 花子</td>
+                <td>
+                  <select style="width:96px">
+                    <option>なし</option>
+                    <option>PM</option>
+                    <option selected>PL</option>
+                    <option>SL</option>
+                  </select>
+                </td>
+                <td><label class="radio-line"><input type="radio" name="proxy-user"></label></td>
+                <td><button class="btn btn-secondary btn-sm" type="button">削除</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">佐</span>佐藤 次郎</td>
+                <td>
+                  <select style="width:96px">
+                    <option>なし</option>
+                    <option>PM</option>
+                    <option>PL</option>
+                    <option selected>SL</option>
+                  </select>
+                </td>
+                <td><label class="radio-line"><input type="radio" name="proxy-user" disabled></label></td>
+                <td><button class="btn btn-secondary btn-sm" type="button">削除</button></td>
+              </tr>
+              <tr>
+                <td><span class="avatar" style="margin-right:8px">伊</span>伊藤 さくら</td>
+                <td>
+                  <select style="width:96px">
+                    <option selected>なし</option>
+                    <option>PM</option>
+                    <option>PL</option>
+                    <option>SL</option>
+                  </select>
+                </td>
+                <td><label class="radio-line"><input type="radio" name="proxy-user" disabled></label></td>
+                <td><button class="btn btn-secondary btn-sm" type="button">削除</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="add-row-btn" type="button" style="margin-top:8px">
+          <span class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+          メンバーを追加
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeProjectEditModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeProjectEditModal()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="area-edit-modal" onclick="if(event.target===this)closeAreaEditModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="area-edit-title">エリア責任者を編集</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeAreaEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>責任者（管理部が指定）</label>
+        <input type="text" placeholder="氏名で検索して選択（管理部ロールの利用者のみ）">
+      </div>
+      <div class="field">
+        <label>副責任者（責任者が指定）</label>
+        <input type="text" placeholder="氏名で検索して選択（管理部ロールの利用者のみ）">
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Slack通知先（Webhook URL）</label>
+        <input type="text" placeholder="https://hooks.slack.com/services/...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeAreaEditModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeAreaEditModal()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="customrole-edit-modal" onclick="if(event.target===this)closeCustomRoleEditModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="customrole-edit-title">役割を追加</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeCustomRoleEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>役割名</label>
+        <input type="text" id="customrole-edit-name" placeholder="例: セキュリティ担当">
+      </div>
+      <div class="field">
+        <label>説明（任意）</label>
+        <input type="text" id="customrole-edit-desc" placeholder="この役割が何を目的とした名前かのメモ">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeCustomRoleEditModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeCustomRoleEditModal()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// タブ切替・編集モーダル開閉（静的モック確認用の最小限のJS）
+function switchRoleTab(name) {
+  var tabs = ['users', 'projects', 'areas', 'customroles'];
+  tabs.forEach(function (t) {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    document.getElementById('panel-' + t).classList.toggle('active', t === name);
+  });
+}
+function openRoleEditModal(name, role) {
+  document.getElementById('role-edit-title').textContent = '利用者情報を編集（' + name + '）';
+  var parts = name.split(' ');
+  document.getElementById('role-edit-last-name').value = parts[0] || '';
+  document.getElementById('role-edit-first-name').value = parts[1] || '';
+  document.getElementById('role-edit-toggle').checked = (role === '管理部');
+  document.getElementById('role-edit-employment-type').value = '社員';
+  document.getElementById('role-edit-status').value = 'active';
+  document.getElementById('role-edit-retired-warning').style.display = 'none';
+  document.getElementById('role-edit-modal').classList.add('open');
+}
+function closeRoleEditModal() {
+  document.getElementById('role-edit-modal').classList.remove('open');
+}
+function onRoleEditStatusChange() {
+  var retired = document.getElementById('role-edit-status').value === 'retired';
+  document.getElementById('role-edit-retired-warning').style.display = retired ? 'block' : 'none';
+}
+function onToggleShowRetired() {
+  var show = document.getElementById('filter-show-retired').checked;
+  document.querySelectorAll('.row-retired').forEach(function (row) {
+    row.style.display = show ? '' : 'none';
+  });
+}
+function openProjectEditModal(name) {
+  document.getElementById('project-edit-title').textContent = (name === 'new') ? 'プロジェクトを追加' : 'プロジェクトを編集（' + name + '）';
+  document.getElementById('project-edit-name').value = (name === 'new') ? '' : name;
+  document.getElementById('project-edit-modal').classList.add('open');
+}
+function closeProjectEditModal() {
+  document.getElementById('project-edit-modal').classList.remove('open');
+}
+function openAreaEditModal(area) {
+  document.getElementById('area-edit-title').textContent = 'エリア責任者を編集（' + area + '）';
+  document.getElementById('area-edit-modal').classList.add('open');
+}
+function closeAreaEditModal() {
+  document.getElementById('area-edit-modal').classList.remove('open');
+}
+function openCustomRoleEditModal(name) {
+  document.getElementById('customrole-edit-title').textContent = (name === 'new') ? '役割を追加' : '役割を編集（' + name + '）';
+  document.getElementById('customrole-edit-name').value = (name === 'new') ? '' : name;
+  document.getElementById('customrole-edit-modal').classList.add('open');
+}
+function closeCustomRoleEditModal() {
+  document.getElementById('customrole-edit-modal').classList.remove('open');
+}
+function deleteCustomRole(name) {
+  if (confirm('役割「' + name + '」を削除しますか？付与されている利用者からもラベルが外れます。')) {
+    // 静的モックのため実際の削除は行わない
+  }
+}
+</script>
+
+</body>
+</html>

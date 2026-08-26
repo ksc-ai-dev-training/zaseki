@@ -1,0 +1,8 @@
+keireki/
+*.png
+座席予約わからないかった集.txt
+
+# Keireki混入の残骸（中身が旧Keireki用のまま。2026-08-26時点で未削除・未使用）
+docs/index.html
+docs/03_画面モックアップ/index.html
+docs/assets/
