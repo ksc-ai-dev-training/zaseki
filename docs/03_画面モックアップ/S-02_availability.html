@@ -963,6 +963,17 @@ try {
   var viewport = document.getElementById('floor-zoom-viewport');
   window.resetPinchZoom();
   window.addEventListener('resize', window.resetPinchZoom);
+  // 実機で初期スクロールが反映されない報告があったため、フォント読み込み等による
+  // 遅延レイアウト変更の影響を受けないよう、読み込み完了後・少し遅延させた後にも
+  // 念のため再適用する（2026-08-26追加、防御的な保険）。
+  window.addEventListener('load', window.resetPinchZoom);
+  setTimeout(window.resetPinchZoom, 300);
+  // Safari等のbfcache（戻る/進むで復元されるキャッシュ）から復元された場合、
+  // JSは再実行されないためスクロール位置が復元前の古い状態のままになりうる。
+  // pageshowのevent.persistedで復元を検知し、再適用する。
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) window.resetPinchZoom();
+  });
 
   var pinchStartDist = 0;
   var pinchStartScale = 1;
