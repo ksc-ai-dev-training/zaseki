@@ -910,10 +910,11 @@ function closeListCancelModal() {
   document.getElementById('list-cancel-modal').classList.remove('open');
 }
 
-// フロアマップの拡大・縮小（スマホ版、2026-08-26追加・同日再訂正）。
+// フロアマップの拡大・縮小（スマホ版、2026-08-26追加、複数回にわたり要望を受け調整）。
 // 「拡大・縮小ができない」「初期表示が大きすぎる」との指摘を受け、
 // ①ボタン（－／＋）をタップのみで確実に操作できる主手段として追加し、
-// ②初期倍率は固定値（0.42）ではなく、フロアマップの実寸と画面幅から自動計算してぴったり収める方式に変更した。
+// ②初期倍率は固定の小さめの値（0.3）とし、必要な部分は＋ボタンで個別に拡大する運用にした
+//   （画面幅への自動フィット計算はoverflow:visible環境での測定が信頼できず廃止）。
 // 2本指ピンチも補助的に有効なままとする（環境によっては効かない場合がある）。
 // PC幅では#floor-zoom-viewportのtouch-action等が効かない・ボタンも非表示のため実質的に無効（従来どおりの表示のまま）。
 var PINCH_MIN = 0.15;
@@ -933,21 +934,13 @@ function applyPinchScale(scale) {
 function zoomBy(delta) {
   applyPinchScale(currentScale() + delta);
 }
-function fitFloorMapToViewport() {
-  var viewport = document.getElementById('floor-zoom-viewport');
-  var overview = document.getElementById('floor-overview');
-  // 実寸（等倍）を測るため、一旦スケールを1に戻してからscrollWidthを読む。
-  overview.style.setProperty('--pinch-scale', 1);
-  var natural = overview.scrollWidth;
-  var available = viewport.clientWidth;
-  // 画面幅にちょうど収まる倍率だけでなく、さらに0.7倍して小さめに初期表示する
-  // （「もっと小さくしてほしい」との要望に対応、2026-08-26再々訂正。＋ボタンで拡大できる）。
-  var fit = (available > 0 && natural > 0) ? Math.min(1, (available / natural) * 0.7) : 1;
-  applyPinchScale(fit);
-}
+// scrollWidthベースの自動フィット計算（overflow:visible状態だと環境によって正しく測れない）を
+// 廃止し、単体エリアタブでも画面に収まりきらないほど大きいとの報告を受けて、
+// 全体表示・単体タブ共通の固定倍率に変更した（2026-08-26再々々訂正）。
+var MOBILE_DEFAULT_SCALE = 0.3;
 function resetPinchZoom() {
-  if (window.innerWidth > 640) return; // PC幅では自動フィットしない（従来どおり等倍表示のまま）
-  fitFloorMapToViewport();
+  if (window.innerWidth > 640) return; // PC幅では縮小しない（従来どおり等倍表示のまま）
+  applyPinchScale(MOBILE_DEFAULT_SCALE);
 }
 (function initFloorZoom() {
   var viewport = document.getElementById('floor-zoom-viewport');
