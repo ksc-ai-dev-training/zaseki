@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>モバイル表示プレビュー（開発用）</title>
+<title>S-02 空き状況・予約（スマホ表示） | Zaseki 画面モックアップ</title>
 <style>
   html, body { margin: 0; padding: 0; background: #e5e7eb; font-family: -apple-system, "Segoe UI", sans-serif; }
   .wrap { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; padding: 24px 12px; gap: 32px; }
@@ -24,8 +24,9 @@
 </style>
 </head>
 <body>
+<script src="../_sidenav.js"></script>
 <div class="wrap">
-  <div class="note">スマートフォン向けの画面固有対応の対象範囲（基本設計書v1.30）: S-02のみ。S-01（ログイン）は幅に依存する要素がなく追加対応不要、管理系画面（S-04〜S-11）はPC利用前提のため対象外。開発確認用のプレビューであり、正式な画面モックアップ（別画面）ではありません。実機・ブラウザ開発者ツールでの確認はコード実装後にあらためて行います。</div>
+  <div class="note">スマートフォン向けの画面固有対応の対象範囲（基本設計書4.7節）: S-02のみ。S-01（ログイン）は幅に依存する要素がなく追加対応不要、管理系画面（S-04〜S-11）はPC利用前提のため対象外。このページはS-02_availability.htmlをそのままスマホ幅（390×844）の枠内に表示したもので、別ファイルとして実装しているわけではない（表示はCSSのメディアクエリのみで切り替わる）。フロアマップは2本指のピンチ操作で拡大・縮小できる（枠内でも動作するが、実機の方が試しやすい）。</div>
   <div class="col">
     <div class="caption">S-02 空き状況・予約（自分の予約〔過去・今後〕を含む） / スマートフォン幅プレビュー（390×844）</div>
     <div class="device">

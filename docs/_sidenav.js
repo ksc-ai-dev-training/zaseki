@@ -36,6 +36,7 @@
       docs: [
         { href: '03_画面モックアップ/S-01_login.html', title: 'S-01 ログイン' },
         { href: '03_画面モックアップ/S-02_availability.html', title: 'S-02 空き状況・予約' },
+        { href: '03_画面モックアップ/S-02_availability-mobile.html', title: 'S-02 空き状況・予約（スマホ表示）' },
         { href: '03_画面モックアップ/S-04_project-seat-request.html', title: 'S-04 プロジェクト座席' },
         { href: '03_画面モックアップ/S-05_proxy-select.html', title: 'S-05 固定座席の指定' },
         { href: '03_画面モックアップ/S-06_admin-menu.html', title: 'S-06 管理メニュー' },
