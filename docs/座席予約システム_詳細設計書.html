@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.4（ドラフト・作成中）</span>
+      <span>版数: 0.5（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -230,6 +230,7 @@ footer.doc-footer {
       <tr><td>0.2</td><td>2026-08-26</td><td>3章（API設計）を作成。S-01〜S-11の画面操作に対応するエンドポイント（メソッド・パス・概要・認可の概要）を洗い出し、空き状況取得APIのレスポンス例、バッチ処理（予約のアーカイブ退避・論理削除）を明記した。認可条件の正式な一覧は5章で改めて規定する前提とし、本章では概要にとどめた。4章（画面項目定義）・5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.3</td><td>2026-08-26</td><td>4章（画面項目定義）を作成。S-02・S-04・S-05・S-07・S-08・S-09・S-10・S-11の各入力欄と入力チェック内容を定義した（S-01・S-06は入力フォームを持たないため対象外と明記）。冒頭に「画面のチェックはバックエンドの代わりにならない」旨の注記を置き、本章のチェックは3章のAPIでも必ず検証する前提とした。S-05・S-11の座席選択はS-02のフロアマップへ遷移して行う設計（本画面自体には座席選択の入力欄を持たない）である旨も明記。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.4</td><td>2026-08-26</td><td>「KeirekiではREQ-xx／F-xx／S-xx／T-xx／A-xxというIDを振り、ドキュメント同士を相互参照している。最初からやってほしい」との要望を受けた。1.4節「ID体系・トレーサビリティ」を新設し、REQ→FR→S-xxの対応表を追加。3章の全エンドポイント（48件）にA-01〜A-48の連番IDを付与し、既存の相互参照箇所（3.9節・3.10節）もA-xx表記に修正した。あわせてCLAUDE.mdにID体系・検討資料の運用を明記し、プロジェクトルートに`検討資料/`フォルダ（Keireki踏襲、`docs/`とは別に検討メモ・計画を置く場所）を新設した。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
+      <tr><td>0.5</td><td>2026-08-26</td><td>「5・6章一気に作成していきましょう」との要望を受け、5章（権限の判定）・6章（エラー時の動き）をあわせて作成し、全章のドラフトが揃った。5章は基本設計書4.2節の権限マトリクスを、認証（401）／認可（403）の2段階と、P-ANY／P-OWNER／P-ADMIN／P-AREA／P-AREA-HEAD／P-PROXY／P-PMPL／P-SEATASSIGNの8種の条件コードに分解し、A-01〜A-48全件に条件を割り当てた（5.5節）。一覧系APIが可否ではなく返す範囲を変える「スコープ」判定（A-08・A-13・A-25・A-38・A-46）は5.4節で区別して整理した。6章はKeireki踏襲でエラーコード体系を独自定義せず<code>{"detail": "..."}</code>形式のみとし、401（認証）・403（認可）・400／409（業務ルール・入力チェック違反）・404（対象なし）・500（想定外エラー）の使い分けと、基本設計書4.2.1節のメッセージ文言・表示方法をAPI ID単位で再整理した。</td></tr>
     </tbody>
   </table>
   </details>
@@ -241,8 +242,8 @@ footer.doc-footer {
       <li><a href="#sec2">テーブル定義</a></li>
       <li><a href="#sec3">API設計</a></li>
       <li><a href="#sec4">画面項目定義</a></li>
-      <li><a href="#sec5">権限の判定</a>（未着手）</li>
-      <li><a href="#sec6">エラー時の動き</a>（未着手）</li>
+      <li><a href="#sec5">権限の判定</a></li>
+      <li><a href="#sec6">エラー時の動き</a></li>
     </ol>
   </nav>
 
@@ -762,16 +763,244 @@ footer.doc-footer {
   <p class="callout">新規の代理予約は、この画面には座席選択の入力欄を持たず、「この人を代理予約する」からS-02のフロアマップへ遷移して行う（新規はフリー座席のみ、FR-01-5）。取消・解除は一覧から対象を選ぶ操作のみで、入力欄は持たない。</p>
 
   <h2 id="sec5">5. 権限の判定</h2>
-  <div class="pending">未着手。基本設計書4.2節の権限マトリクスをAPIエンドポイント単位に落とし込む（画面を隠すだけでなく、各APIが呼び出し時に判定する条件を明記する）。</div>
+  <p>3章で各APIの「認可」欄に自然文で記載した条件を、実装可能な単位まで分解する。基本設計書4.2節（認証・認可の実現方式）の権限マトリクスをもとにする。</p>
+
+  <h3>5.1 判定の二段階（認証と認可）</h3>
+  <p>Keirekiの実装（<code>backend/auth_helpers.py</code>）にならい、判定を2段階に分ける。</p>
+  <table>
+    <thead><tr><th>段階</th><th>判定内容</th><th>不許可時のHTTPステータス</th></tr></thead>
+    <tbody>
+      <tr><td>認証（Authentication）</td><td>セッションCookieが存在し、有効なJWTであり、対応するT-01の行が存在し、かつ<code>deleted_at</code>が設定されていないこと（RULE-06）。Keirekiの<code>require_auth</code>相当の共通処理として、全APIの入口に適用する。</td><td>401</td></tr>
+      <tr><td>認可（Authorization）</td><td>認証を満たした利用者が、そのAPI固有の追加条件（5.3節）を満たすこと。</td><td>403</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">3.2節のA-01〜A-03のみ認証不要（未ログインでも呼び出せる）。それ以外の全APIは、追加の認可条件の有無にかかわらず認証（ログイン済みであること）が必須である。</p>
+
+  <h3>5.2 判定に用いる属性</h3>
+  <table>
+    <thead><tr><th>属性</th><th>由来</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td>role</td><td>T-01.role</td><td><code>'general' / 'admin'</code>。'admin'が管理部。</td></tr>
+      <tr><td>在籍状況</td><td>T-01.employment_status, deleted_at</td><td>退職済み判定（RULE-06）に使う。認可ではなく5.1節の認証段階で判定する。</td></tr>
+      <tr><td>エリア責任者・副責任者</td><td>T-02.manager_user_id / deputy_user_id</td><td>対象エリアに対する追加条件。必ずrole='admin'の利用者から指定されるが、role='admin'であること自体はこの条件の代わりにならない（基本設計書4.2節、2026-08-21再訂正）。</td></tr>
+      <tr><td>PJ席決担当</td><td>T-05.proxy_user_id</td><td>対象プロジェクトに対する追加条件。project_title∈{'PM','PL'}の利用者の中から管理部が1名指定する。</td></tr>
+      <tr><td>プロジェクトでの役割</td><td>T-06.project_title</td><td><code>'PM' / 'PL' / 'SL' / NULL</code>。'PM'・'PL'であることを条件にする箇所があるが、'SL'は含めない（2.7節）。</td></tr>
+      <tr><td>席決め権限</td><td>T-06.can_assign_seats</td><td>PM(PL)が付与するプロジェクト単位のフラグ（FR-03-8）。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.3 認可条件の定義</h3>
+  <p>5.5節の一覧表で使う条件を、以下のコードで定義する。いずれも5.1節の認証を満たしたうえでの追加条件である。</p>
+  <table>
+    <thead><tr><th>コード</th><th>条件名</th><th>判定内容</th></tr></thead>
+    <tbody>
+      <tr><td><code>P-ANY</code></td><td>追加条件なし</td><td>認証済みであれば足りる。自分自身のデータのみを扱う、または全員に開かれたAPI。</td></tr>
+      <tr><td><code>P-OWNER</code></td><td>対象データの所有者</td><td>対象リソース（予約・周期予約ルール・プロジェクト計画等）のuser_id、またはそれに準ずる紐づき（例: T-06に自分の行があること）が自分であること。</td></tr>
+      <tr><td><code>P-ADMIN</code></td><td>管理部</td><td>role='admin'。</td></tr>
+      <tr><td><code>P-AREA</code></td><td>対象エリアの責任者・副責任者</td><td>対象（T-07.area_id経由で特定されるエリア、またはT-02そのもの）について、T-02.manager_user_id=自分 または deputy_user_id=自分。</td></tr>
+      <tr><td><code>P-AREA-HEAD</code></td><td>対象エリアの責任者（副責任者を含まない）</td><td>T-02.manager_user_id=自分。</td></tr>
+      <tr><td><code>P-PROXY</code></td><td>対象プロジェクトのPJ席決担当</td><td>対象プロジェクトについて、T-05.proxy_user_id=自分。</td></tr>
+      <tr><td><code>P-PMPL</code></td><td>対象プロジェクトのPM・PL本人</td><td>対象プロジェクトについて、T-06.project_title∈{'PM','PL'}かつuser_id=自分。SLは含まない。</td></tr>
+      <tr><td><code>P-SEATASSIGN</code></td><td>対象プロジェクトの席決め権限保持者</td><td>対象プロジェクトについて、T-06.can_assign_seats=trueかつuser_id=自分。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">P-AREA・P-PROXY・P-PMPL・P-SEATASSIGNは、いずれも「対象データに紐づく特定の1件（エリア1件、プロジェクト1件）」に対する条件であり、Keirekiの<code>require_roles</code>（役割の集合のみを見る静的な判定）だけでは表現できない。実装では、パスパラメータやリクエストボディから対象のarea_id／project_idを特定したうえで、その1件についてDBを参照する専用のチェック関数（例: <code>require_area_manager(area_id)</code>、<code>require_project_role(project_id, roles)</code>）を追加する（Keirekiにはない、本システム固有の拡張）。</p>
+
+  <h3>5.4 一覧系APIのスコープ（絞り込み）</h3>
+  <p>一部のGET系APIは、可否そのものを判定するのではなく、roleや紐づくデータに応じて返す範囲（スコープ）が変わる。403を返すのではなくSQLのWHERE句が変わる点で5.3節の条件と区別する。</p>
+  <table>
+    <thead><tr><th>ID</th><th>スコープの決め方</th></tr></thead>
+    <tbody>
+      <tr><td>A-08</td><td>常に自分のuser_idのみ（絞り込みの余地なし）。</td></tr>
+      <tr><td>A-13</td><td>自分がT-06に含まれるプロジェクトのみ。</td></tr>
+      <tr><td>A-25</td><td>P-ADMINのみ呼び出せる（絞り込みではなく5.5節どおりの可否判定）。<code>show_retired</code>等はクエリパラメータによる任意の絞り込み。</td></tr>
+      <tr><td>A-38</td><td>P-ADMINが呼ぶ場合は担当エリア未割当のプロジェクトのみ、P-AREAの利用者が呼ぶ場合は自分が責任者・副責任者を務めるエリアの計画のみ。いずれにも該当しない利用者は403（可否判定はP-ADMIN or P-AREA、5.5節）。</td></tr>
+      <tr><td>A-46</td><td>P-ADMINのみ呼び出せる（絞り込みではなく可否判定）。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.5 API別の認可条件一覧</h3>
+  <p>3.2〜3.10節の各APIについて、5.1節の認証（A-01〜A-03を除き全API必須、以下では省略）に加えて必要な追加条件を、5.3節のコードで示す。</p>
+
+  <h4>5.5.1 認証（S-01）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-01</td><td>認証不要</td><td></td></tr>
+      <tr><td>A-02</td><td>認証不要</td><td>処理内でRULE-06等を判定する（6章参照）。</td></tr>
+      <tr><td>A-03</td><td>認証不要</td><td>本番環境（<code>APP_ENV=production</code>）では無効化。</td></tr>
+      <tr><td>A-04</td><td><code>P-ANY</code></td><td></td></tr>
+      <tr><td>A-05</td><td><code>P-ANY</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.2 空き状況・予約（S-02）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-06</td><td><code>P-ANY</code></td><td></td></tr>
+      <tr><td>A-07</td><td><code>P-ANY</code></td><td></td></tr>
+      <tr><td>A-08</td><td><code>P-ANY</code></td><td>5.4節のとおり自分の予約のみが対象。</td></tr>
+      <tr><td>A-09</td><td><code>P-ANY</code></td><td>自分の予約として登録する。呼び出し者がP-ADMINの場合、RULE-05等の業務ルールチェックを内部でスキップする（FR-01-7、6章参照）。</td></tr>
+      <tr><td>A-10</td><td><code>P-ANY</code></td><td>A-09と同様。</td></tr>
+      <tr><td>A-11</td><td><code>P-OWNER</code></td><td>対象予約のuser_id＝自分。</td></tr>
+      <tr><td>A-12</td><td><code>P-OWNER</code></td><td>対象の周期予約ルールのuser_id＝自分。</td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.3 プロジェクト座席・PM側（S-04）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-13</td><td><code>P-ANY</code></td><td>5.4節のとおり自分が所属するプロジェクトのみが対象。</td></tr>
+      <tr><td>A-14</td><td><code>P-OWNER</code></td><td>対象プロジェクトのT-06に自分の行があること。</td></tr>
+      <tr><td>A-15</td><td><code>P-OWNER</code></td><td>A-14と同様。</td></tr>
+      <tr><td>A-16</td><td><code>P-PMPL</code></td><td></td></tr>
+      <tr><td>A-17</td><td><code>P-PMPL</code></td><td></td></tr>
+      <tr><td>A-18</td><td><code>P-ADMIN</code> または <code>P-PROXY</code> または <code>P-SEATASSIGN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.4 固定座席の指定（S-05）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-19</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-20</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-21</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.5 座席マスタ管理（S-07）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-22</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-23</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-24</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.6 権限・役割管理（S-08）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-25</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-26</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-27</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-28</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-29</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-30</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-31</td><td><code>P-ADMIN</code>（既定）</td><td>フィールド単位の例外: リクエストボディの<code>deputy_user_id</code>のみ、対象エリアの<code>P-AREA-HEAD</code>（当該エリアの責任者本人）でも設定可。<code>manager_user_id</code>・<code>slack_webhook_url</code>は常に<code>P-ADMIN</code>のみ。</td></tr>
+      <tr><td>A-32</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-33</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-34</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-35</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-36</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-37</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.7 プロジェクト座席・エリア担当側（S-09）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-38</td><td><code>P-ADMIN</code> または <code>P-AREA</code></td><td>5.4節のとおりいずれで呼ぶかで返る範囲が変わる。</td></tr>
+      <tr><td>A-39</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-40</td><td><code>P-AREA</code></td><td></td></tr>
+      <tr><td>A-41</td><td><code>P-AREA</code></td><td></td></tr>
+      <tr><td>A-42</td><td><code>P-AREA</code></td><td></td></tr>
+      <tr><td>A-43</td><td><code>P-AREA</code></td><td></td></tr>
+      <tr><td>A-44</td><td><code>P-AREA</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.8 座席状況の履歴照会（S-10）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-45</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.9 代理予約・取消（S-11）</h4>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-46</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-47</td><td><code>P-ADMIN</code></td><td>FR-01-7により、A-09・A-10と異なりRULE-05等のスキップ判定を追加で行う必要はない（呼び出し者は常にP-ADMIN）。</td></tr>
+      <tr><td>A-48</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
 
   <h2 id="sec6">6. エラー時の動き</h2>
-  <div class="pending">未着手。基本設計書4.2.1節の拒否時の画面表示と対応させつつ、APIが返すエラーコード・メッセージの形式を定義する。</div>
+  <p>基本設計書4.2.1節（拒否時の画面表示）の内容を土台に、APIが返すエラーレスポンスの形式とHTTPステータスコードの使い分けを定義する。</p>
 
-  <p class="muted">※本書はドラフトです。2章（テーブル定義）・3章（API設計）・4章（画面項目定義）まで作成しました。内容を確認のうえ、問題なければ5章（権限の判定）に進みます。</p>
+  <h3>6.1 エラーレスポンスの共通形式</h3>
+  <p>Keirekiの実装（<code>backend/main.py</code>・<code>auth_helpers.py</code>）にならい、独自のエラーコード体系（error_code等）は設けず、FastAPIの標準的な形式をそのまま使う。</p>
+  <pre><code>{
+  "detail": "この座席はすでに予約されています"
+}</code></pre>
+  <table>
+    <thead><tr><th>ステータス</th><th>用途</th><th>本章での該当節</th></tr></thead>
+    <tbody>
+      <tr><td>400 Bad Request</td><td>リクエスト内容の入力チェック違反（4章の各画面の入力チェック、業務ルールの期間・範囲違反等）。</td><td>6.4, 6.5</td></tr>
+      <tr><td>401 Unauthorized</td><td>未認証（セッションなし・無効・退職済み）。</td><td>6.2</td></tr>
+      <tr><td>403 Forbidden</td><td>認可エラー（5章の条件を満たさない）。</td><td>6.3</td></tr>
+      <tr><td>404 Not Found</td><td>指定したIDのリソースが存在しない。</td><td>6.5</td></tr>
+      <tr><td>409 Conflict</td><td>同一座席・同一日の二重予約（RULE-03、DBのユニーク制約違反）。</td><td>6.4</td></tr>
+      <tr><td>500 Internal Server Error</td><td>予期しないサーバーエラー。</td><td>6.6</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.2 認証エラー（401）</h3>
+  <table>
+    <thead><tr><th>発生する場面</th><th>detail（例）</th><th>フロントエンドの表示</th></tr></thead>
+    <tbody>
+      <tr><td>許可ドメイン外のアカウントでログインしようとした場合（A-02、NFR-01）</td><td>「許可されていないアカウントです。kogasoftware.comのアカウントでログインしてください」</td><td>セッションを発行せずログイン画面に留め、画面上にメッセージを表示する（基本設計書4.2.1節）。</td></tr>
+      <tr><td>退職済み（論理削除済み）の利用者がログインしようとした場合（A-02、RULE-06）</td><td>「このアカウントは現在利用できません。心当たりがない場合は管理部にお問い合わせください」</td><td>同上（退職理由は画面上に明示しない）。</td></tr>
+      <tr><td>セッションCookieがない・期限切れ・改ざんされている場合（全API共通）</td><td>「認証が必要です」（Keireki踏襲の定型文）</td><td>フロントエンドはログイン画面へリダイレクトする。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.3 認可エラー（403）</h3>
+  <p>5章の条件を満たさない場合。基本設計書4.2.1節のとおり、通常の利用フローでは画面側のボタン・メニューの表示制御によって到達しないため、URLの直接操作等の意図的な迂回に対する防御という位置づけである。</p>
+  <p><strong>detail:</strong> 「この操作を行う権限がありません」（Keireki踏襲の定型文。5章のどの条件を満たさなかったかによらず共通のメッセージとする）</p>
+  <p><strong>フロントエンドの表示:</strong> 画面上部への一時的なトースト通知。</p>
+
+  <h3>6.4 業務ルール違反エラー</h3>
+  <table>
+    <thead><tr><th>ルール</th><th>発生するAPI</th><th>ステータス</th><th>detail（例）</th><th>フロントエンドの表示</th></tr></thead>
+    <tbody>
+      <tr><td>RULE-01（廃止座席は予約不可）</td><td>—</td><td>—</td><td>—</td><td>座席一覧・フロアマップの取得APIが廃止済み座席（<code>status='retired'</code>）自体を返さないため、通常の操作でこのエラーには到達しない（基本設計書4.2.1節）。</td></tr>
+      <tr><td>RULE-02（同一日に複数のフリー座席を予約できない）</td><td>A-09, A-10</td><td>400</td><td>「同じ日に複数の座席は予約できません」</td><td>予約確認画面でエラー表示し、「予約する」を実行させない。</td></tr>
+      <tr><td>RULE-03（同一座席・同一日の二重予約禁止）</td><td>A-09, A-10, A-47</td><td>409</td><td>「この座席はすでに予約されています」</td><td>予約確認操作時にエラー表示し、フロアマップの当該座席を最新の状態（使用中）に再取得する。</td></tr>
+      <tr><td>RULE-05（フリー座席は前月26日以降でなければ予約不可）</td><td>A-09, A-10</td><td>400</td><td>「この座席は◯月26日から予約できます」（対象日に応じて日付を差し込む）</td><td>予約確認画面でエラー表示し、「予約する」を実行させない。呼び出し者が<code>P-ADMIN</code>の場合はこのチェック自体を行わない（FR-01-7、5.5.2節A-09備考）。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.5 入力値バリデーションエラー（400）・存在しないリソース（404）</h3>
+  <p>4.1節のとおり、4章に記載した各画面の入力チェックは、APIが受け取った時点でも同様に検証する。代表例を挙げる（網羅的な一覧ではない）。</p>
+  <table>
+    <thead><tr><th>API</th><th>違反内容</th><th>ステータス</th><th>detail（例）</th></tr></thead>
+    <tbody>
+      <tr><td>A-45</td><td>指定日がD12の範囲（直近1か月、app_settings.seat_history_lookback_days）外</td><td>400</td><td>「指定できる日付は直近1か月以内です」</td></tr>
+      <tr><td>A-16</td><td>project_title∈{'PM','PL'}でない利用者からの回答</td><td>400</td><td>「出社曜日の回答はPMまたはPLのみ行えます」</td></tr>
+      <tr><td>A-29</td><td>proxy_user_idにproject_title=NULLまたは'SL'の利用者を指定</td><td>400</td><td>「PJ席決担当にはPMまたはPLのみ指定できます」</td></tr>
+      <tr><td>A-18</td><td>割り当てられた座席の島（allocated_seats）の範囲外の座席を指定</td><td>400</td><td>「割り当てられた座席の範囲外です」</td></tr>
+      <tr><td>A-11, A-21, A-24, A-26等（IDで対象を指定するAPI全般）</td><td>存在しない、または対象外のIDを指定（例: 他人の予約ID）</td><td>404</td><td>「対象が見つかりません」</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.6 予期しないサーバーエラー（500）</h3>
+  <p>Keirekiの実装（<code>backend/main.py</code>）にならい、想定外の例外は共通のエラーハンドラで捕捉し、詳細を利用者に見せない定型メッセージを返す。</p>
+  <p><strong>detail:</strong> 「サーバーエラーが発生しました」</p>
+
+  <p class="muted">※本書はドラフトです。2章（テーブル定義）・3章（API設計）・4章（画面項目定義）・5章（権限の判定）・6章（エラー時の動き）まで作成しました。内容を確認ください。</p>
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.4 / 2026-08-26</span>
+    <span>版数 0.5 / 2026-08-26</span>
   </footer>
 
 </div>
