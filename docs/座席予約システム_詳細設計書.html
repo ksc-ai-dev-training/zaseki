@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.5（ドラフト・作成中）</span>
+      <span>版数: 0.6（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -231,6 +231,7 @@ footer.doc-footer {
       <tr><td>0.3</td><td>2026-08-26</td><td>4章（画面項目定義）を作成。S-02・S-04・S-05・S-07・S-08・S-09・S-10・S-11の各入力欄と入力チェック内容を定義した（S-01・S-06は入力フォームを持たないため対象外と明記）。冒頭に「画面のチェックはバックエンドの代わりにならない」旨の注記を置き、本章のチェックは3章のAPIでも必ず検証する前提とした。S-05・S-11の座席選択はS-02のフロアマップへ遷移して行う設計（本画面自体には座席選択の入力欄を持たない）である旨も明記。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.4</td><td>2026-08-26</td><td>「KeirekiではREQ-xx／F-xx／S-xx／T-xx／A-xxというIDを振り、ドキュメント同士を相互参照している。最初からやってほしい」との要望を受けた。1.4節「ID体系・トレーサビリティ」を新設し、REQ→FR→S-xxの対応表を追加。3章の全エンドポイント（48件）にA-01〜A-48の連番IDを付与し、既存の相互参照箇所（3.9節・3.10節）もA-xx表記に修正した。あわせてCLAUDE.mdにID体系・検討資料の運用を明記し、プロジェクトルートに`検討資料/`フォルダ（Keireki踏襲、`docs/`とは別に検討メモ・計画を置く場所）を新設した。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.5</td><td>2026-08-26</td><td>「5・6章一気に作成していきましょう」との要望を受け、5章（権限の判定）・6章（エラー時の動き）をあわせて作成し、全章のドラフトが揃った。5章は基本設計書4.2節の権限マトリクスを、認証（401）／認可（403）の2段階と、P-ANY／P-OWNER／P-ADMIN／P-AREA／P-AREA-HEAD／P-PROXY／P-PMPL／P-SEATASSIGNの8種の条件コードに分解し、A-01〜A-48全件に条件を割り当てた（5.5節）。一覧系APIが可否ではなく返す範囲を変える「スコープ」判定（A-08・A-13・A-25・A-38・A-46）は5.4節で区別して整理した。6章はKeireki踏襲でエラーコード体系を独自定義せず<code>{"detail": "..."}</code>形式のみとし、401（認証）・403（認可）・400／409（業務ルール・入力チェック違反）・404（対象なし）・500（想定外エラー）の使い分けと、基本設計書4.2.1節のメッセージ文言・表示方法をAPI ID単位で再整理した。</td></tr>
+      <tr><td>0.6</td><td>2026-08-26</td><td>「詳細設計に細かなER図を作成してほしい」との要望を受け、2.2節「ER図」を新設した。基本設計書3.1節のER図は中心6テーブルのみを対象にしていたが、本節はT-01〜T-16（T-12は欠番）の全テーブルを、関連の強さに応じて図1（座席・予約系: T-01・T-02・T-03・T-04・T-08・T-09・T-10・T-13）／図2（プロジェクト座席系: T-05・T-06・T-07・T-11、T-01・T-02は図1と共通のため列を絞って再掲）／図3（権限・設定系: T-14・T-15・T-16、T-01は図1と共通のため列を絞って再掲）の3枚に分けて示す。各テーブルはid・created_at・updated_at（2.1節の共通ルールにより全テーブル共通）を除く全列を列挙し、外部キー列には「→ T-xx」で参照先を明記した（基本設計書3.1節が2〜3列の抜粋だったのに対し、より粒度の細かい図とした）。線の輻輳を避けるため、登録者・操作者を表す列（例: reservations.created_by）のFK線は図から省略し、各図の脚注に明記した。既存のT-01〜T-16の節番号は2.3〜2.17へ1つずつ繰り下げ、本文中の相互参照（project_membersの2.7節→2.8節）も修正した。図の座標配置は、コネクタ線が無関係のテーブル枠を通過しないことをスクリプトで検証したうえで確定させた。</td></tr>
     </tbody>
   </table>
   </details>
@@ -293,7 +294,249 @@ footer.doc-footer {
     <li><strong>配列・複合値</strong>: 「曜日を複数選択」「座席IDの一覧」のように1列に複数の値を持たせる箇所は<code>JSONB</code>型とする（例: <code>["tue","thu"]</code>）。正規化して別テーブルに分けるほどの検索要件がないため。</li>
   </ul>
 
-  <h3>2.2 T-01 users（利用者）</h3>
+  <h3>2.2 ER図</h3>
+  <p>2.3〜2.17節で定義する全テーブル（T-01〜T-16。T-12は2026-08-19の設計変更で欠番のまま廃止、2.8節参照）を、関連の強さに応じて3つの図に分けて示す。列名の右の「→ T-xx」は外部キー（FK）の参照先を表す。主キー<code>id</code>（2.1節の共通ルールにより全テーブル共通）は図中では省略する。「→ T-xx」の記載があっても線を引いていない列（登録者・操作者を表す列に多い）は、実際にはFKだが図が輻輳するため線を省略したものであり、各図の脚注に明記する。破線の枠は、他のテーブルからFK参照されない、または参照整合性を強制しない独立したテーブルを表す。</p>
+
+  <p><strong>図1: 座席・予約系</strong>（T-01, T-02, T-03, T-04, T-08, T-09, T-10, T-13）</p>
+  <div class="diagram">
+    <svg width="880" height="744" viewBox="0 0 880 744" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
+      <rect x="30" y="40" width="380" height="96" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="40" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="56" width="380" height="8" fill="#1e40af"/>
+      <text x="220" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-02 areas</text>
+      <text x="40" y="78" font-size="10.5" fill="#8a8f98">エリア</text>
+      <text x="40" y="92" font-size="10" fill="#1a1d21">name</text>
+      <text x="40" y="106" font-size="10" fill="#1a1d21">manager_user_id → T-01</text>
+      <text x="40" y="120" font-size="10" fill="#1a1d21">deputy_user_id → T-01</text>
+      <text x="40" y="134" font-size="10" fill="#1a1d21">slack_webhook_url</text>
+      <rect x="470" y="40" width="380" height="152" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="470" y="40" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="470" y="56" width="380" height="8" fill="#1e40af"/>
+      <text x="660" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-01 users</text>
+      <text x="480" y="78" font-size="10.5" fill="#8a8f98">利用者</text>
+      <text x="480" y="92" font-size="10" fill="#1a1d21">email</text>
+      <text x="480" y="106" font-size="10" fill="#1a1d21">last_name</text>
+      <text x="480" y="120" font-size="10" fill="#1a1d21">first_name</text>
+      <text x="480" y="134" font-size="10" fill="#1a1d21">employee_code</text>
+      <text x="480" y="148" font-size="10" fill="#1a1d21">employment_type</text>
+      <text x="480" y="162" font-size="10" fill="#1a1d21">role</text>
+      <text x="480" y="176" font-size="10" fill="#1a1d21">employment_status</text>
+      <text x="480" y="190" font-size="10" fill="#1a1d21">deleted_at</text>
+      <rect x="30" y="242" width="380" height="96" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="242" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="258" width="380" height="8" fill="#1e40af"/>
+      <text x="220" y="258" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-03 seats</text>
+      <text x="40" y="280" font-size="10.5" fill="#8a8f98">座席</text>
+      <text x="40" y="294" font-size="10" fill="#1a1d21">seat_no</text>
+      <text x="40" y="308" font-size="10" fill="#1a1d21">area_id → T-02</text>
+      <text x="40" y="322" font-size="10" fill="#1a1d21">seat_type</text>
+      <text x="40" y="336" font-size="10" fill="#1a1d21">status</text>
+      <rect x="470" y="242" width="380" height="82" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="470" y="242" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="470" y="258" width="380" height="8" fill="#1e40af"/>
+      <text x="660" y="258" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-04 fixed_seat_assignments</text>
+      <text x="480" y="280" font-size="10.5" fill="#8a8f98">固定座席の恒久割当</text>
+      <text x="480" y="294" font-size="10" fill="#1a1d21">seat_id → T-03 (UNIQUE)</text>
+      <text x="480" y="308" font-size="10" fill="#1a1d21">user_id → T-01</text>
+      <text x="480" y="322" font-size="10" fill="#1a1d21">assigned_by → T-01</text>
+      <rect x="30" y="388" width="380" height="124" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="388" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="404" width="380" height="8" fill="#1e40af"/>
+      <text x="220" y="404" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-09 recurring_rules</text>
+      <text x="40" y="426" font-size="10.5" fill="#8a8f98">周期予約ルール</text>
+      <text x="40" y="440" font-size="10" fill="#1a1d21">seat_id → T-03</text>
+      <text x="40" y="454" font-size="10" fill="#1a1d21">user_id → T-01</text>
+      <text x="40" y="468" font-size="10" fill="#1a1d21">pattern</text>
+      <text x="40" y="482" font-size="10" fill="#1a1d21">start_date</text>
+      <text x="40" y="496" font-size="10" fill="#1a1d21">end_date</text>
+      <text x="40" y="510" font-size="10" fill="#1a1d21">created_by → T-01</text>
+      <rect x="470" y="388" width="380" height="124" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="470" y="388" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="470" y="404" width="380" height="8" fill="#1e40af"/>
+      <text x="660" y="404" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-08 reservations</text>
+      <text x="480" y="426" font-size="10.5" fill="#8a8f98">予約</text>
+      <text x="480" y="440" font-size="10" fill="#1a1d21">seat_id → T-03</text>
+      <text x="480" y="454" font-size="10" fill="#1a1d21">user_id → T-01</text>
+      <text x="480" y="468" font-size="10" fill="#1a1d21">date</text>
+      <text x="480" y="482" font-size="10" fill="#1a1d21">recurring_rule_id → T-09</text>
+      <text x="480" y="496" font-size="10" fill="#1a1d21">created_by → T-01</text>
+      <text x="480" y="510" font-size="10" fill="#1a1d21">status</text>
+      <rect x="30" y="562" width="380" height="152" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <rect x="30" y="562" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="578" width="380" height="8" fill="#1e40af"/>
+      <text x="220" y="578" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-13 reservations_archive</text>
+      <text x="40" y="600" font-size="10.5" fill="#8a8f98">予約アーカイブ</text>
+      <text x="40" y="614" font-size="10" fill="#1a1d21">seat_id</text>
+      <text x="40" y="628" font-size="10" fill="#1a1d21">user_id</text>
+      <text x="40" y="642" font-size="10" fill="#1a1d21">date</text>
+      <text x="40" y="656" font-size="10" fill="#1a1d21">recurring_rule_id</text>
+      <text x="40" y="670" font-size="10" fill="#1a1d21">created_by</text>
+      <text x="40" y="684" font-size="10" fill="#1a1d21">status</text>
+      <text x="40" y="698" font-size="10" fill="#1a1d21">archived_at</text>
+      <text x="40" y="712" font-size="10" fill="#1a1d21">deleted_at</text>
+      <rect x="470" y="562" width="380" height="82" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="470" y="562" width="380" height="24" rx="8" fill="#1e40af"/>
+      <rect x="470" y="578" width="380" height="8" fill="#1e40af"/>
+      <text x="660" y="578" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-10 reservation_logs</text>
+      <text x="480" y="600" font-size="10.5" fill="#8a8f98">予約操作履歴</text>
+      <text x="480" y="614" font-size="10" fill="#1a1d21">reservation_id → T-08</text>
+      <text x="480" y="628" font-size="10" fill="#1a1d21">action</text>
+      <text x="480" y="642" font-size="10" fill="#1a1d21">actor_user_id → T-01</text>
+      <line x1="220" y1="136" x2="220" y2="242" stroke="#60656d" stroke-width="1.3"/>
+      <text x="208" y="148" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="208" y="236" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="660" y1="192" x2="660" y2="242" stroke="#60656d" stroke-width="1.3"/>
+      <text x="648" y="204" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="648" y="236" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="410" y1="290" x2="470" y2="283" stroke="#60656d" stroke-width="1.3"/>
+      <text x="416" y="284" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="456" y="277" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <line x1="220" y1="338" x2="220" y2="388" stroke="#60656d" stroke-width="1.3"/>
+      <text x="208" y="350" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="208" y="382" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="410" y1="450" x2="470" y2="450" stroke="#60656d" stroke-width="1.3" stroke-dasharray="5 4"/>
+      <text x="416" y="444" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="456" y="444" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="660" y1="512" x2="660" y2="562" stroke="#60656d" stroke-width="1.3"/>
+      <text x="648" y="524" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="648" y="556" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="353" y1="338" x2="527" y2="388" stroke="#60656d" stroke-width="1.3"/>
+      <text x="339" y="334" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="533" y="402" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <text x="30" y="734" font-size="10.5" fill="#8a8f98">※ FSA.assigned_by、reservations.created_by、recurring_rules.user_id／created_by（usersとの関係）、reservation_logs.actor_user_id もusersを参照するが、線が輻輳するため図では省略する（列名の「→ T-01」表記で参照先のみ示す）。reservations_archive（破線）はFKを持たず参照整合性を強制しない。</text>
+    </svg>
+  </div>
+
+  <p><strong>図2: プロジェクト座席系</strong>（T-05, T-06, T-07, T-11。T-01・T-02は図1と共通のため列を絞って再掲）</p>
+  <div class="diagram">
+    <svg width="760" height="562" viewBox="0 0 760 562" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
+      <rect x="30" y="40" width="320" height="68" rx="8" fill="#f3f4f6" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="40" width="320" height="24" rx="8" fill="#9ca3af"/>
+      <rect x="30" y="56" width="320" height="8" fill="#9ca3af"/>
+      <text x="190" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-01 users</text>
+      <text x="40" y="78" font-size="10.5" fill="#8a8f98">利用者（図1参照）</text>
+      <text x="40" y="92" font-size="10" fill="#1a1d21">role</text>
+      <text x="40" y="106" font-size="10" fill="#1a1d21">employment_status</text>
+      <rect x="410" y="40" width="320" height="82" rx="8" fill="#f3f4f6" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="410" y="40" width="320" height="24" rx="8" fill="#9ca3af"/>
+      <rect x="410" y="56" width="320" height="8" fill="#9ca3af"/>
+      <text x="570" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-02 areas</text>
+      <text x="420" y="78" font-size="10.5" fill="#8a8f98">エリア（図1参照）</text>
+      <text x="420" y="92" font-size="10" fill="#1a1d21">name</text>
+      <text x="420" y="106" font-size="10" fill="#1a1d21">manager_user_id</text>
+      <text x="420" y="120" font-size="10" fill="#1a1d21">deputy_user_id</text>
+      <rect x="30" y="182" width="320" height="68" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="182" width="320" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="198" width="320" height="8" fill="#1e40af"/>
+      <text x="190" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-05 projects</text>
+      <text x="40" y="220" font-size="10.5" fill="#8a8f98">プロジェクト</text>
+      <text x="40" y="234" font-size="10" fill="#1a1d21">name</text>
+      <text x="40" y="248" font-size="10" fill="#1a1d21">proxy_user_id → T-01</text>
+      <rect x="410" y="182" width="320" height="110" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="410" y="182" width="320" height="24" rx="8" fill="#1e40af"/>
+      <rect x="410" y="198" width="320" height="8" fill="#1e40af"/>
+      <text x="570" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-06 project_members</text>
+      <text x="420" y="220" font-size="10.5" fill="#8a8f98">プロジェクトメンバー</text>
+      <text x="420" y="234" font-size="10" fill="#1a1d21">project_id → T-05</text>
+      <text x="420" y="248" font-size="10" fill="#1a1d21">user_id → T-01</text>
+      <text x="420" y="262" font-size="10" fill="#1a1d21">project_title</text>
+      <text x="420" y="276" font-size="10" fill="#1a1d21">can_assign_seats</text>
+      <text x="420" y="290" font-size="10" fill="#1a1d21">seat_assign_granted_by → T-01</text>
+      <rect x="30" y="352" width="320" height="180" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="352" width="320" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="368" width="320" height="8" fill="#1e40af"/>
+      <text x="190" y="368" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-07 project_quarter_plans</text>
+      <text x="40" y="390" font-size="10.5" fill="#8a8f98">プロジェクト座席の四半期計画</text>
+      <text x="40" y="404" font-size="10" fill="#1a1d21">project_id → T-05</text>
+      <text x="40" y="418" font-size="10" fill="#1a1d21">area_id → T-02</text>
+      <text x="40" y="432" font-size="10" fill="#1a1d21">area_assigned_by → T-01</text>
+      <text x="40" y="446" font-size="10" fill="#1a1d21">period_start</text>
+      <text x="40" y="460" font-size="10" fill="#1a1d21">period_end</text>
+      <text x="40" y="474" font-size="10" fill="#1a1d21">required_seats</text>
+      <text x="40" y="488" font-size="10" fill="#1a1d21">weekdays_finalized</text>
+      <text x="40" y="502" font-size="10" fill="#1a1d21">allocated_seats</text>
+      <text x="40" y="516" font-size="10" fill="#1a1d21">status</text>
+      <text x="40" y="530" font-size="10" fill="#1a1d21">decided_by → T-01</text>
+      <rect x="410" y="352" width="320" height="138" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="410" y="352" width="320" height="24" rx="8" fill="#1e40af"/>
+      <rect x="410" y="368" width="320" height="8" fill="#1e40af"/>
+      <text x="570" y="368" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-11 project_weekday_responses</text>
+      <text x="420" y="390" font-size="10.5" fill="#8a8f98">出社曜日アンケート回答</text>
+      <text x="420" y="404" font-size="10" fill="#1a1d21">plan_id → T-07 (UNIQUE)</text>
+      <text x="420" y="418" font-size="10" fill="#1a1d21">responded_by → T-01</text>
+      <text x="420" y="432" font-size="10" fill="#1a1d21">choice1_weekdays</text>
+      <text x="420" y="446" font-size="10" fill="#1a1d21">choice2_weekdays</text>
+      <text x="420" y="460" font-size="10" fill="#1a1d21">note</text>
+      <text x="420" y="474" font-size="10" fill="#1a1d21">requested_seats</text>
+      <text x="420" y="488" font-size="10" fill="#1a1d21">responded_at</text>
+      <line x1="190" y1="108" x2="190" y2="182" stroke="#60656d" stroke-width="1.3"/>
+      <text x="178" y="120" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="178" y="176" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="350" y1="216" x2="410" y2="237" stroke="#60656d" stroke-width="1.3"/>
+      <text x="356" y="210" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="396" y="231" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <polyline points="270,108 270,152 490,152 490,182" fill="none" stroke="#60656d" stroke-width="1.3"/>
+      <text x="276" y="104" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="496" y="194" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="190" y1="250" x2="190" y2="352" stroke="#60656d" stroke-width="1.3"/>
+      <text x="178" y="262" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="178" y="346" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <polyline points="410,97.4 380,97.4 380,388 350,388" fill="none" stroke="#60656d" stroke-width="1.3"/>
+      <text x="396" y="91.4" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="356" y="382" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="350" y1="442" x2="410" y2="421" stroke="#60656d" stroke-width="1.3"/>
+      <text x="356" y="436" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="396" y="415" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="30" y="552" font-size="10.5" fill="#8a8f98">※ project_members.seat_assign_granted_by、project_quarter_plans.area_assigned_by／decided_by、project_weekday_responses.responded_by もT-01を参照するが、線が輻輳するため図では省略。</text>
+    </svg>
+  </div>
+
+  <p><strong>図3: 権限・設定系</strong>（T-14, T-15, T-16。T-01は図1と共通のため列を絞って再掲）</p>
+  <div class="diagram">
+    <svg width="680" height="308" viewBox="0 0 680 308" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
+      <rect x="30" y="40" width="280" height="82" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="40" width="280" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="56" width="280" height="8" fill="#1e40af"/>
+      <text x="170" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-14 role_master</text>
+      <text x="40" y="78" font-size="10.5" fill="#8a8f98">役割マスタ</text>
+      <text x="40" y="92" font-size="10" fill="#1a1d21">name</text>
+      <text x="40" y="106" font-size="10" fill="#1a1d21">description</text>
+      <text x="40" y="120" font-size="10" fill="#1a1d21">created_by → T-01</text>
+      <rect x="370" y="40" width="280" height="68" rx="8" fill="#f3f4f6" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="370" y="40" width="280" height="24" rx="8" fill="#9ca3af"/>
+      <rect x="370" y="56" width="280" height="8" fill="#9ca3af"/>
+      <text x="510" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-01 users</text>
+      <text x="380" y="78" font-size="10.5" fill="#8a8f98">利用者（図1参照）</text>
+      <text x="380" y="92" font-size="10" fill="#1a1d21">role</text>
+      <text x="380" y="106" font-size="10" fill="#1a1d21">employment_status</text>
+      <rect x="30" y="182" width="280" height="96" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+      <rect x="30" y="182" width="280" height="24" rx="8" fill="#1e40af"/>
+      <rect x="30" y="198" width="280" height="8" fill="#1e40af"/>
+      <text x="170" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-15 user_custom_roles</text>
+      <text x="40" y="220" font-size="10.5" fill="#8a8f98">利用者への役割マスタ付与</text>
+      <text x="40" y="234" font-size="10" fill="#1a1d21">user_id → T-01</text>
+      <text x="40" y="248" font-size="10" fill="#1a1d21">role_master_id → T-14</text>
+      <text x="40" y="262" font-size="10" fill="#1a1d21">assigned_by → T-01</text>
+      <text x="40" y="276" font-size="10" fill="#1a1d21">assigned_at</text>
+      <rect x="370" y="182" width="280" height="82" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <rect x="370" y="182" width="280" height="24" rx="8" fill="#1e40af"/>
+      <rect x="370" y="198" width="280" height="8" fill="#1e40af"/>
+      <text x="510" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-16 app_settings</text>
+      <text x="380" y="220" font-size="10.5" fill="#8a8f98">アプリケーション設定</text>
+      <text x="380" y="234" font-size="10" fill="#1a1d21">key (PK)</text>
+      <text x="380" y="248" font-size="10" fill="#1a1d21">value</text>
+      <text x="380" y="262" font-size="10" fill="#1a1d21">description</text>
+      <line x1="170" y1="122" x2="170" y2="182" stroke="#60656d" stroke-width="1.3"/>
+      <text x="158" y="134" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="158" y="176" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <line x1="510" y1="108" x2="254" y2="182" stroke="#60656d" stroke-width="1.3"/>
+      <text x="498" y="120" font-size="11" font-weight="600" fill="#1e40af">1</text>
+      <text x="260" y="176" font-size="11" font-weight="600" fill="#1e40af">N</text>
+      <text x="30" y="298" font-size="10.5" fill="#8a8f98">※ role_master.created_by もT-01を参照するが図では省略。app_settings（破線）はFKを持たず、他のどのテーブルとも参照関係を持たない独立した設定テーブル。</text>
+    </svg>
+  </div>
+
+  <h3>2.3 T-01 users（利用者）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -309,7 +552,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ（<code>updated_at</code>は氏名訂正・役割変更・在籍状況変更のたびにAPIが更新）。</p>
 
-  <h3>2.3 T-02 areas（エリア）</h3>
+  <h3>2.4 T-02 areas（エリア）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -321,7 +564,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
 
-  <h3>2.4 T-03 seats（座席）</h3>
+  <h3>2.5 T-03 seats（座席）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -333,7 +576,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
 
-  <h3>2.5 T-04 fixed_seat_assignments（固定座席の恒久割当）</h3>
+  <h3>2.6 T-04 fixed_seat_assignments（固定座席の恒久割当）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -344,7 +587,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成日時のみ。日次のreservation行は作らない。解除（S-11から）は行の<strong>物理DELETE</strong>で表現する（履歴保持の必要性が薄いため。基本設計書3.2節T-04参照）。</p>
 
-  <h3>2.6 T-05 projects（プロジェクト）</h3>
+  <h3>2.7 T-05 projects（プロジェクト）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -354,7 +597,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
 
-  <h3>2.7 T-06 project_members（プロジェクトメンバー）</h3>
+  <h3>2.8 T-06 project_members（プロジェクトメンバー）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -367,7 +610,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ（project_title・can_assign_seats等の変更のたび更新）。</p>
 
-  <h3>2.8 T-07 project_quarter_plans（プロジェクト座席の四半期計画）</h3>
+  <h3>2.9 T-07 project_quarter_plans（プロジェクト座席の四半期計画）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -385,7 +628,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ。新規行は、管理部がプロジェクトを担当エリアに割り当てた時点（area_id確定と同時）に<code>status='seats_confirmed'</code>で作成される。</p>
 
-  <h3>2.9 T-08 reservations（予約）</h3>
+  <h3>2.10 T-08 reservations（予約）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -399,7 +642,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成・更新日時とも持つ。<strong>制約</strong>: <code>(seat_id, date)</code>について、<code>status='active'</code>の行に限り一意となる部分ユニークインデックスを張る（RULE-04・RULE-03、NFR-03）。<br><code>CREATE UNIQUE INDEX ux_reservations_seat_date_active ON reservations (seat_id, date) WHERE status = 'active';</code></p>
 
-  <h3>2.10 T-09 recurring_rules（周期予約ルール）</h3>
+  <h3>2.11 T-09 recurring_rules（周期予約ルール）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -413,7 +656,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成日時のみ。</p>
 
-  <h3>2.11 T-10 reservation_logs（予約操作履歴）</h3>
+  <h3>2.12 T-10 reservation_logs（予約操作履歴）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -424,7 +667,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成日時のみ（NFR-07）。</p>
 
-  <h3>2.12 T-11 project_weekday_responses（出社曜日アンケート回答）</h3>
+  <h3>2.13 T-11 project_weekday_responses（出社曜日アンケート回答）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -439,7 +682,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 本テーブルは<code>responded_at</code>を上記のとおり持つため、共通の<code>created_at</code>／<code>updated_at</code>は持たない。</p>
 
-  <h3>2.13 T-13 reservations_archive（予約アーカイブ）</h3>
+  <h3>2.14 T-13 reservations_archive（予約アーカイブ）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -455,7 +698,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>archived_at</code>を持つ（意味が異なるため列名を変えている）。<code>updated_at</code>は持たない。</p>
 
-  <h3>2.14 T-14 role_master（役割マスタ）</h3>
+  <h3>2.15 T-14 role_master（役割マスタ）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -466,7 +709,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 作成日時のみ。<strong>このテーブルはいかなるAPIの権限判定にも使用しない</strong>（基本設計書4.2節）。</p>
 
-  <h3>2.15 T-15 user_custom_roles（利用者への役割マスタ付与）</h3>
+  <h3>2.16 T-15 user_custom_roles（利用者への役割マスタ付与）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
@@ -478,7 +721,7 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>assigned_at</code>を持つ。<code>updated_at</code>は持たない（剥奪は行の物理DELETEで表現する。付与記録に履歴性を求められていないため）。</p>
 
-  <h3>2.16 T-16 app_settings（アプリケーション設定）</h3>
+  <h3>2.17 T-16 app_settings（アプリケーション設定）</h3>
   <p>基本設計書4.6節で「Keirekiのapp_settingsに相当するテーブルを設ける想定」としていたが、テーブル定義が未確定だったため、本書で新設する（2026-08-26）。座席タイプ別サイクルの基準日・締切日、出社曜日アンケートのリマインド関連の設定値等、運用中に管理部が変更しうる値をハードコードせずに保持する。</p>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
@@ -784,7 +1027,7 @@ footer.doc-footer {
       <tr><td>在籍状況</td><td>T-01.employment_status, deleted_at</td><td>退職済み判定（RULE-06）に使う。認可ではなく5.1節の認証段階で判定する。</td></tr>
       <tr><td>エリア責任者・副責任者</td><td>T-02.manager_user_id / deputy_user_id</td><td>対象エリアに対する追加条件。必ずrole='admin'の利用者から指定されるが、role='admin'であること自体はこの条件の代わりにならない（基本設計書4.2節、2026-08-21再訂正）。</td></tr>
       <tr><td>PJ席決担当</td><td>T-05.proxy_user_id</td><td>対象プロジェクトに対する追加条件。project_title∈{'PM','PL'}の利用者の中から管理部が1名指定する。</td></tr>
-      <tr><td>プロジェクトでの役割</td><td>T-06.project_title</td><td><code>'PM' / 'PL' / 'SL' / NULL</code>。'PM'・'PL'であることを条件にする箇所があるが、'SL'は含めない（2.7節）。</td></tr>
+      <tr><td>プロジェクトでの役割</td><td>T-06.project_title</td><td><code>'PM' / 'PL' / 'SL' / NULL</code>。'PM'・'PL'であることを条件にする箇所があるが、'SL'は含めない（2.8節）。</td></tr>
       <tr><td>席決め権限</td><td>T-06.can_assign_seats</td><td>PM(PL)が付与するプロジェクト単位のフラグ（FR-03-8）。</td></tr>
     </tbody>
   </table>
@@ -1000,7 +1243,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.5 / 2026-08-26</span>
+    <span>版数 0.6 / 2026-08-26</span>
   </footer>
 
 </div>
