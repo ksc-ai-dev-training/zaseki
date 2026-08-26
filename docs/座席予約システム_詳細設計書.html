@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>詳細設計書 | 本社座席予約システム</title>
+<style>
+:root {
+  --accent-600: #1e40af;
+  --accent-700: #1e3a8a;
+  --accent-100: #dbeafe;
+  --accent-50: #eff6ff;
+  --bg: #ffffff;
+  --bg-subtle: #fafbfc;
+  --bg-muted: #f5f7f9;
+  --border: #e7eaee;
+  --border-strong: #d9dde3;
+  --text: #1a1d21;
+  --text-muted: #60656d;
+  --text-subtle: #8a8f98;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text);
+  background: var(--bg-muted);
+}
+.doc {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 56px 96px;
+  background: var(--bg);
+  min-height: 100vh;
+  box-shadow: 0 0 24px rgba(16, 24, 40, 0.06);
+}
+.cover {
+  border-bottom: 3px solid var(--accent-600);
+  padding-bottom: 24px;
+  margin-bottom: 40px;
+}
+.cover .doc-type {
+  display: inline-block;
+  background: var(--accent-600);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+.cover h1 { font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+.cover .subtitle { color: var(--text-muted); font-size: 14px; margin: 0; }
+.cover .meta {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.cover .note { margin-top: 8px; font-size: 11.5px; color: var(--text-subtle); }
+h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 48px 0 16px;
+  padding: 6px 0 6px 12px;
+  border-left: 4px solid var(--accent-600);
+  color: var(--accent-700);
+}
+.rev-history summary {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 48px 0 16px;
+  padding: 6px 0 6px 12px;
+  border-left: 4px solid var(--accent-600);
+  color: var(--accent-700);
+  cursor: pointer;
+  list-style: none;
+}
+.rev-history summary::-webkit-details-marker { display: none; }
+.rev-history summary::after { content: "（クリックで表示／折りたたみ）"; font-size: 12px; font-weight: 400; color: var(--text-subtle); margin-left: 8px; }
+.rev-history[open] summary { margin-bottom: 16px; }
+h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 32px 0 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+h4 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; }
+p { margin: 8px 0; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin: 3px 0; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0 20px;
+  font-size: 13px;
+}
+th, td {
+  border: 1px solid var(--border-strong);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--accent-50);
+  color: var(--accent-700);
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+tbody tr:nth-child(even) { background: var(--bg-subtle); }
+td .muted { color: var(--text-muted); }
+code {
+  font-family: "SF Mono", ui-monospace, "Consolas", monospace;
+  font-size: 12.5px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.callout {
+  background: var(--accent-50);
+  border: 1px solid var(--accent-100);
+  border-left: 4px solid var(--accent-600);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.callout.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  border-left-color: #d97706;
+}
+.toc {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 24px;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.toc ol { margin: 4px 0; }
+.toc a { color: var(--accent-700); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+a { color: var(--accent-700); }
+.pending {
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+footer.doc-footer {
+  margin-top: 64px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  display: flex;
+  justify-content: space-between;
+}
+@media print {
+  body { background: #fff; }
+  .doc { box-shadow: none; max-width: none; padding: 0; }
+  h2 { break-after: avoid; }
+  table, .callout { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<script src="_sidenav.js"></script>
+<div class="doc">
+
+  <div class="cover">
+    <span class="doc-type">詳細設計書</span>
+    <h1>本社座席予約システム 詳細設計書</h1>
+    <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
+    <div class="meta">
+      <span>作成日: 2026-08-26</span>
+      <span>版数: 0.1（ドラフト・作成中）</span>
+      <span>作成: AI開発研修</span>
+    </div>
+    <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
+  </div>
+
+  <details class="rev-history">
+  <summary>改訂履歴</summary>
+  <table>
+    <thead>
+      <tr><th>版数</th><th>日付</th><th>改訂内容</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>0.1</td><td>2026-08-26</td><td>初版。1章（はじめに）・2章（テーブル定義、T-01〜T-15の再定義およびT-16 app_settingsの新設）を作成。3章（API設計）・4章（画面項目定義）・5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
+    </tbody>
+  </table>
+  </details>
+
+  <nav class="toc">
+    <strong>目次</strong>
+    <ol>
+      <li><a href="#sec1">はじめに</a></li>
+      <li><a href="#sec2">テーブル定義</a></li>
+      <li><a href="#sec3">API設計</a>（未着手）</li>
+      <li><a href="#sec4">画面項目定義</a>（未着手）</li>
+      <li><a href="#sec5">権限の判定</a>（未着手）</li>
+      <li><a href="#sec6">エラー時の動き</a>（未着手）</li>
+    </ol>
+  </nav>
+
+  <h2 id="sec1">1. はじめに</h2>
+  <h3>1.1 本書の位置づけ</h3>
+  <p>基本設計書3章（データモデル）・4章（業務ルール・非機能要件の実現方針）で決めた方針を、実装に着手できるレベルまで具体化する。本章以降は「これを見れば作れる」状態を目指し、型・必須／任意・初期値・入出力の形まで決め切る。データ構造（2章 テーブル定義）は後から変更しづらいため、他の章より先に、最も慎重に決める。</p>
+  <h3>1.2 対象読者</h3>
+  <p>本システムを実装する開発者。基本設計書で決めた業務ルール・画面構成の「なぜ」まで遡って確認したい場合は、基本設計書・要件定義書を参照する（本書では「なぜ」の再掲は最小限にとどめ、要件定義書・基本設計書の該当箇所を参照する形をとる）。</p>
+  <h3>1.3 技術スタック</h3>
+  <p>要件定義書NFR-04（D7）のとおり、Keireki（<code>AI開発\keireki</code>）の実装方式に倣う：FastAPI＋asyncpg＋PostgreSQL、React 19＋TypeScript＋Vite＋Tailwind＋react-router＋SWR、Google OAuth2＋JWTセッション、<code>/api/</code>配下でのフロント・バック連携。本章のテーブル定義もPostgreSQLの型・機能（部分ユニークインデックス、JSONB等）を前提とする。</p>
+
+  <h2 id="sec2">2. テーブル定義</h2>
+  <h3>2.1 共通ルール</h3>
+  <ul>
+    <li><strong>主キー</strong>: 全テーブル共通で<code>id BIGINT</code>（<code>GENERATED ALWAYS AS IDENTITY</code>）を主キーとする。以下の各テーブル定義では紙面の都合上、<code>id</code>行は省略し、id以外の列のみを記載する（すべてのテーブルの先頭に<code>id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY</code>があるものとする）。</li>
+    <li><strong>作成・更新日時</strong>: 特記のない限り、全テーブルに<code>created_at TIMESTAMPTZ NOT NULL DEFAULT now()</code>を持つ。行の更新があり得るテーブル（状態が変化するテーブル）には<code>updated_at TIMESTAMPTZ NOT NULL DEFAULT now()</code>も持つ（アプリケーション側でUPDATE時に更新する）。これらも各テーブルの列一覧では省略し、テーブルごとの備考欄で「作成日時のみ」／「作成・更新日時とも持つ」を明記する。</li>
+    <li><strong>外部キーの削除方針</strong>: 特記のない限り、参照先の行は論理削除（<code>deleted_at</code>やstatus列）で扱い、外部キー制約に<code>ON DELETE CASCADE</code>は使わない（誤操作による芋づる式の消失を避けるため）。物理DELETEを行う設計としたテーブル（T-04）は個別に明記する。</li>
+    <li><strong>真偽値・列挙値</strong>: 状態を表す列は<code>VARCHAR</code>＋アプリケーション層でのCHECK相当のバリデーションとする（DBのCHECK制約もあわせて張るが、値の追加・変更が今後あり得るため、アプリケーション層のバリデーションを主とする）。</li>
+    <li><strong>配列・複合値</strong>: 「曜日を複数選択」「座席IDの一覧」のように1列に複数の値を持たせる箇所は<code>JSONB</code>型とする（例: <code>["tue","thu"]</code>）。正規化して別テーブルに分けるほどの検索要件がないため。</li>
+  </ul>
+
+  <h3>2.2 T-01 users（利用者）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>email</code></td><td>VARCHAR(255)</td><td>不可</td><td>—</td><td>UNIQUE</td><td>Googleアカウントのメールアドレス。許可ドメイン（kogasoftware.com）のみ登録される（NFR-01）。</td></tr>
+      <tr><td><code>last_name</code></td><td>VARCHAR(50)</td><td>不可</td><td>—</td><td></td><td>姓。初回Googleログイン時にIDトークンのfamily_nameから自動設定（D4）。本人による自己変更不可、管理部がS-08から訂正可（D14）。</td></tr>
+      <tr><td><code>first_name</code></td><td>VARCHAR(50)</td><td>不可</td><td>—</td><td></td><td>名。初回Googleログイン時にIDトークンのgiven_nameから自動設定（D4）。</td></tr>
+      <tr><td><code>employee_code</code></td><td>VARCHAR(20)</td><td>可</td><td>NULL</td><td></td><td>社員番号相当。BP等、社員番号を持たない利用者はNULL。本フェーズでは入力・表示画面なし（将来の拡張用に列のみ確保）。</td></tr>
+      <tr><td><code>employment_type</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'employee'</code></td><td>CHECK</td><td><code>'employee' / 'contract' / 'bp'</code>（社員／契約職員／BP）。管理部がS-08から設定（Googleログインでは取得不可）。</td></tr>
+      <tr><td><code>role</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'general'</code></td><td>CHECK</td><td><code>'general' / 'admin'</code>。'admin'が管理部。PM・エリア責任者等は本列では表現しない（T-02・T-06のFKで表現）。</td></tr>
+      <tr><td><code>employment_status</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'active'</code></td><td>CHECK</td><td><code>'active' / 'leave' / 'retired'</code>（在籍中／休職中／退職済み）。管理部がS-08から設定（D16）。</td></tr>
+      <tr><td><code>deleted_at</code></td><td>TIMESTAMPTZ</td><td>可</td><td>NULL</td><td></td><td>論理削除日時。employment_statusを'retired'に変更した時点でAPIが設定する（RULE-06）。設定されている利用者はログイン・予約不可。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ（<code>updated_at</code>は氏名訂正・役割変更・在籍状況変更のたびにAPIが更新）。</p>
+
+  <h3>2.3 T-02 areas（エリア）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>UNIQUE, CHECK</td><td><code>'NORTH' / 'EAST' / 'WEST'</code>。3行のみ、初期データとして投入する（後から増える想定はない）。</td></tr>
+      <tr><td><code>manager_user_id</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>エリア責任者。管理部が指定。role='admin'の利用者のみ指定可（アプリケーション層で検証）。同一user_idを複数行のmanager_user_idに設定することを妨げるUNIQUE制約はない（1人が複数エリアの責任者を兼務可）。</td></tr>
+      <tr><td><code>deputy_user_id</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>副責任者。エリア責任者が指定。role='admin'の利用者のみ指定可。manager_user_idが未設定の間は設定不可（アプリケーション層で検証）。</td></tr>
+      <tr><td><code>slack_webhook_url</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>出社曜日アンケート関連のSlack通知先（Incoming Webhook URL）。未設定の場合は通知しない（FR-03-9）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
+
+  <h3>2.4 T-03 seats（座席）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>seat_no</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>UNIQUE</td><td>座席番号（例: A1、C4、M7）。</td></tr>
+      <tr><td><code>area_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→areas</td><td>所属エリア。座席の物理的な位置を示す固定区分（S-07）。</td></tr>
+      <tr><td><code>seat_type</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>CHECK</td><td><code>'free' / 'fixed' / 'project'</code>。</td></tr>
+      <tr><td><code>status</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'active'</code></td><td>CHECK</td><td><code>'active' / 'retired'</code>。廃止済み座席は空き状況・座席選択に表示しない（RULE-01）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
+
+  <h3>2.5 T-04 fixed_seat_assignments（固定座席の恒久割当）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→seats, UNIQUE</td><td>1固定座席＝1利用者のため、seat_idはUNIQUE。</td></tr>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>固定座席の利用者。</td></tr>
+      <tr><td><code>assigned_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>割り当てた管理部担当者。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成日時のみ。日次のreservation行は作らない。解除（S-11から）は行の<strong>物理DELETE</strong>で表現する（履歴保持の必要性が薄いため。基本設計書3.2節T-04参照）。</p>
+
+  <h3>2.6 T-05 projects（プロジェクト）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>VARCHAR(100)</td><td>不可</td><td>—</td><td></td><td>プロジェクト名。</td></tr>
+      <tr><td><code>proxy_user_id</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>PJ席決担当。T-06でproject_title∈{'PM','PL'}の利用者の中から管理部が1名選ぶ（DB制約ではなくアプリケーション層で検証。SLは対象外）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。</p>
+
+  <h3>2.7 T-06 project_members（プロジェクトメンバー）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>project_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→projects, UNIQUE(project_id, user_id)</td><td></td></tr>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users, UNIQUE(project_id, user_id)</td><td></td></tr>
+      <tr><td><code>project_title</code></td><td>VARCHAR(10)</td><td>可</td><td>NULL</td><td>CHECK</td><td><code>'PM' / 'PL' / 'SL' / NULL</code>。1プロジェクトに人数上限なく設定可。NULLは役割なしの一般メンバー。SLはcan_assign_seats付与元・PJ席決担当対象・出社曜日アンケート回答資格のいずれにも含まれない（5章 権限の判定で規定）。</td></tr>
+      <tr><td><code>can_assign_seats</code></td><td>BOOLEAN</td><td>不可</td><td>false</td><td></td><td>「席決め」権限（FR-03-8）。PM(PL)が付与。</td></tr>
+      <tr><td><code>seat_assign_granted_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>席決め権限を付与したPM(PL)。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ（project_title・can_assign_seats等の変更のたび更新）。</p>
+
+  <h3>2.8 T-07 project_quarter_plans（プロジェクト座席の四半期計画）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>project_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→projects, UNIQUE(project_id, period_start)</td><td></td></tr>
+      <tr><td><code>area_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→areas</td><td>プロジェクトの担当エリア（FR-03-1）。</td></tr>
+      <tr><td><code>area_assigned_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>担当エリアを割り当てた管理部担当者。</td></tr>
+      <tr><td><code>period_start</code></td><td>DATE</td><td>不可</td><td>—</td><td>UNIQUE(project_id, period_start)</td><td>四半期の開始日（1/1・4/1・7/1・10/1のいずれか）。</td></tr>
+      <tr><td><code>period_end</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>四半期の終了日。</td></tr>
+      <tr><td><code>required_seats</code></td><td>INTEGER</td><td>不可</td><td>—</td><td></td><td>必要座席数。行作成時点でT-06の人数を既定値として自動算出。S-04でPM(PL)が変更希望を入力すると自動更新（T-11.requested_seats経由）。</td></tr>
+      <tr><td><code>weekdays_finalized</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>確定した出社曜日の配列（例: <code>["tue","thu"]</code>）。曜日調整前はNULL。</td></tr>
+      <tr><td><code>allocated_seats</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>割り当てられた座席の島（座席IDの配列）。座席の島の割当前はNULL。</td></tr>
+      <tr><td><code>status</code></td><td>VARCHAR(20)</td><td>不可</td><td><code>'seats_confirmed'</code></td><td>CHECK</td><td><code>'seats_confirmed'</code>（アンケート未送信）/ <code>'survey_open'</code>（曜日アンケート中）/ <code>'weekdays_finalized'</code>（曜日確定済み）/ <code>'seats_allocated'</code>（座席割当済み）。</td></tr>
+      <tr><td><code>decided_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>必要座席数の確認〜座席の島の割当を行ったエリア責任者または副責任者。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。新規行は、管理部がプロジェクトを担当エリアに割り当てた時点（area_id確定と同時）に<code>status='seats_confirmed'</code>で作成される。</p>
+
+  <h3>2.9 T-08 reservations（予約）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→seats</td><td></td></tr>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>利用対象者（代理予約時は本人と異なる場合がある）。</td></tr>
+      <tr><td><code>date</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>利用日。</td></tr>
+      <tr><td><code>recurring_rule_id</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→recurring_rules</td><td>周期予約から生成された行の場合に設定。単発予約はNULL。</td></tr>
+      <tr><td><code>created_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>登録者。代理予約時はuser_idと異なる。</td></tr>
+      <tr><td><code>status</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'active'</code></td><td>CHECK</td><td><code>'active' / 'cancelled'</code>。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。<strong>制約</strong>: <code>(seat_id, date)</code>について、<code>status='active'</code>の行に限り一意となる部分ユニークインデックスを張る（RULE-04・RULE-03、NFR-03）。<br><code>CREATE UNIQUE INDEX ux_reservations_seat_date_active ON reservations (seat_id, date) WHERE status = 'active';</code></p>
+
+  <h3>2.10 T-09 recurring_rules（周期予約ルール）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→seats</td><td></td></tr>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td></td></tr>
+      <tr><td><code>pattern</code></td><td>JSONB</td><td>不可</td><td>—</td><td></td><td>繰り返しパターン。毎日は<code>{"type":"daily"}</code>、毎週・曜日複数選択は<code>{"type":"weekly","weekdays":["tue","thu"]}</code>の形。</td></tr>
+      <tr><td><code>start_date</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>適用期間の開始日。</td></tr>
+      <tr><td><code>end_date</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>適用期間の終了日。フリー座席はRULE-05の予約可能期間を超えて指定不可。</td></tr>
+      <tr><td><code>created_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>登録者。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成日時のみ。</p>
+
+  <h3>2.11 T-10 reservation_logs（予約操作履歴）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>reservation_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→reservations</td><td></td></tr>
+      <tr><td><code>action</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>CHECK</td><td><code>'create' / 'change' / 'cancel'</code>。</td></tr>
+      <tr><td><code>actor_user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>操作者。代理予約時は登録者。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成日時のみ（NFR-07）。</p>
+
+  <h3>2.12 T-11 project_weekday_responses（出社曜日アンケート回答）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>plan_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→project_quarter_plans, UNIQUE</td><td>1計画につき1回答（再送信は上書き＝UPSERT）。</td></tr>
+      <tr><td><code>responded_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>回答したPM(PL)。</td></tr>
+      <tr><td><code>choice1_weekdays</code></td><td>JSONB</td><td>不可</td><td>—</td><td></td><td>第一希望の曜日2つ（例: <code>["tue","thu"]</code>）。</td></tr>
+      <tr><td><code>choice2_weekdays</code></td><td>JSONB</td><td>不可</td><td>—</td><td></td><td>第二希望の曜日2つ。</td></tr>
+      <tr><td><code>note</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>備考（エリア責任者への伝達事項）。任意入力。S-09の一覧・曜日調整表で確認できる。</td></tr>
+      <tr><td><code>requested_seats</code></td><td>INTEGER</td><td>可</td><td>NULL</td><td></td><td>必要座席数の変更希望。入力された場合、T-07.required_seatsへ自動反映される。</td></tr>
+      <tr><td><code>responded_at</code></td><td>TIMESTAMPTZ</td><td>不可</td><td>now()</td><td></td><td>回答日時（再送信時は更新）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 本テーブルは<code>responded_at</code>を上記のとおり持つため、共通の<code>created_at</code>／<code>updated_at</code>は持たない。</p>
+
+  <h3>2.13 T-13 reservations_archive（予約アーカイブ）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FKなし</td><td>T-08と同一の値を退避。参照整合性は強制しない（seats／usersが変更・削除されても履歴として残すため）。</td></tr>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FKなし</td><td></td></tr>
+      <tr><td><code>date</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td></td></tr>
+      <tr><td><code>recurring_rule_id</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FKなし</td><td></td></tr>
+      <tr><td><code>created_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FKなし</td><td></td></tr>
+      <tr><td><code>status</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td></td><td>退避時点のT-08.statusをそのまま保持。</td></tr>
+      <tr><td><code>archived_at</code></td><td>TIMESTAMPTZ</td><td>不可</td><td>now()</td><td></td><td>T-08から退避（INSERT）した日時。予約日から1年経過した行を日次バッチで退避する。</td></tr>
+      <tr><td><code>deleted_at</code></td><td>TIMESTAMPTZ</td><td>可</td><td>NULL</td><td></td><td>論理削除日時。archived_atから1年（予約日から合計2年）経過した行に、別の日次バッチが設定する（D10）。物理DELETEは行わない。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>archived_at</code>を持つ（意味が異なるため列名を変えている）。<code>updated_at</code>は持たない。</p>
+
+  <h3>2.14 T-14 role_master（役割マスタ）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>VARCHAR(50)</td><td>不可</td><td>—</td><td>UNIQUE</td><td>役割名。</td></tr>
+      <tr><td><code>description</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>説明。任意。</td></tr>
+      <tr><td><code>created_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>登録した管理部担当者。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成日時のみ。<strong>このテーブルはいかなるAPIの権限判定にも使用しない</strong>（基本設計書4.2節）。</p>
+
+  <h3>2.15 T-15 user_custom_roles（利用者への役割マスタ付与）</h3>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users, UNIQUE(user_id, role_master_id)</td><td></td></tr>
+      <tr><td><code>role_master_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→role_master, UNIQUE(user_id, role_master_id)</td><td></td></tr>
+      <tr><td><code>assigned_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>付与した管理部担当者。</td></tr>
+      <tr><td><code>assigned_at</code></td><td>TIMESTAMPTZ</td><td>不可</td><td>now()</td><td></td><td>付与日時。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>assigned_at</code>を持つ。<code>updated_at</code>は持たない（剥奪は行の物理DELETEで表現する。付与記録に履歴性を求められていないため）。</p>
+
+  <h3>2.16 T-16 app_settings（アプリケーション設定）</h3>
+  <p>基本設計書4.6節で「Keirekiのapp_settingsに相当するテーブルを設ける想定」としていたが、テーブル定義が未確定だったため、本書で新設する（2026-08-26）。座席タイプ別サイクルの基準日・締切日、出社曜日アンケートのリマインド関連の設定値等、運用中に管理部が変更しうる値をハードコードせずに保持する。</p>
+  <table>
+    <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
+    <tbody>
+      <tr><td><code>key</code></td><td>VARCHAR(100)</td><td>不可</td><td>—</td><td>PRIMARY KEY</td><td>設定キー（例: <code>project_seat_deadline_day</code>）。本テーブルはid列を持たず、keyを主キーとする（2.1節の共通ルールの例外）。</td></tr>
+      <tr><td><code>value</code></td><td>TEXT</td><td>不可</td><td>—</td><td></td><td>設定値。数値・文字列いずれもTEXTとして保持し、アプリケーション側で用途ごとにパースする。</td></tr>
+      <tr><td><code>description</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>設定内容の説明（管理画面での表示用）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。管理画面（設定変更UI）は本フェーズのスコープに含まれておらず、初期データ投入・DBへの直接更新で運用する（管理画面が必要になった場合は別途要件定義書・基本設計書を改訂する）。</p>
+  <p>初期データとして投入する行の想定（基本設計書3.4節・4.6節を反映）:</p>
+  <table>
+    <thead><tr><th>key</th><th>value（初期値）</th><th>description</th></tr></thead>
+    <tbody>
+      <tr><td><code>project_seat_deadline_day</code></td><td><code>25</code></td><td>プロジェクト座席の登録締切日（四半期基準日の前月◯日）</td></tr>
+      <tr><td><code>free_seat_open_day</code></td><td><code>26</code></td><td>フリー座席の予約開始日（対象月の前月◯日）</td></tr>
+      <tr><td><code>quarter_base_months</code></td><td><code>[1,4,7,10]</code></td><td>プロジェクト座席の四半期基準月</td></tr>
+      <tr><td><code>reservation_retention_archive_days</code></td><td><code>365</code></td><td>予約日からT-13へ退避するまでの日数（D10）</td></tr>
+      <tr><td><code>reservation_retention_delete_days</code></td><td><code>365</code></td><td>T-13退避後、論理削除するまでの日数（D10）</td></tr>
+      <tr><td><code>seat_history_lookback_days</code></td><td><code>31</code></td><td>座席状況の履歴照会（S-10）で遡れる日数（D12）</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="sec3">3. API設計</h2>
+  <div class="pending">未着手。次回、画面（S-01〜S-11）の操作ごとにエンドポイント（URL・メソッド）、リクエスト・レスポンスの形、認可条件の概要を洗い出す。</div>
+
+  <h2 id="sec4">4. 画面項目定義</h2>
+  <div class="pending">未着手。各画面の入力欄・入力チェック内容を定義する。</div>
+
+  <h2 id="sec5">5. 権限の判定</h2>
+  <div class="pending">未着手。基本設計書4.2節の権限マトリクスをAPIエンドポイント単位に落とし込む（画面を隠すだけでなく、各APIが呼び出し時に判定する条件を明記する）。</div>
+
+  <h2 id="sec6">6. エラー時の動き</h2>
+  <div class="pending">未着手。基本設計書4.2.1節の拒否時の画面表示と対応させつつ、APIが返すエラーコード・メッセージの形式を定義する。</div>
+
+  <p class="muted">※本書はドラフトです。まず2章（テーブル定義）まで作成しました。内容を確認のうえ、問題なければ3章（API設計）に進みます。</p>
+
+  <footer class="doc-footer">
+    <span>本社座席予約システム（Zaseki）詳細設計書</span>
+    <span>版数 0.1 / 2026-08-26</span>
+  </footer>
+
+</div>
+</body>
+</html>
