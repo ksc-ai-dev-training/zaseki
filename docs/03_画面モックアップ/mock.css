@@ -1446,12 +1446,15 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
 
   .modal-overlay { padding: 12px; }
 
-  /* 座席の拡大・縮小をできるようにする（2026-08-26追加・同日再訂正、「ピンチが効かない」
-     「初期表示が大きすぎる」との指摘を受け、ボタン操作を主手段として追加し、初期倍率も
-     固定値（0.42）ではなく画面幅に自動フィットする方式に変更した）。
+  /* 座席の拡大・縮小をできるようにする（2026-08-26追加・複数回訂正）。
      .floor-zoom-viewportがピンチ・パン用のスクロールコンテナ、.floor-overview自体は
-     transform:scaleで拡縮する（拡縮率はJSが--pinch-scaleに書き込む）。
-     ピンチ操作（2本指）は補助的に有効のままとする。 */
+     拡縮率をJSが--pinch-scaleに書き込む対象。
+     当初はtransform:scaleを使っていたが、transformはレイアウト上の専有サイズ（高さ等）を
+     変えないため、縮小しても下の「自分の予約」欄との間に元のサイズ分の余白が残ってしまう
+     問題があった（2026-08-26再々々再訂正、「座席図から自分の予約の表までの余白をなくして
+     ほしい」との指摘を受けて対応）。zoomプロパティ（Chrome/Edge/Safari/Firefox 126+対応）は
+     専有サイズごと拡縮するため、この余白問題が起きない。ピンチ操作（2本指）は補助的に
+     有効のままとする。 */
   .floor-zoom-viewport {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
@@ -1459,9 +1462,7 @@ button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1p
     position: relative;
   }
   .floor-overview {
-    overflow: visible;
-    transform: scale(var(--pinch-scale, 1));
-    transform-origin: top left;
+    zoom: var(--pinch-scale, 1);
   }
   /* 拡大・縮小ボタン。ピンチ操作が効かない環境でも確実に操作できるよう、タップのみで完結する
      明示的なUIとして追加した（2026-08-26追加）。下部の固定ナビ（.sidebar-nav、高さ58px）と
