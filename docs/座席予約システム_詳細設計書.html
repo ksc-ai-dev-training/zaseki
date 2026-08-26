@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.3（ドラフト・作成中）</span>
+      <span>版数: 0.4（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -229,6 +229,7 @@ footer.doc-footer {
       <tr><td>0.1</td><td>2026-08-26</td><td>初版。1章（はじめに）・2章（テーブル定義、T-01〜T-15の再定義およびT-16 app_settingsの新設）を作成。3章（API設計）・4章（画面項目定義）・5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.2</td><td>2026-08-26</td><td>3章（API設計）を作成。S-01〜S-11の画面操作に対応するエンドポイント（メソッド・パス・概要・認可の概要）を洗い出し、空き状況取得APIのレスポンス例、バッチ処理（予約のアーカイブ退避・論理削除）を明記した。認可条件の正式な一覧は5章で改めて規定する前提とし、本章では概要にとどめた。4章（画面項目定義）・5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
       <tr><td>0.3</td><td>2026-08-26</td><td>4章（画面項目定義）を作成。S-02・S-04・S-05・S-07・S-08・S-09・S-10・S-11の各入力欄と入力チェック内容を定義した（S-01・S-06は入力フォームを持たないため対象外と明記）。冒頭に「画面のチェックはバックエンドの代わりにならない」旨の注記を置き、本章のチェックは3章のAPIでも必ず検証する前提とした。S-05・S-11の座席選択はS-02のフロアマップへ遷移して行う設計（本画面自体には座席選択の入力欄を持たない）である旨も明記。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
+      <tr><td>0.4</td><td>2026-08-26</td><td>「KeirekiではREQ-xx／F-xx／S-xx／T-xx／A-xxというIDを振り、ドキュメント同士を相互参照している。最初からやってほしい」との要望を受けた。1.4節「ID体系・トレーサビリティ」を新設し、REQ→FR→S-xxの対応表を追加。3章の全エンドポイント（48件）にA-01〜A-48の連番IDを付与し、既存の相互参照箇所（3.9節・3.10節）もA-xx表記に修正した。あわせてCLAUDE.mdにID体系・検討資料の運用を明記し、プロジェクトルートに`検討資料/`フォルダ（Keireki踏襲、`docs/`とは別に検討メモ・計画を置く場所）を新設した。5章（権限の判定）・6章（エラー時の動き）は未着手。</td></tr>
     </tbody>
   </table>
   </details>
@@ -252,6 +253,34 @@ footer.doc-footer {
   <p>本システムを実装する開発者。基本設計書で決めた業務ルール・画面構成の「なぜ」まで遡って確認したい場合は、基本設計書・要件定義書を参照する（本書では「なぜ」の再掲は最小限にとどめ、要件定義書・基本設計書の該当箇所を参照する形をとる）。</p>
   <h3>1.3 技術スタック</h3>
   <p>要件定義書NFR-04（D7）のとおり、Keireki（<code>AI開発\keireki</code>）の実装方式に倣う：FastAPI＋asyncpg＋PostgreSQL、React 19＋TypeScript＋Vite＋Tailwind＋react-router＋SWR、Google OAuth2＋JWTセッション、<code>/api/</code>配下でのフロント・バック連携。本章のテーブル定義もPostgreSQLの型・機能（部分ユニークインデックス、JSONB等）を前提とする。</p>
+
+  <h3>1.4 ID体系・トレーサビリティ</h3>
+  <p>「この画面は何の要求から来たのか」を後から辿れるよう、Keireki同様のID体系を用いる。新しい要求・機能・画面・テーブル・APIを追加するときは、その時点で必ずIDを振り、関連ドキュメントの記述に括弧書きで添える（後から一括で付け直すのは大変なため）。</p>
+  <table>
+    <thead><tr><th>ID</th><th>対象</th><th>採番元・定義箇所</th></tr></thead>
+    <tbody>
+      <tr><td><code>REQ-F-xx</code> / <code>REQ-N-xx</code></td><td>要求（機能／非機能）</td><td>要求仕様書3章</td></tr>
+      <tr><td><code>FR-xx-y</code> / <code>NFR-xx</code></td><td>要件（機能／非機能）</td><td>要件定義書4章・8章。<code>FR-xx</code>の<code>xx</code>は対応する<code>REQ-F-xx</code>の節番号と揃えている（例: FR-03-*はREQ-F-03対応）。要求仕様書に明記のない追加提案（4.7節の役割マスタ、NFR-07の変更履歴等）は対応するREQを持たない。</td></tr>
+      <tr><td><code>S-xx</code></td><td>画面</td><td>基本設計書2.2節・画面モックアップ（<code>docs/03_画面モックアップ/</code>）</td></tr>
+      <tr><td><code>T-xx</code></td><td>テーブル</td><td>基本設計書3.2節、本書2章</td></tr>
+      <tr><td><code>A-xx</code></td><td>APIエンドポイント</td><td>本書3章</td></tr>
+    </tbody>
+  </table>
+  <p>要求（REQ）から要件（FR）・画面（S-xx）までの対応は以下のとおり（要件定義書4章・5章、基本設計書2.2節の記述を集約したもの）。</p>
+  <table>
+    <thead><tr><th>REQ</th><th>概要</th><th>対応するFR（要件定義書4章）</th><th>関連画面</th></tr></thead>
+    <tbody>
+      <tr><td>REQ-F-01</td><td>現行スプレッドシートと同等の予約管理ができること</td><td>FR-01-1〜FR-01-7（4.1節）</td><td>S-02, S-05, S-11</td></tr>
+      <tr><td>REQ-F-02</td><td>スマートフォンから座席を予約できること</td><td>FR-02-1, FR-02-2（4.2節）</td><td>S-02</td></tr>
+      <tr><td>REQ-F-03</td><td>固定座席や周期的な座席確保を簡単に行えること</td><td>FR-01-6（4.1節、一般利用者の周期予約）／FR-03-1〜FR-03-9（4.3節、プロジェクト座席）</td><td>S-02, S-04, S-09</td></tr>
+      <tr><td>REQ-F-04</td><td>座席の空き状況が一目でわかること</td><td>FR-04-1〜FR-04-5（4.4節）</td><td>S-02, S-10</td></tr>
+      <tr><td>REQ-F-05</td><td>座席利用ルールをシステムで担保できること</td><td>個別のFR番号はなし。要件定義書7章のRULE-01〜06として実現（4.5節参照）</td><td>S-02（予約操作全般）</td></tr>
+      <tr><td>REQ-F-06</td><td>座席・エリアの構成を管理者が変更できること</td><td>FR-06-1, FR-06-2（4.6節）</td><td>S-07</td></tr>
+      <tr><td>REQ-N-01〜04</td><td>非機能要求（認証・認可・性能・技術構成等）</td><td>NFR-01〜NFR-07（8章。個別の1対1対応は明記していない。NFR-07は要求仕様書に明記のない追加提案）</td><td>全画面共通</td></tr>
+      <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>役割マスタ管理</td><td>FR-07-1, FR-07-2（4.7節）</td><td>S-08</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">画面（S-xx）↔テーブル（T-xx）↔API（A-xx）の対応は、2章・3章それぞれの節見出しに画面IDを付す形（例:「3.3 空き状況・予約（S-02）」）で表現している。個々のAPIがどのFRに対応するかは3章の各行に記載している。</p>
 
   <h2 id="sec2">2. テーブル定義</h2>
   <h3>2.1 共通ルール</h3>
@@ -485,30 +514,30 @@ footer.doc-footer {
 
   <h3>3.2 認証（S-01）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/auth/login</code></td><td>Google認可URLへリダイレクトする。</td><td>未ログインでも可</td><td></td></tr>
-      <tr><td><span class="method get">GET</span><code>/auth/callback</code></td><td>GoogleからのリダイレクトでIDトークンを受け取り検証。許可ドメイン確認、T-01検索（未登録なら自動登録）、<code>deleted_at</code>確認（RULE-06）、セッションJWT発行。</td><td>未ログインでも可</td><td>拒否時の挙動は6章参照。</td></tr>
-      <tr><td><span class="method post">POST</span><code>/auth/dev-login</code></td><td>開発用ログイン（メールアドレス指定のみ）。</td><td>未ログインでも可</td><td><code>APP_ENV=production</code>では無効化（基本設計書4.2節）。</td></tr>
-      <tr><td><span class="method post">POST</span><code>/auth/logout</code></td><td>セッションCookieを破棄する。</td><td>本人</td><td></td></tr>
-      <tr><td><span class="method get">GET</span><code>/auth/me</code></td><td>ログイン中の利用者情報を返す（氏名、role、employment_type、employment_status、所属プロジェクトとproject_title、エリア責任者・副責任者担当エリア、PJ席決担当担当プロジェクト等）。フロントエンドの画面制御（ボタン・メニューの表示可否）に使う。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-01</code></td><td><span class="method get">GET</span><code>/auth/login</code></td><td>Google認可URLへリダイレクトする。</td><td>未ログインでも可</td><td></td></tr>
+      <tr><td><code>A-02</code></td><td><span class="method get">GET</span><code>/auth/callback</code></td><td>GoogleからのリダイレクトでIDトークンを受け取り検証。許可ドメイン確認、T-01検索（未登録なら自動登録）、<code>deleted_at</code>確認（RULE-06）、セッションJWT発行。</td><td>未ログインでも可</td><td>拒否時の挙動は6章参照。</td></tr>
+      <tr><td><code>A-03</code></td><td><span class="method post">POST</span><code>/auth/dev-login</code></td><td>開発用ログイン（メールアドレス指定のみ）。</td><td>未ログインでも可</td><td><code>APP_ENV=production</code>では無効化（基本設計書4.2節）。</td></tr>
+      <tr><td><code>A-04</code></td><td><span class="method post">POST</span><code>/auth/logout</code></td><td>セッションCookieを破棄する。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-05</code></td><td><span class="method get">GET</span><code>/auth/me</code></td><td>ログイン中の利用者情報を返す（氏名、role、employment_type、employment_status、所属プロジェクトとproject_title、エリア責任者・副責任者担当エリア、PJ席決担当担当プロジェクト等）。フロントエンドの画面制御（ボタン・メニューの表示可否）に使う。</td><td>本人</td><td></td></tr>
     </tbody>
   </table>
 
   <h3>3.3 空き状況・予約（S-02）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/seats/availability?date=&area=</code></td><td>指定日・エリア（<code>all/north/east/west</code>）の座席状況一覧（FR-04-1〜3）。</td><td>本人</td><td>レスポンス例は後述。</td></tr>
-      <tr><td><span class="method get">GET</span><code>/seats/availability/period?start=&end=&area=</code></td><td>期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。</td><td>本人</td><td><code>start</code>〜<code>end</code>はRULE-05の予約可能期間内。</td></tr>
-      <tr><td><span class="method get">GET</span><code>/reservations/mine?scope=upcoming|past</code></td><td>自分の予約一覧（FR-01-4）。</td><td>本人</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/reservations</code></td><td>単発予約の登録（FR-01-1）。</td><td>本人（role='admin'はFR-01-7によりRULE-05等をスキップ）</td><td>Body: <code>{seat_id, date}</code></td></tr>
-      <tr><td><span class="method post">POST</span><code>/reservations/recurring</code></td><td>周期予約の登録（FR-01-6・D11）。</td><td>本人</td><td>Body: <code>{seat_id, pattern, start_date, end_date}</code>。レスポンスに登録できた日・除外された日（理由付き）を含む。</td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/reservations/{id}</code></td><td>単発予約の取消。</td><td>本人（対象予約のuser_id＝自分）</td><td></td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/reservations/recurring/{rule_id}?date=</code></td><td>周期予約のうち指定した1日分のみを取消（一部取消、REQ-F-03）。</td><td>本人</td><td>当該日のT-08行のみ<code>status='cancelled'</code>にする。</td></tr>
+      <tr><td><code>A-06</code></td><td><span class="method get">GET</span><code>/seats/availability?date=&area=</code></td><td>指定日・エリア（<code>all/north/east/west</code>）の座席状況一覧（FR-04-1〜3）。</td><td>本人</td><td>レスポンス例は後述。</td></tr>
+      <tr><td><code>A-07</code></td><td><span class="method get">GET</span><code>/seats/availability/period?start=&end=&area=</code></td><td>期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。</td><td>本人</td><td><code>start</code>〜<code>end</code>はRULE-05の予約可能期間内。</td></tr>
+      <tr><td><code>A-08</code></td><td><span class="method get">GET</span><code>/reservations/mine?scope=upcoming|past</code></td><td>自分の予約一覧（FR-01-4）。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-09</code></td><td><span class="method post">POST</span><code>/reservations</code></td><td>単発予約の登録（FR-01-1）。</td><td>本人（role='admin'はFR-01-7によりRULE-05等をスキップ）</td><td>Body: <code>{seat_id, date}</code></td></tr>
+      <tr><td><code>A-10</code></td><td><span class="method post">POST</span><code>/reservations/recurring</code></td><td>周期予約の登録（FR-01-6・D11）。</td><td>本人</td><td>Body: <code>{seat_id, pattern, start_date, end_date}</code>。レスポンスに登録できた日・除外された日（理由付き）を含む。</td></tr>
+      <tr><td><code>A-11</code></td><td><span class="method delete">DELETE</span><code>/reservations/{id}</code></td><td>単発予約の取消。</td><td>本人（対象予約のuser_id＝自分）</td><td></td></tr>
+      <tr><td><code>A-12</code></td><td><span class="method delete">DELETE</span><code>/reservations/recurring/{rule_id}?date=</code></td><td>周期予約のうち指定した1日分のみを取消（一部取消、REQ-F-03）。</td><td>本人</td><td>当該日のT-08行のみ<code>status='cancelled'</code>にする。</td></tr>
     </tbody>
   </table>
-  <p><strong>GET /seats/availability レスポンス例:</strong></p>
+  <p><strong>A-06 GET /seats/availability レスポンス例:</strong></p>
   <pre><code>{
   "date": "2026-09-01",
   "areas": [
@@ -534,86 +563,86 @@ footer.doc-footer {
 
   <h3>3.4 プロジェクト座席・PM側（S-04）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/projects/mine</code></td><td>自分がPM・PL・SL・メンバーであるプロジェクトと、対象四半期の計画状況の一覧。</td><td>本人</td><td></td></tr>
-      <tr><td><span class="method get">GET</span><code>/project-quarter-plans/{id}</code></td><td>四半期計画の詳細（必要座席数、状態、確定曜日、割当済み座席、メンバーごとの座席確保状況）。</td><td>本人（対象プロジェクトのメンバー）</td><td></td></tr>
-      <tr><td><span class="method get">GET</span><code>/project-quarter-plans/{id}/previous</code></td><td>前回サイクル（3か月前）の計画を参照専用で取得（D13）。</td><td>本人</td><td></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/response</code></td><td>出社曜日アンケートへの回答（FR-03-4）。T-11をUPSERT。</td><td>PM(PL)本人（project_title∈{'PM','PL'}）</td><td>Body: <code>{choice1_weekdays, choice2_weekdays, note, requested_seats}</code>。requested_seatsはT-07.required_seatsへ自動反映。</td></tr>
-      <tr><td><span class="method put">PUT</span><code>/project-members/{id}/seat-assign-permission</code></td><td>「席決め」権限の付与・剥奪（FR-03-8）。</td><td>PM(PL)本人（同一プロジェクト）</td><td>Body: <code>{can_assign_seats: true|false}</code></td></tr>
-      <tr><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/seat-assignments</code></td><td>割り当てられた座席の島の範囲内で、メンバーへ座席を一括確保（FR-03-7）。T-09／T-08を生成。</td><td>role='admin' または PJ席決担当（T-05.proxy_user_id）または席決め権限保持者（T-06.can_assign_seats）</td><td>Body: <code>{assignments: [{member_user_id, seat_id}, ...]}</code>。座席はallocated_seatsの範囲外を指定不可。同一座席の重複指定はその組み合わせのみ除外。レスポンスに成功・除外を1件ずつ含む。</td></tr>
+      <tr><td><code>A-13</code></td><td><span class="method get">GET</span><code>/projects/mine</code></td><td>自分がPM・PL・SL・メンバーであるプロジェクトと、対象四半期の計画状況の一覧。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-14</code></td><td><span class="method get">GET</span><code>/project-quarter-plans/{id}</code></td><td>四半期計画の詳細（必要座席数、状態、確定曜日、割当済み座席、メンバーごとの座席確保状況）。</td><td>本人（対象プロジェクトのメンバー）</td><td></td></tr>
+      <tr><td><code>A-15</code></td><td><span class="method get">GET</span><code>/project-quarter-plans/{id}/previous</code></td><td>前回サイクル（3か月前）の計画を参照専用で取得（D13）。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-16</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/response</code></td><td>出社曜日アンケートへの回答（FR-03-4）。T-11をUPSERT。</td><td>PM(PL)本人（project_title∈{'PM','PL'}）</td><td>Body: <code>{choice1_weekdays, choice2_weekdays, note, requested_seats}</code>。requested_seatsはT-07.required_seatsへ自動反映。</td></tr>
+      <tr><td><code>A-17</code></td><td><span class="method put">PUT</span><code>/project-members/{id}/seat-assign-permission</code></td><td>「席決め」権限の付与・剥奪（FR-03-8）。</td><td>PM(PL)本人（同一プロジェクト）</td><td>Body: <code>{can_assign_seats: true|false}</code></td></tr>
+      <tr><td><code>A-18</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/seat-assignments</code></td><td>割り当てられた座席の島の範囲内で、メンバーへ座席を一括確保（FR-03-7）。T-09／T-08を生成。</td><td>role='admin' または PJ席決担当（T-05.proxy_user_id）または席決め権限保持者（T-06.can_assign_seats）</td><td>Body: <code>{assignments: [{member_user_id, seat_id}, ...]}</code>。座席はallocated_seatsの範囲外を指定不可。同一座席の重複指定はその組み合わせのみ除外。レスポンスに成功・除外を1件ずつ含む。</td></tr>
     </tbody>
   </table>
 
   <h3>3.5 固定座席の指定（S-05）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/fixed-seat-assignments</code></td><td>固定座席の割当一覧。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/fixed-seat-assignments</code></td><td>固定座席を利用者に割り当てる。</td><td>role='admin'</td><td>Body: <code>{seat_id, user_id}</code>。seat_idはseat_type='fixed'かつ未割当のものに限る。</td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/fixed-seat-assignments/{seat_id}</code></td><td>固定座席の割当を解除（物理DELETE、基本設計書3.2節T-04）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-19</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments</code></td><td>固定座席の割当一覧。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-20</code></td><td><span class="method post">POST</span><code>/fixed-seat-assignments</code></td><td>固定座席を利用者に割り当てる。</td><td>role='admin'</td><td>Body: <code>{seat_id, user_id}</code>。seat_idはseat_type='fixed'かつ未割当のものに限る。</td></tr>
+      <tr><td><code>A-21</code></td><td><span class="method delete">DELETE</span><code>/fixed-seat-assignments/{seat_id}</code></td><td>固定座席の割当を解除（物理DELETE、基本設計書3.2節T-04）。</td><td>role='admin'</td><td></td></tr>
     </tbody>
   </table>
 
   <h3>3.6 座席マスタ管理（S-07）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/seats?area=&status=</code></td><td>座席一覧。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type}</code></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
+      <tr><td><code>A-22</code></td><td><span class="method get">GET</span><code>/seats?area=&status=</code></td><td>座席一覧。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type}</code></td></tr>
+      <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
     </tbody>
   </table>
 
   <h3>3.7 権限・役割管理（S-08）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/users?role=&employment_status=&show_retired=</code></td><td>利用者一覧（利用者ロール管理タブ）。<code>show_retired=false</code>（既定）では<code>deleted_at</code>が設定された利用者を除外する。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/users/{id}</code></td><td>利用者の編集（氏名訂正D14、雇用形態、role、在籍状況）。</td><td>role='admin'</td><td>Body: <code>{last_name, first_name, employment_type, role, employment_status}</code>。<code>employment_status='retired'</code>への変更でRULE-06（4.1節参照）を実行：<code>deleted_at</code>設定、固定座席解除、今後の予約取消。</td></tr>
-      <tr><td><span class="method get">GET</span><code>/projects</code></td><td>全プロジェクト一覧（プロジェクト・PM管理タブ）。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/projects</code></td><td>プロジェクトの新規作成。</td><td>role='admin'</td><td>Body: <code>{name}</code></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/projects/{id}/members</code></td><td>メンバー構成・PM/PL/SL・PJ席決担当をまとめて更新。</td><td>role='admin'</td><td>Body: <code>{members: [{user_id, project_title}], proxy_user_id}</code>。proxy_user_idはproject_title∈{'PM','PL'}のいずれかに限る（SLは対象外）。</td></tr>
-      <tr><td><span class="method get">GET</span><code>/areas</code></td><td>エリア一覧（責任者・副責任者・Slack通知先）。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/areas/{id}</code></td><td>エリア責任者・副責任者・Slack Webhook URLの設定。</td><td>manager_user_idはrole='admin'が設定。deputy_user_idは当該エリアの責任者本人またはrole='admin'が設定（基本設計書4.2節）</td><td>Body: <code>{manager_user_id, deputy_user_id, slack_webhook_url}</code>。manager／deputyともrole='admin'の利用者のみ指定可。</td></tr>
-      <tr><td><span class="method get">GET</span><code>/role-master</code></td><td>役割マスタ一覧（役割マスタ管理タブ）。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/role-master</code></td><td>役割マスタの追加。</td><td>role='admin'</td><td>Body: <code>{name, description}</code></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/role-master/{id}</code></td><td>役割マスタの編集。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/role-master/{id}</code></td><td>役割マスタの削除。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/users/{id}/custom-roles</code></td><td>利用者への役割マスタ付与（FR-07-2）。</td><td>role='admin'</td><td>Body: <code>{role_master_id}</code>。権限判定には一切使用しない（基本設計書4.2節）。</td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/users/{id}/custom-roles/{role_master_id}</code></td><td>付与の取消。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-25</code></td><td><span class="method get">GET</span><code>/users?role=&employment_status=&show_retired=</code></td><td>利用者一覧（利用者ロール管理タブ）。<code>show_retired=false</code>（既定）では<code>deleted_at</code>が設定された利用者を除外する。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-26</code></td><td><span class="method put">PUT</span><code>/users/{id}</code></td><td>利用者の編集（氏名訂正D14、雇用形態、role、在籍状況）。</td><td>role='admin'</td><td>Body: <code>{last_name, first_name, employment_type, role, employment_status}</code>。<code>employment_status='retired'</code>への変更でRULE-06（4.1節参照）を実行：<code>deleted_at</code>設定、固定座席解除、今後の予約取消。</td></tr>
+      <tr><td><code>A-27</code></td><td><span class="method get">GET</span><code>/projects</code></td><td>全プロジェクト一覧（プロジェクト・PM管理タブ）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-28</code></td><td><span class="method post">POST</span><code>/projects</code></td><td>プロジェクトの新規作成。</td><td>role='admin'</td><td>Body: <code>{name}</code></td></tr>
+      <tr><td><code>A-29</code></td><td><span class="method put">PUT</span><code>/projects/{id}/members</code></td><td>メンバー構成・PM/PL/SL・PJ席決担当をまとめて更新。</td><td>role='admin'</td><td>Body: <code>{members: [{user_id, project_title}], proxy_user_id}</code>。proxy_user_idはproject_title∈{'PM','PL'}のいずれかに限る（SLは対象外）。</td></tr>
+      <tr><td><code>A-30</code></td><td><span class="method get">GET</span><code>/areas</code></td><td>エリア一覧（責任者・副責任者・Slack通知先）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-31</code></td><td><span class="method put">PUT</span><code>/areas/{id}</code></td><td>エリア責任者・副責任者・Slack Webhook URLの設定。</td><td>manager_user_idはrole='admin'が設定。deputy_user_idは当該エリアの責任者本人またはrole='admin'が設定（基本設計書4.2節）</td><td>Body: <code>{manager_user_id, deputy_user_id, slack_webhook_url}</code>。manager／deputyともrole='admin'の利用者のみ指定可。</td></tr>
+      <tr><td><code>A-32</code></td><td><span class="method get">GET</span><code>/role-master</code></td><td>役割マスタ一覧（役割マスタ管理タブ）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-33</code></td><td><span class="method post">POST</span><code>/role-master</code></td><td>役割マスタの追加。</td><td>role='admin'</td><td>Body: <code>{name, description}</code></td></tr>
+      <tr><td><code>A-34</code></td><td><span class="method put">PUT</span><code>/role-master/{id}</code></td><td>役割マスタの編集。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-35</code></td><td><span class="method delete">DELETE</span><code>/role-master/{id}</code></td><td>役割マスタの削除。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-36</code></td><td><span class="method post">POST</span><code>/users/{id}/custom-roles</code></td><td>利用者への役割マスタ付与（FR-07-2）。</td><td>role='admin'</td><td>Body: <code>{role_master_id}</code>。権限判定には一切使用しない（基本設計書4.2節）。</td></tr>
+      <tr><td><code>A-37</code></td><td><span class="method delete">DELETE</span><code>/users/{id}/custom-roles/{role_master_id}</code></td><td>付与の取消。</td><td>role='admin'</td><td></td></tr>
     </tbody>
   </table>
 
   <h3>3.8 プロジェクト座席・エリア担当側（S-09）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/project-quarter-plans?area=&quarter=</code></td><td>担当エリア・四半期での一覧（未割当プロジェクトを含む）。</td><td>role='admin'（未割当一覧）／エリア責任者・副責任者（自分の担当エリア分）</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>プロジェクトを担当エリアに割り当て、四半期計画を新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>role='admin'</td><td>Body: <code>{area_id, period_start}</code></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
-      <tr><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。担当エリアのSlackチャンネルへ通知（FR-03-9①）。</td><td>担当エリアの責任者・副責任者</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>担当エリアの責任者・副責任者</td><td></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/project-quarter-plans/finalize-weekdays</code></td><td>担当エリアの全プロジェクトの出社曜日を一括確定（FR-03-5）。<code>status→'weekdays_finalized'</code>。Slack通知（FR-03-9③）。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{area_id, period_start, plans: [{plan_id, weekdays_finalized}]}</code></td></tr>
-      <tr><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{seat_ids: [...]}</code>。既に他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節）。</td></tr>
+      <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?area=&quarter=</code></td><td>担当エリア・四半期での一覧（未割当プロジェクトを含む）。</td><td>role='admin'（未割当一覧）／エリア責任者・副責任者（自分の担当エリア分）</td><td></td></tr>
+      <tr><td><code>A-39</code></td><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>プロジェクトを担当エリアに割り当て、四半期計画を新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>role='admin'</td><td>Body: <code>{area_id, period_start}</code></td></tr>
+      <tr><td><code>A-40</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
+      <tr><td><code>A-41</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。担当エリアのSlackチャンネルへ通知（FR-03-9①）。</td><td>担当エリアの責任者・副責任者</td><td></td></tr>
+      <tr><td><code>A-42</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>担当エリアの責任者・副責任者</td><td></td></tr>
+      <tr><td><code>A-43</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/finalize-weekdays</code></td><td>担当エリアの全プロジェクトの出社曜日を一括確定（FR-03-5）。<code>status→'weekdays_finalized'</code>。Slack通知（FR-03-9③）。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{area_id, period_start, plans: [{plan_id, weekdays_finalized}]}</code></td></tr>
+      <tr><td><code>A-44</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>担当エリアの責任者・副責任者</td><td>Body: <code>{seat_ids: [...]}</code>。既に他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節）。</td></tr>
     </tbody>
   </table>
 
   <h3>3.9 座席状況の履歴照会（S-10）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/seats/history?date=&area=</code></td><td>過去の座席状況を参照専用で取得（FR-04-5）。レスポンス形式は3.3節の<code>GET /seats/availability</code>と同じ。</td><td>role='admin'</td><td>指定日は直近1か月（D12、app_settings.seat_history_lookback_days）の範囲内のみ。範囲外は6章のエラーを返す。</td></tr>
+      <tr><td><code>A-45</code></td><td><span class="method get">GET</span><code>/seats/history?date=&area=</code></td><td>過去の座席状況を参照専用で取得（FR-04-5）。レスポンス形式はA-06（<code>GET /seats/availability</code>）と同じ。</td><td>role='admin'</td><td>指定日は直近1か月（D12、app_settings.seat_history_lookback_days）の範囲内のみ。範囲外は6章のエラーを返す。</td></tr>
     </tbody>
   </table>
 
   <h3>3.10 代理予約・取消（S-11）</h3>
   <table>
-    <thead><tr><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><span class="method get">GET</span><code>/reservations/search?user_name=&seat_type=</code></td><td>代理予約・取消の対象者検索（対象者の今後の予約一覧、座席種別問わず）。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><span class="method post">POST</span><code>/reservations/proxy</code></td><td>フリー座席の代理予約（新規はフリー座席のみ、FR-01-5）。</td><td>role='admin'</td><td>Body: <code>{user_id, seat_id, date}</code>（単発）または周期予約相当のBody（3.3節の<code>/reservations/recurring</code>と同形）。</td></tr>
-      <tr><td><span class="method delete">DELETE</span><code>/reservations/proxy/{id}</code></td><td>座席種別を問わず（フリー・固定・プロジェクト）代理で取消・解除する。</td><td>role='admin'</td><td>固定座席はT-04の解除（物理DELETE）、それ以外はT-08.status='cancelled'。</td></tr>
+      <tr><td><code>A-46</code></td><td><span class="method get">GET</span><code>/reservations/search?user_name=&seat_type=</code></td><td>代理予約・取消の対象者検索（対象者の今後の予約一覧、座席種別問わず）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-47</code></td><td><span class="method post">POST</span><code>/reservations/proxy</code></td><td>フリー座席の代理予約（新規はフリー座席のみ、FR-01-5）。</td><td>role='admin'</td><td>Body: <code>{user_id, seat_id, date}</code>（単発）または周期予約相当のBody（A-10 <code>/reservations/recurring</code>と同形）。</td></tr>
+      <tr><td><code>A-48</code></td><td><span class="method delete">DELETE</span><code>/reservations/proxy/{id}</code></td><td>座席種別を問わず（フリー・固定・プロジェクト）代理で取消・解除する。</td><td>role='admin'</td><td>固定座席はT-04の解除（物理DELETE）、それ以外はT-08.status='cancelled'。</td></tr>
     </tbody>
   </table>
 
@@ -742,7 +771,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.3 / 2026-08-26</span>
+    <span>版数 0.4 / 2026-08-26</span>
   </footer>
 
 </div>
