@@ -940,7 +940,9 @@ function fitFloorMapToViewport() {
   overview.style.setProperty('--pinch-scale', 1);
   var natural = overview.scrollWidth;
   var available = viewport.clientWidth;
-  var fit = (available > 0 && natural > 0) ? Math.min(1, (available / natural) * 0.96) : 1;
+  // 画面幅にちょうど収まる倍率だけでなく、さらに0.7倍して小さめに初期表示する
+  // （「もっと小さくしてほしい」との要望に対応、2026-08-26再々訂正。＋ボタンで拡大できる）。
+  var fit = (available > 0 && natural > 0) ? Math.min(1, (available / natural) * 0.7) : 1;
   applyPinchScale(fit);
 }
 function resetPinchZoom() {
