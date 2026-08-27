@@ -65,7 +65,7 @@
       <div class="tabs">
         <button class="tab active" id="tab-users" type="button" onclick="switchRoleTab('users')">利用者ロール管理</button>
         <button class="tab" id="tab-projects" type="button" onclick="switchRoleTab('projects')">プロジェクト・PM管理</button>
-        <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">エリア通知設定</button>
+        <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">通知設定</button>
         <button class="tab" id="tab-customroles" type="button" onclick="switchRoleTab('customroles')">役割マスタ管理</button>
       </div>
 
@@ -177,28 +177,14 @@
       </div>
 
       <div class="tab-panel" id="panel-areas">
-        <p class="muted" style="margin-bottom:8px">出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）をエリアごとに設定する（要件定義書FR-03-9）。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う（2026-08-27訂正。エリア責任者・副責任者は特定のエリアに紐づかなくなったため、本タブでは扱わない）。</p>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>エリア</th><th>Slack通知先</th><th></th></tr></thead>
-            <tbody>
-              <tr>
-                <td class="cell-main">NORTH</td>
-                <td class="cell-sub">未設定</td>
-                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('NORTH')">編集</button></td>
-              </tr>
-              <tr>
-                <td class="cell-main">EAST</td>
-                <td><span class="badge badge-status-on">設定済み</span></td>
-                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('EAST')">編集</button></td>
-              </tr>
-              <tr>
-                <td class="cell-main">WEST</td>
-                <td class="cell-sub">未設定</td>
-                <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('WEST')">編集</button></td>
-              </tr>
-            </tbody>
-          </table>
+        <p class="muted" style="margin-bottom:8px">出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）を設定する（要件定義書FR-03-9）。プロジェクト座席共通の1つの通知先のみを持つ（2026-08-27訂正。従来はエリアごとに3つ設定していたが、プロジェクトの担当エリア割当〔FR-03-1〕を廃止したため、通知時点でどのエリア宛か決められなくなり、共通の1チャンネルに変更した）。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う。</p>
+        <div class="field" style="max-width:480px">
+          <label>Slack通知先（Webhook URL）</label>
+          <input type="text" placeholder="https://hooks.slack.com/services/...">
+          <p class="muted" style="margin-top:6px">設定済み（値は編集時のみ表示）</p>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <button class="btn btn-primary" type="button">保存する</button>
         </div>
       </div>
 
@@ -373,25 +359,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="area-edit-modal" onclick="if(event.target===this)closeAreaEditModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="area-edit-title">エリア通知設定を編集</div>
-      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeAreaEditModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="field">
-        <label>Slack通知先（Webhook URL）</label>
-        <input type="text" placeholder="https://hooks.slack.com/services/...">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" type="button" onclick="closeAreaEditModal()">キャンセル</button>
-      <button class="btn btn-primary" type="button" onclick="closeAreaEditModal()">保存する</button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="customrole-edit-modal" onclick="if(event.target===this)closeCustomRoleEditModal()">
   <div class="modal">
     <div class="modal-header">
@@ -455,13 +422,6 @@ function openProjectEditModal(name) {
 }
 function closeProjectEditModal() {
   document.getElementById('project-edit-modal').classList.remove('open');
-}
-function openAreaEditModal(area) {
-  document.getElementById('area-edit-title').textContent = 'エリア通知設定を編集（' + area + '）';
-  document.getElementById('area-edit-modal').classList.add('open');
-}
-function closeAreaEditModal() {
-  document.getElementById('area-edit-modal').classList.remove('open');
 }
 function openCustomRoleEditModal(name) {
   document.getElementById('customrole-edit-title').textContent = (name === 'new') ? '役割を追加' : '役割を編集（' + name + '）';
