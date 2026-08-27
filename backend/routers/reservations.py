@@ -7,16 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
-from database import get_pool, get_setting
+from database import free_seat_open_date, get_pool
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
-
-
-async def _free_seat_open_date(target: Date) -> Date:
-    """RULE-05: フリー座席は対象日が属する月の前月26日以降でなければ予約できない"""
-    open_day = int(await get_setting("free_seat_open_day") or "26")
-    prior_year, prior_month = (target.year, target.month - 1) if target.month > 1 else (target.year - 1, 12)
-    return Date(prior_year, prior_month, open_day)
 
 
 class ReservationCreate(BaseModel):
@@ -40,7 +33,7 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     if user.role != "admin":
         if body.date < Date.today():
             raise HTTPException(400, detail="過去の日付は予約できません")
-        open_date = await _free_seat_open_date(body.date)
+        open_date = await free_seat_open_date(body.date)
         if Date.today() < open_date:
             raise HTTPException(400, detail=f"この座席は{open_date.month}月{open_date.day}日から予約できます")
 

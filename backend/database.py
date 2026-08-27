@@ -1,5 +1,7 @@
 # asyncpg接続プール管理、SCHEMA定義（詳細設計書 2章 T-01〜）
+import calendar
 import os
+from datetime import date as Date
 from pathlib import Path
 
 import asyncpg
@@ -136,6 +138,29 @@ def get_pool() -> asyncpg.Pool:
 async def get_setting(key: str) -> str | None:
     """T-16 app_settingsから設定値を取得する"""
     return await get_pool().fetchval("SELECT value FROM app_settings WHERE key = $1", key)
+
+
+async def free_seat_open_date(target: Date) -> Date:
+    """RULE-05: フリー座席は対象日が属する月の前月26日以降でなければ予約できない。
+    A-09（単発予約登録）・A-07（期間ビュー）の両方が使う共通ルールのためここに置く。"""
+    open_day = int(await get_setting("free_seat_open_day") or "26")
+    prior_year, prior_month = (target.year, target.month - 1) if target.month > 1 else (target.year - 1, 12)
+    return Date(prior_year, prior_month, open_day)
+
+
+async def free_seat_bookable_period() -> tuple[Date, Date]:
+    """RULE-05に基づく「現時点で予約可能な期間全体」（期間ビューの既定表示範囲、FR-04-4）。
+    当月分は前月26日時点で常に開放済みのため必ず含まれ、当日が当月の確保開始日（既定26日）
+    以降であれば翌月分も開放されるためそこまで延長する。"""
+    today = Date.today()
+    open_day = int(await get_setting("free_seat_open_day") or "26")
+    start = await free_seat_open_date(today)
+    end_month_date = today
+    if today.day >= open_day:
+        end_month_date = Date(today.year + 1, 1, 1) if today.month == 12 else Date(today.year, today.month + 1, 1)
+    last_day = calendar.monthrange(end_month_date.year, end_month_date.month)[1]
+    end = Date(end_month_date.year, end_month_date.month, last_day)
+    return start, end
 
 
 async def close_pool() -> None:

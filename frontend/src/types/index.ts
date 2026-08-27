@@ -56,6 +56,34 @@ export interface AvailabilityResponse {
   areas: AreaAvailability[]
 }
 
+// A-07 GET /seats/availability/period（S-02 期間ビュー）。固定座席（seat_type='fixed'）は対象外
+export type PeriodCellStatus = 'free' | 'mine' | 'occupied'
+
+export interface PeriodCell {
+  status: PeriodCellStatus
+  display_name: string | null
+  reservation_id: number | null
+}
+
+export interface PeriodSeat {
+  id: number
+  seat_no: string
+  area: 'NORTH' | 'EAST' | 'WEST'
+  seat_type: SeatType
+  /** 日付(YYYY-MM-DD)ごとのセル。キーが存在しない日は'free'とみなす（ペイロード削減） */
+  days: Record<string, PeriodCell>
+}
+
+export interface PeriodAvailabilityResponse {
+  start: string
+  end: string
+  /** RULE-05に基づく予約可能期間全体（「予約可能期間全体を表示」で戻す先） */
+  full_start: string
+  full_end: string
+  dates: string[]
+  seats: PeriodSeat[]
+}
+
 // A-08 GET /reservations/mine（S-02）
 export type ReservationState = 'upcoming' | 'used' | 'cancelled'
 

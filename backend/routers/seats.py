@@ -1,13 +1,13 @@
-# A-06 空き状況・予約（S-02）。詳細設計書3.3節
+# A-06・A-07 空き状況・予約（S-02）。詳細設計書3.3節
 import re
 from collections import Counter
-from datetime import date as Date
+from datetime import date as Date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends
 
 from auth_helpers import CurrentUser, require_auth
-from database import get_pool
+from database import free_seat_bookable_period, get_pool
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -99,4 +99,86 @@ async def get_availability(
             }
             for area_name, blocks in areas.items()
         ],
+    }
+
+
+@router.get("/availability/period")
+async def get_availability_period(
+    start: Date | None = None,
+    end: Date | None = None,
+    area: Literal["all", "north", "east", "west"] = "all",
+    user: CurrentUser = Depends(require_auth),
+):
+    """A-07: 期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。
+
+    start・endは指定がなければRULE-05の予約可能期間全体（前月26日〜当月末日、当月26日
+    以降は翌月末日まで延長）を既定値とし、指定があってもその範囲を超えないようクランプする
+    （画面モックアップのresetPeriodFilter/clampToPeriodを踏襲）。
+    固定座席（T-04未実装だがseat_type='fixed'）は毎日同じ利用者のままで一覧が見づらいため対象外とする。
+    """
+    full_start, full_end = await free_seat_bookable_period()
+    range_start = min(max(start or full_start, full_start), full_end)
+    range_end = min(max(end or full_end, full_start), full_end)
+    if range_start > range_end:
+        range_start, range_end = range_end, range_start
+
+    rows = await get_pool().fetch(
+        """SELECT s.id, s.seat_no, s.seat_type, a.name AS area_name,
+                  r.date, r.id AS reservation_id, r.user_id AS reserved_user_id, u.last_name, u.first_name
+           FROM seats s
+           JOIN areas a ON a.id = s.area_id
+           LEFT JOIN reservations r
+               ON r.seat_id = s.id AND r.date BETWEEN $1 AND $2 AND r.status = 'active'
+           LEFT JOIN users u ON u.id = r.user_id
+           WHERE s.status = 'active' AND s.seat_type != 'fixed'
+             AND ($3 = 'all' OR lower(a.name) = $3)
+           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
+        range_start, range_end, area,
+    )
+
+    # 姓の重複判定（A-06と同じ考え方）は日付ごとに独立して行う
+    last_name_counts_by_date: dict[Date, Counter] = {}
+    for r in rows:
+        if r["date"] is not None and r["reserved_user_id"] is not None and r["reserved_user_id"] != user.id:
+            last_name_counts_by_date.setdefault(r["date"], Counter())[r["last_name"]] += 1
+
+    seats: dict[int, dict] = {}
+    for r in rows:
+        seat = seats.setdefault(r["id"], {
+            "id": r["id"], "seat_no": r["seat_no"], "area": r["area_name"],
+            "seat_type": r["seat_type"], "days": {},
+        })
+        if r["date"] is None:
+            continue
+        if r["reserved_user_id"] is None:
+            status, display_name = "free", None
+        elif r["reserved_user_id"] == user.id:
+            status, display_name = "mine", f"{r['last_name']}（自分）"
+        else:
+            counts = last_name_counts_by_date[r["date"]]
+            status = "occupied"
+            display_name = (
+                r["last_name"] if counts[r["last_name"]] <= 1
+                else f"{r['last_name']}（{r['first_name'][:1]}）"
+            )
+        # 未指定の日（seatsのdaysに現れない日）はフロント側で'free'とみなす（ペイロード削減）
+        seat["days"][r["date"].isoformat()] = {
+            "status": status,
+            "display_name": display_name,
+            "reservation_id": r["reservation_id"] if status == "mine" else None,
+        }
+
+    dates = []
+    d = range_start
+    while d <= range_end:
+        dates.append(d.isoformat())
+        d += timedelta(days=1)
+
+    return {
+        "start": range_start.isoformat(),
+        "end": range_end.isoformat(),
+        "full_start": full_start.isoformat(),
+        "full_end": full_end.isoformat(),
+        "dates": dates,
+        "seats": sorted(seats.values(), key=lambda s: _seat_sort_key(s["seat_no"])),
     }
