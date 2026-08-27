@@ -11,6 +11,17 @@ USERS = [
     ("yamada@kogasoftware.com", "山田", "花子", "admin", None),
     ("sato@kogasoftware.com", "佐藤", "健一", "general", None),
     ("suzuki@kogasoftware.com", "鈴木", "一郎", "general", None),
+    # ダミー利用者（S-05の対象者検索・S-02の使用中表示等、複数人が必要な画面の動作確認用）
+    ("tanaka@kogasoftware.com", "田中", "一郎", "general", None),
+    ("nakamura@kogasoftware.com", "中村", "誠", "general", None),
+    ("yamamoto@kogasoftware.com", "山本", "健太", "general", None),
+    ("shimizu@kogasoftware.com", "清水", "陽子", "general", None),
+    ("takahashi@kogasoftware.com", "高橋", "美咲", "general", None),
+    ("ishii@kogasoftware.com", "石井", "大輔", "general", None),
+    ("kimura@kogasoftware.com", "木村", "拓也", "general", None),
+    ("watanabe@kogasoftware.com", "渡辺", "真一", "general", None),
+    ("ito@kogasoftware.com", "伊藤", "大輝", "general", None),
+    ("kato@kogasoftware.com", "加藤", "彩子", "general", None),
 ]
 
 AREAS = ["NORTH", "EAST", "WEST"]
