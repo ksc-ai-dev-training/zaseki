@@ -47,7 +47,7 @@ async def get_availability(
            LEFT JOIN users u ON u.id = r.user_id
            WHERE s.status = 'active'
              AND ($2 = 'all' OR lower(a.name) = $2)
-           ORDER BY a.name, s.seat_no""",
+           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
         date, area,
     )
 

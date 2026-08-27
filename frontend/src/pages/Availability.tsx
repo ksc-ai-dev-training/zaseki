@@ -3,6 +3,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
 import { useMyReservations } from '../hooks/useMyReservations'
 import Modal from '../components/Modal'
+import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import type { Seat, SeatStatus } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
@@ -32,13 +33,13 @@ const AREA_TABS: { key: AreaFilter; label: string }[] = [
   { key: 'west', label: 'WESTエリア' },
 ]
 
-const STATUS_STYLE: Record<SeatStatus, string> = {
-  free: 'border border-dashed border-slate-400 bg-white text-slate-500 hover:bg-slate-50',
-  mine: 'border border-blue-900 bg-blue-800 text-white',
-  occupied: 'border border-slate-400 bg-slate-200 text-slate-700',
-  occupied_fixed: 'border border-violet-300 bg-violet-100 text-violet-800',
-  project_confirmed: 'border border-green-400 bg-green-100 text-green-800',
-  project_pending: 'border border-dashed border-yellow-500 bg-yellow-100 text-yellow-800',
+const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
+  free: 'status-free',
+  mine: 'status-mine',
+  occupied: 'status-occupied',
+  occupied_fixed: 'status-fixed',
+  project_confirmed: 'status-project',
+  project_pending: 'status-pending',
 }
 
 const LEGEND: { status: SeatStatus; label: string }[] = [
@@ -50,7 +51,7 @@ const LEGEND: { status: SeatStatus; label: string }[] = [
   { status: 'project_pending', label: '未確定（プロジェクト座席）' },
 ]
 
-// S-02 空き状況・予約。簡略版フロアマップ（部屋・柱等の実配置は再現せず、エリア→ブロック→座席のグリッドで表示する）
+// S-02 空き状況・予約。画面モックアップの実際のフロアマップ配置（部屋・柱・ロッカー含む）を再現する
 export default function Availability() {
   const [date, setDate] = useState(todayStr())
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('all')
@@ -119,6 +120,22 @@ export default function Availability() {
     }
   }
 
+  const seatByNo: Record<string, Seat> = {}
+  const seatArea: Record<string, string> = {}
+  availability?.areas.forEach((a) => {
+    a.blocks.forEach((b) => {
+      b.seats.forEach((s) => {
+        seatByNo[s.seat_no] = s
+        seatArea[s.seat_no] = a.area
+      })
+    })
+  })
+  const floorProps = {
+    seatByNo,
+    onReserve: (seat: Seat) => openReserve(seat, seatArea[seat.seat_no]),
+    onCancel: (seat: Seat) => openCancel(seat, seatArea[seat.seat_no]),
+  }
+
   return (
     <div className="mx-auto max-w-6xl p-6">
       <h1 className="mb-4 text-xl font-bold">空き状況・予約</h1>
@@ -177,45 +194,21 @@ export default function Availability() {
 
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
-      {availability?.areas.map((a) => (
-        <div key={a.area} className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-slate-600">{a.area}エリア</h2>
-          <div className="flex flex-wrap gap-4">
-            {a.blocks.map((b) => (
-              <div key={b.block_label} className="rounded border border-slate-200 bg-white p-3">
-                <div className="mb-2 text-xs font-semibold text-slate-500">{b.block_label}</div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {b.seats.map((seat) => {
-                    const clickable = seat.status === 'free' || seat.status === 'mine'
-                    return (
-                      <button
-                        key={seat.seat_no}
-                        type="button"
-                        disabled={!clickable}
-                        title={seat.title ?? undefined}
-                        onClick={() =>
-                          seat.status === 'free' ? openReserve(seat, a.area)
-                          : seat.status === 'mine' ? openCancel(seat, a.area)
-                          : undefined
-                        }
-                        className={`flex h-12 w-14 flex-col items-center justify-center rounded text-[11px] leading-tight ${STATUS_STYLE[seat.status]} ${clickable ? '' : 'cursor-default'}`}
-                      >
-                        <span className="font-semibold">{seat.seat_no}</span>
-                        {seat.display_name && <span className="text-[10px]">{seat.display_name}</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
+      <div className="overflow-x-auto pb-2">
+        {availability?.areas.map((a) => (
+          <div key={a.area} className="mb-6 inline-block w-full align-top">
+            <h2 className={`area-heading area-${a.area.toLowerCase()} mb-3`}>{a.area}エリア</h2>
+            {a.area === 'NORTH' && <NorthFloor {...floorProps} />}
+            {a.area === 'EAST' && <EastFloor {...floorProps} />}
+            {a.area === 'WEST' && <WestFloor {...floorProps} />}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
-      <div className="mb-8 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+      <div className="seat-legend mb-8 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
         {LEGEND.map((l) => (
-          <span key={l.status} className="flex items-center gap-1.5">
-            <span className={`inline-block h-3 w-3 rounded-sm ${STATUS_STYLE[l.status]}`} />
+          <span key={l.status} className="legend-item flex items-center gap-1.5">
+            <span className={`legend-swatch inline-block h-3.5 w-3.5 rounded-sm ${STATUS_CSS_CLASS[l.status]}`} />
             {l.label}
           </span>
         ))}
