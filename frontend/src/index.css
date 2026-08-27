@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-slate-100 text-slate-800;
+}
+
+button:not(:disabled),
+a[href] {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+}

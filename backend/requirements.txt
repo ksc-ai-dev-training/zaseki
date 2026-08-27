@@ -1,0 +1,8 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+asyncpg>=0.30
+pydantic>=2.10
+PyJWT>=2.10
+# Google IDトークン（RS256）の署名検証に必要。無いと PyJWT が RS256 を扱えない
+cryptography>=44
+httpx>=0.28

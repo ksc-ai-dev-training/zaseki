@@ -4,3 +4,23 @@ keireki/
 
 # Keireki混入の残骸（空のstyle.cssのみで、どのページからも参照していない。2026-08-26時点で未削除・未使用）
 docs/assets/
+
+# アプリ本体（backend/frontend）
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+
+# 環境変数・秘密情報
+.env
+.env.*
+!.env.example
+
+# OS
+Thumbs.db
+.DS_Store
+
+# 動作確認時の一時ログ
+/*.log
