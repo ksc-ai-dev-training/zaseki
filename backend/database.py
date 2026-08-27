@@ -37,7 +37,8 @@ AUTO_MIGRATE = (
 
 _pool: asyncpg.Pool | None = None
 
-# T-01のみ（S-01ログイン画面に必要な範囲）。以降の画面を実装するたびにテーブルを追加する。
+# T-01・T-02・T-03・T-08・T-16（S-01ログイン、S-02空き状況・予約のコア部分に必要な範囲）。
+# 以降の画面を実装するたびにテーブルを追加する。
 SCHEMA = """
 -- T-01 users
 CREATE TABLE IF NOT EXISTS users (
@@ -57,6 +58,53 @@ CREATE TABLE IF NOT EXISTS users (
     deleted_at         TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- T-02 areas
+CREATE TABLE IF NOT EXISTS areas (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name        VARCHAR(10) NOT NULL UNIQUE
+                CHECK (name IN ('NORTH', 'EAST', 'WEST')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- T-03 seats
+CREATE TABLE IF NOT EXISTS seats (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    seat_no     VARCHAR(10) NOT NULL UNIQUE,
+    area_id     BIGINT NOT NULL REFERENCES areas(id),
+    seat_type   VARCHAR(10) NOT NULL DEFAULT 'free'
+                CHECK (seat_type IN ('free', 'fixed', 'project')),
+    status      VARCHAR(10) NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'retired')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- T-08 reservations
+CREATE TABLE IF NOT EXISTS reservations (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    seat_id     BIGINT NOT NULL REFERENCES seats(id),
+    user_id     BIGINT NOT NULL REFERENCES users(id),
+    date        DATE NOT NULL,
+    created_by  BIGINT NOT NULL REFERENCES users(id),
+    status      VARCHAR(10) NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'cancelled')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_reservations_seat_date_active
+    ON reservations (seat_id, date) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_reservations_user_id ON reservations (user_id);
+
+-- T-16 app_settings
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         VARCHAR(100) PRIMARY KEY,
+    value       TEXT NOT NULL,
+    description TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """
 
@@ -83,6 +131,11 @@ async def init_pool() -> asyncpg.Pool:
 def get_pool() -> asyncpg.Pool:
     assert _pool is not None, "init_pool() が呼ばれていません"
     return _pool
+
+
+async def get_setting(key: str) -> str | None:
+    """T-16 app_settingsから設定値を取得する"""
+    return await get_pool().fetchval("SELECT value FROM app_settings WHERE key = $1", key)
 
 
 async def close_pool() -> None:

@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import database
-from routers import auth
+from routers import auth, reservations, seats
 
 
 @asynccontextmanager
@@ -20,6 +20,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Zaseki API", lifespan=lifespan)
 
 app.include_router(auth.router)
+app.include_router(seats.router)
+app.include_router(reservations.router)
 
 
 @app.get("/healthz", include_in_schema=False)
