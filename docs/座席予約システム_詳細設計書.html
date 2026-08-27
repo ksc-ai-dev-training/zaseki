@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.8（ドラフト・作成中）</span>
+      <span>版数: 0.9（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -234,6 +234,7 @@ footer.doc-footer {
       <tr><td>0.6</td><td>2026-08-26</td><td>「詳細設計に細かなER図を作成してほしい」との要望を受け、2.2節「ER図」を新設した。基本設計書3.1節のER図は中心6テーブルのみを対象にしていたが、本節はT-01〜T-16（T-12は欠番）の全テーブルを、関連の強さに応じて図1（座席・予約系: T-01・T-02・T-03・T-04・T-08・T-09・T-10・T-13）／図2（プロジェクト座席系: T-05・T-06・T-07・T-11、T-01・T-02は図1と共通のため列を絞って再掲）／図3（権限・設定系: T-14・T-15・T-16、T-01は図1と共通のため列を絞って再掲）の3枚に分けて示す。各テーブルはid・created_at・updated_at（2.1節の共通ルールにより全テーブル共通）を除く全列を列挙し、外部キー列には「→ T-xx」で参照先を明記した（基本設計書3.1節が2〜3列の抜粋だったのに対し、より粒度の細かい図とした）。線の輻輳を避けるため、登録者・操作者を表す列（例: reservations.created_by）のFK線は図から省略し、各図の脚注に明記した。既存のT-01〜T-16の節番号は2.3〜2.17へ1つずつ繰り下げ、本文中の相互参照（project_membersの2.7節→2.8節）も修正した。図の座標配置は、コネクタ線が無関係のテーブル枠を通過しないことをスクリプトで検証したうえで確定させた。</td></tr>
       <tr><td>0.7</td><td>2026-08-27</td><td>「エリア責任者自体は置くが、各エリアへの配置はなくしてほしい」との要望（要件定義書v0.72・基本設計書v1.65）を受けた。2.4節（T-02 areas）のmanager_user_id／deputy_user_idを削除し、2.3節（T-01 users）にarea_manager_role（'manager'/'deputy'/NULL）を新設した。2.2節のER図（図1のT-01・T-02ボックス、図2のT-01・T-02の再掲）を新しい列構成で再生成し、コネクタ線の非干渉をスクリプトで再検証した。3章のAPI設計を修正：A-30・A-31（エリア）から責任者・副責任者フィールドを削除しSlack Webhook URLのみに簡略化、A-25・A-26（利用者）にarea_manager_roleを追加、A-38・A-40〜A-44の認可欄から「担当エリアの」の限定を削除（A-43はarea_idパラメータも削除、各plan_idで自明のため）。5章を修正：P-AREA・P-AREA-HEADを、対象データに紐づく条件からP-ADMINと同種の単純な属性チェック（T-01.area_manager_role）に単純化し、5.3節の「対象データに依存する認可チェック」の分類から外した。5.4節（A-38のスコープ）・5.5.6節（A-26に新設したarea_manager_role='deputy'のフィールド単位の例外、A-31の簡略化）・5.5.7節を整合させた。</td></tr>
       <tr><td>0.8</td><td>2026-08-27</td><td>「プロジェクトの担当エリア割当（管理部）もいらない」との要望（要件定義書v0.73・基本設計書v1.66・D19）を受けた。2.4節（T-02 areas）のslack_webhook_urlを削除（nameのみの最小限マスタに）、2.9節（T-07 project_quarter_plans）のarea_id／area_assigned_byを削除した。2.17節（T-16 app_settings）にproject_seat_slack_webhook_url（プロジェクト座席共通の1つ）を追加し、本キーのみUI編集の例外として扱う旨を明記。2.2節のER図（図1のT-02、図2のT-07）を再生成し、図2からT-02 areasボックス自体を削除した（T-07がエリアを参照しなくなったため）。3章を修正：A-30を簡略化、A-31を廃止（欠番として保持）、A-39をエリア責任者・副責任者による「四半期計画の開始」に置き換えbodyからarea_idを削除、A-49・A-50（app_settingsの読み書き、通知設定タブ用）を新設。4.6節（S-08）・4.7節（S-09、担当エリア選択欄を削除）を修正。5章を修正：5.5.6節にA-49・A-50を追加しA-31を「廃止」に、5.5.7節のA-39をP-ADMINからP-AREAに変更。</td></tr>
+      <tr><td>0.9</td><td>2026-08-27</td><td>「S-09は現状エリア責任者のみアクセス可能になっているが、管理部側でもアクセスできるようにしていい。エリア責任者というロールはそのまま保持」との要望（要件定義書v0.74・基本設計書v1.67）を受けた。3章のA-38〜A-44の認可欄をP-AREA（エリア責任者・副責任者限定）からrole='admin'に変更（A-38は「未割当」状態の消滅とあわせて廃止扱いだったスコープ判定自体を削除し、一律の可否判定に統合）。5章を修正：5.3節のP-AREA定義に、area_manager_role IS NOT NULLは必ずrole='admin'でもあるためA-38〜A-44の判定はP-ADMINに一本化されたこと、P-AREA自体はP-AREA-HEAD（副責任者の指定権限、5.5.6節A-26）のために引き続き使うことを追記。5.4節のA-38のスコープ判定を廃止（もはやスコープ差がない）。5.5.7節のA-38〜A-44をP-AREAからP-ADMINに変更。area_manager_role（T-01、2.3節）自体・その表示上の位置づけは変更していない。</td></tr>
     </tbody>
   </table>
   </details>
@@ -848,13 +849,13 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?area=&quarter=</code></td><td>四半期での一覧（未割当プロジェクトを含む）。<code>area</code>は任意の絞り込み用クエリパラメータ（表示上のフィルタであり、認可の範囲を制限するものではない）。</td><td>role='admin'（未割当一覧を含む）／エリア責任者・副責任者（全件、2026-08-27訂正。エリアを問わず全プロジェクトが対象）</td><td></td></tr>
-      <tr><td><code>A-39</code></td><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>対象プロジェクトの四半期計画を開始し新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>エリア責任者・副責任者（2026-08-27訂正。従来はrole='admin'によるプロジェクトの担当エリア割当だったが廃止した）</td><td>Body: <code>{period_start}</code>。2026-08-27訂正、area_idを削除（座席の島の割当〔A-44〕で選んだ座席から自明に決まるため、四半期計画にエリアを持たせる必要がなくなった）。</td></tr>
-      <tr><td><code>A-40</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
-      <tr><td><code>A-41</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。対象プロジェクトの担当エリアのSlackチャンネルへ通知（FR-03-9①）。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td></td></tr>
-      <tr><td><code>A-42</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td></td></tr>
-      <tr><td><code>A-43</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/finalize-weekdays</code></td><td>指定した複数の計画の出社曜日を一括確定（FR-03-5）。<code>status→'weekdays_finalized'</code>。対象プロジェクトごとの担当エリアのSlackチャンネルへ通知（FR-03-9③）。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除。複数エリアの計画を1回の呼び出しにまとめて含めてもよい）</td><td>Body: <code>{plans: [{plan_id, weekdays_finalized}]}</code>。2026-08-27訂正、area_idは各plan_id側で自明のため削除。</td></tr>
-      <tr><td><code>A-44</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td>Body: <code>{seat_ids: [...]}</code>。既に他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節）。</td></tr>
+      <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?area=&quarter=</code></td><td>四半期での一覧。<code>area</code>は任意の絞り込み用クエリパラメータ（表示上のフィルタであり、認可の範囲を制限するものではない）。</td><td>role='admin'（2026-08-27再訂正。「管理部側でもS-09にアクセスできてよい」との要望を受け、area_manager_role IS NOT NULLを要求する条件を撤廃。area_manager_role保持者は必ずrole='admin'でもあるため、実質的にrole='admin'のみの条件に単純化された）</td><td>「未割当」という状態は存在しない（A-39参照）。全ての呼び出し元が同じ全件を取得する。</td></tr>
+      <tr><td><code>A-39</code></td><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>対象プロジェクトの四半期計画を開始し新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>role='admin'（2026-08-27訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{period_start}</code>。2026-08-27訂正、area_idを削除（座席の島の割当〔A-44〕で選んだ座席から自明に決まるため、四半期計画にエリアを持たせる必要がなくなった）。</td></tr>
+      <tr><td><code>A-40</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
+      <tr><td><code>A-41</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。対象プロジェクトの担当エリアのSlackチャンネルへ通知（FR-03-9①）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td></td></tr>
+      <tr><td><code>A-42</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td></td></tr>
+      <tr><td><code>A-43</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/finalize-weekdays</code></td><td>指定した複数の計画の出社曜日を一括確定（FR-03-5）。<code>status→'weekdays_finalized'</code>。対象プロジェクトごとの担当エリアのSlackチャンネルへ通知（FR-03-9③）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した。複数エリアの計画を1回の呼び出しにまとめて含めてもよい）</td><td>Body: <code>{plans: [{plan_id, weekdays_finalized}]}</code>。2026-08-27訂正、area_idは各plan_id側で自明のため削除。</td></tr>
+      <tr><td><code>A-44</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{seat_ids: [...]}</code>。既に他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節）。</td></tr>
     </tbody>
   </table>
 
@@ -1011,7 +1012,7 @@ footer.doc-footer {
     <tbody>
       <tr><td>role</td><td>T-01.role</td><td><code>'general' / 'admin'</code>。'admin'が管理部。</td></tr>
       <tr><td>在籍状況</td><td>T-01.employment_status, deleted_at</td><td>退職済み判定（RULE-06）に使う。認可ではなく5.1節の認証段階で判定する。</td></tr>
-      <tr><td>エリア責任者・副責任者</td><td>T-01.area_manager_role</td><td>特定のエリアに紐づかない全プロジェクト共通の追加条件（2026-08-27訂正、従来はT-02.manager_user_id／deputy_user_idというエリアごとのFKだった）。必ずrole='admin'の利用者から指定されるが、role='admin'であること自体はこの条件の代わりにならない（基本設計書4.2節、2026-08-21再訂正）。</td></tr>
+      <tr><td>エリア責任者・副責任者</td><td>T-01.area_manager_role</td><td>特定のエリアに紐づかない全プロジェクト共通の属性（2026-08-27訂正、従来はT-02.manager_user_id／deputy_user_idというエリアごとのFKだった）。必ずrole='admin'の利用者から指定される。2026-08-27再訂正: プロジェクト座席計画の運用（A-38〜A-44）はrole='admin'であれば本属性の有無を問わず行えることとしたため、これらのAPIの認可条件としては使わなくなった。担当者を明確にする表示上の位置づけ、および副責任者の指定権限（P-AREA-HEAD、5.5.6節A-26）のために引き続き意味を持つ。</td></tr>
       <tr><td>PJ席決担当</td><td>T-05.proxy_user_id</td><td>対象プロジェクトに対する追加条件。project_title∈{'PM','PL'}の利用者の中から管理部が1名指定する。</td></tr>
       <tr><td>プロジェクトでの役割</td><td>T-06.project_title</td><td><code>'PM' / 'PL' / 'SL' / NULL</code>。'PM'・'PL'であることを条件にする箇所があるが、'SL'は含めない（2.8節）。</td></tr>
       <tr><td>席決め権限</td><td>T-06.can_assign_seats</td><td>PM(PL)が付与するプロジェクト単位のフラグ（FR-03-8）。</td></tr>
@@ -1026,7 +1027,7 @@ footer.doc-footer {
       <tr><td><code>P-ANY</code></td><td>追加条件なし</td><td>認証済みであれば足りる。自分自身のデータのみを扱う、または全員に開かれたAPI。</td></tr>
       <tr><td><code>P-OWNER</code></td><td>対象データの所有者</td><td>対象リソース（予約・周期予約ルール・プロジェクト計画等）のuser_id、またはそれに準ずる紐づき（例: T-06に自分の行があること）が自分であること。</td></tr>
       <tr><td><code>P-ADMIN</code></td><td>管理部</td><td>role='admin'。</td></tr>
-      <tr><td><code>P-AREA</code></td><td>エリア責任者・副責任者</td><td>T-01.area_manager_role IS NOT NULL（'manager'または'deputy'）。特定のエリアに紐づかず、エリアを問わず全プロジェクトが対象（2026-08-27訂正。従来は対象プロジェクトのT-07.area_idと一致するエリアのT-02.manager_user_id／deputy_user_idとの比較が必要な、資源1件に紐づく条件だったが、role='admin'同様の単純な属性チェックになった）。</td></tr>
+      <tr><td><code>P-AREA</code></td><td>エリア責任者・副責任者</td><td>T-01.area_manager_role IS NOT NULL（'manager'または'deputy'）。特定のエリアに紐づかず、エリアを問わず全プロジェクトが対象（2026-08-27訂正。従来は対象プロジェクトのT-07.area_idと一致するエリアのT-02.manager_user_id／deputy_user_idとの比較が必要な、資源1件に紐づく条件だったが、role='admin'同様の単純な属性チェックになった）。<strong>2026-08-27再訂正:</strong> 「管理部側でもS-09にアクセスできてよい」との要望を受け、プロジェクト座席計画の運用（A-38〜A-44）はP-ADMINのみで判定することとし、本コードはこれらのAPIの認可条件としては使わなくなった。area_manager_role IS NOT NULLは必ずrole='admin'でもある（2.3節参照）ため、P-AREAは常にP-ADMINの部分集合であり、判定上はP-ADMINと書けば足りる。ただしコード自体は5.5.6節のフィールド単位の例外（副責任者の指定権限）で引き続き使う。</td></tr>
       <tr><td><code>P-AREA-HEAD</code></td><td>エリア責任者（副責任者を含まない）</td><td>T-01.area_manager_role='manager'。</td></tr>
       <tr><td><code>P-PROXY</code></td><td>対象プロジェクトのPJ席決担当</td><td>対象プロジェクトについて、T-05.proxy_user_id=自分。</td></tr>
       <tr><td><code>P-PMPL</code></td><td>対象プロジェクトのPM・PL本人</td><td>対象プロジェクトについて、T-06.project_title∈{'PM','PL'}かつuser_id=自分。SLは含まない。</td></tr>
@@ -1043,7 +1044,7 @@ footer.doc-footer {
       <tr><td>A-08</td><td>常に自分のuser_idのみ（絞り込みの余地なし）。</td></tr>
       <tr><td>A-13</td><td>自分がT-06に含まれるプロジェクトのみ。</td></tr>
       <tr><td>A-25</td><td>P-ADMINのみ呼び出せる（絞り込みではなく5.5節どおりの可否判定）。<code>show_retired</code>等はクエリパラメータによる任意の絞り込み。</td></tr>
-      <tr><td>A-38</td><td>P-ADMINが呼ぶ場合は担当エリア未割当のプロジェクトのみ、P-AREAの利用者が呼ぶ場合はエリアを問わず全ての計画（2026-08-27訂正。従来は自分が責任者・副責任者を務めるエリアの計画のみだったが、P-AREAが全エリア共通の条件になったため）。いずれにも該当しない利用者は403（可否判定はP-ADMIN or P-AREA、5.5節）。</td></tr>
+      <tr><td>A-38</td><td><em>2026-08-27再訂正: 廃止。</em>「未割当」という状態がなくなり、呼び出し元による範囲の違いも解消したため、可否と範囲がともにP-ADMIN固定の一律判定になった（5.5.7節参照）。もはやスコープ判定の対象ではない。</td></tr>
       <tr><td>A-46</td><td>P-ADMINのみ呼び出せる（絞り込みではなく可否判定）。</td></tr>
     </tbody>
   </table>
@@ -1136,13 +1137,13 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td>A-38</td><td><code>P-ADMIN</code> または <code>P-AREA</code></td><td>5.4節のとおりいずれで呼ぶかで返る範囲が変わる。</td></tr>
-      <tr><td>A-39</td><td><code>P-AREA</code></td><td>2026-08-27訂正。従来は<code>P-ADMIN</code>（管理部によるプロジェクトの担当エリア割当）だったが、この操作自体をエリア責任者・副責任者による四半期計画の開始に置き換えた。</td></tr>
-      <tr><td>A-40</td><td><code>P-AREA</code></td><td></td></tr>
-      <tr><td>A-41</td><td><code>P-AREA</code></td><td></td></tr>
-      <tr><td>A-42</td><td><code>P-AREA</code></td><td></td></tr>
-      <tr><td>A-43</td><td><code>P-AREA</code></td><td></td></tr>
-      <tr><td>A-44</td><td><code>P-AREA</code></td><td></td></tr>
+      <tr><td>A-38</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。従来は<code>P-ADMIN</code> または <code>P-AREA</code>（呼び出し元で範囲が変わるスコープ判定）だったが、「未割当」状態の消滅とP-AREA⊆P-ADMINの関係により、単純な<code>P-ADMIN</code>の可否判定に統合された。</td></tr>
+      <tr><td>A-39</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。エリア責任者・副責任者限定（<code>P-AREA</code>）としていたが、同日中に管理部一般にも開放した。</td></tr>
+      <tr><td>A-40</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。同上。</td></tr>
+      <tr><td>A-41</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。同上。</td></tr>
+      <tr><td>A-42</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。同上。</td></tr>
+      <tr><td>A-43</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。同上。</td></tr>
+      <tr><td>A-44</td><td><code>P-ADMIN</code></td><td>2026-08-27再訂正。同上。</td></tr>
     </tbody>
   </table>
 
@@ -1231,7 +1232,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.8 / 2026-08-27</span>
+    <span>版数 0.9 / 2026-08-27</span>
   </footer>
 
 </div>
