@@ -137,7 +137,7 @@ export default function Availability() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <div className="p-6">
       <h1 className="mb-4 text-xl font-bold">空き状況・予約</h1>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
