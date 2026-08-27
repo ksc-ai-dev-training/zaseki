@@ -106,37 +106,55 @@
                   <td><span class="avatar" style="margin-right:8px">田</span>田中 一郎</td>
                   <td>A1</td>
                   <td>NORTH</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('田中 一郎','A1','NORTH')">解除する</button>
+                  </td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">中</span>中村 誠</td>
                   <td>B1</td>
                   <td>NORTH</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('中村 誠','B1','NORTH')">解除する</button>
+                  </td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">山</span>山本 健太</td>
                   <td>C4</td>
                   <td>EAST</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('山本 健太','C4','EAST')">解除する</button>
+                  </td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">清</span>清水 陽子</td>
                   <td>G3</td>
                   <td>EAST</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('清水 陽子','G3','EAST')">解除する</button>
+                  </td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
                   <td>J1</td>
                   <td>WEST</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('高橋 美咲','J1','WEST')">解除する</button>
+                  </td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">石</span>石井 大輔</td>
                   <td>N3</td>
                   <td>WEST</td>
-                  <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を変更する</a>
+                    <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openUnassignModal('石井 大輔','N3','WEST')">解除する</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -147,6 +165,39 @@
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="unassign-modal" onclick="if(event.target===this)closeUnassignModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">固定座席の解除</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeUnassignModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="def-grid">
+        <div class="def-row wide"><dt>氏名</dt><dd id="unassign-modal-name">田中 一郎</dd></div>
+        <div class="def-row wide"><dt>固定座席</dt><dd id="unassign-modal-seat">A1</dd></div>
+        <div class="def-row wide"><dt>エリア</dt><dd id="unassign-modal-area">NORTH</dd></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeUnassignModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeUnassignModal()">解除する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 固定座席の解除確認モーダル（2026-08-27追加。「固定座席利用者一覧に削除ボタンがほしい」との要望に対応）
+function openUnassignModal(name, seatNo, area) {
+  document.getElementById('unassign-modal-name').textContent = name;
+  document.getElementById('unassign-modal-seat').textContent = seatNo;
+  document.getElementById('unassign-modal-area').textContent = area;
+  document.getElementById('unassign-modal').classList.add('open');
+}
+function closeUnassignModal() {
+  document.getElementById('unassign-modal').classList.remove('open');
+}
+</script>
 
 </body>
 </html>

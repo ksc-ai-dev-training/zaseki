@@ -1,0 +1,122 @@
+# A-19, A-20, A-21, A-52 固定座席の指定（S-05）。詳細設計書3.5節
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from auth_helpers import CurrentUser, require_roles
+from database import get_pool
+
+router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assignments"])
+
+
+@router.get("")
+async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
+    """A-19: 固定座席の割当一覧（現在の割当パネル）"""
+    rows = await get_pool().fetch(
+        """SELECT fsa.seat_id, s.seat_no, a.name AS area_name, u.id AS user_id, u.last_name, u.first_name
+           FROM fixed_seat_assignments fsa
+           JOIN seats s ON s.id = fsa.seat_id
+           JOIN areas a ON a.id = s.area_id
+           JOIN users u ON u.id = fsa.user_id
+           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no"""
+    )
+    return {
+        "items": [
+            {
+                "seat_id": r["seat_id"], "seat_no": r["seat_no"], "area": r["area_name"],
+                "user_id": r["user_id"], "user_name": f"{r['last_name']} {r['first_name']}",
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/candidates")
+async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("admin"))):
+    """A-52: 新しく固定座席を指定する対象者検索（固定座席を持たない利用者、氏名の部分一致）。
+    2026-08-27追加。詳細設計書3.5節にはA-19・A-20・A-21のみ定義されていたが、4.4節が明記する
+    「一覧には固定座席を持たない利用者のみを表示する」検索の裏付けとなるAPIが欠けていたため新設した。
+    プロジェクト座席の利用状況（T-05〜T-07）は未実装のため、現時点では区別せず一律の文言を返す。"""
+    rows = await get_pool().fetch(
+        """SELECT u.id, u.last_name, u.first_name
+           FROM users u
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id
+           WHERE u.deleted_at IS NULL AND fsa.seat_id IS NULL
+             AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+           ORDER BY u.last_name, u.first_name""",
+        q,
+    )
+    return {
+        "items": [
+            {
+                "user_id": r["id"],
+                "user_name": f"{r['last_name']} {r['first_name']}",
+                "current_status": "固定座席・プロジェクト座席の割当なし（フリー座席を利用）",
+            }
+            for r in rows
+        ]
+    }
+
+
+class FixedSeatAssign(BaseModel):
+    seat_id: int
+    user_id: int
+
+
+@router.post("")
+async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_roles("admin"))):
+    """A-20: 座席タイプを問わず、座席を利用者の固定座席として割り当てる（S-02のフロアマップから
+    座席タイプを問わず選べる、2026-08-27訂正）。割り当てと同時にseat_type='fixed'に変更し、
+    以後の予約有無に基づく判定（A-06）を恒久割当ベースに切り替える。当該座席に残っている
+    今後の通常予約（T-08）は割当と矛盾するため取り消す。対象者が既に別の固定座席を持つ場合は
+    そちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」もこのAPIで表現する）。"""
+    pool = get_pool()
+    seat = await pool.fetchrow("SELECT id, seat_type, status FROM seats WHERE id = $1", body.seat_id)
+    if seat is None or seat["status"] != "active":
+        raise HTTPException(404, detail="対象が見つかりません")
+    if seat["seat_type"] == "fixed":
+        already = await pool.fetchval(
+            "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1", body.seat_id
+        )
+        if already:
+            raise HTTPException(409, detail="この座席は既に割り当てられています")
+    target = await pool.fetchrow("SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL", body.user_id)
+    if target is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            old_seat_id = await conn.fetchval(
+                "SELECT seat_id FROM fixed_seat_assignments WHERE user_id = $1", body.user_id
+            )
+            await conn.execute("DELETE FROM fixed_seat_assignments WHERE user_id = $1", body.user_id)
+            if old_seat_id is not None and old_seat_id != body.seat_id:
+                # 座席を変更する場合、元の座席をfixedのまま放置すると誰にも使えない座席として
+                # 残ってしまうため、通常のフリー座席に戻す
+                await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", old_seat_id)
+            await conn.execute("UPDATE seats SET seat_type = 'fixed' WHERE id = $1", body.seat_id)
+            await conn.execute(
+                """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                   WHERE seat_id = $1 AND status = 'active' AND date >= CURRENT_DATE""",
+                body.seat_id,
+            )
+            await conn.execute(
+                "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by) VALUES ($1, $2, $3)",
+                body.seat_id, body.user_id, user.id,
+            )
+    return {"detail": "固定座席を指定しました"}
+
+
+@router.delete("/{seat_id}")
+async def unassign(seat_id: int, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-21: 固定座席の割当を解除（物理DELETE）。解除後は通常のフリー座席に戻す
+    （seat_type='free'、2026-08-27訂正。座席タイプを問わず指定できるようになったことに伴う対応）。"""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute(
+                "DELETE FROM fixed_seat_assignments WHERE seat_id = $1", seat_id
+            )
+            if result == "DELETE 0":
+                raise HTTPException(404, detail="対象が見つかりません")
+            await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", seat_id)
+    return {"detail": "固定座席の割当を解除しました"}

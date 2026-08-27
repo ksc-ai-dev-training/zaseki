@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.11（ドラフト・作成中）</span>
+      <span>版数: 0.15（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -237,6 +237,10 @@ footer.doc-footer {
       <tr><td>0.9</td><td>2026-08-27</td><td>「S-09は現状エリア責任者のみアクセス可能になっているが、管理部側でもアクセスできるようにしていい。エリア責任者というロールはそのまま保持」との要望（要件定義書v0.74・基本設計書v1.67）を受けた。3章のA-38〜A-44の認可欄をP-AREA（エリア責任者・副責任者限定）からrole='admin'に変更（A-38は「未割当」状態の消滅とあわせて廃止扱いだったスコープ判定自体を削除し、一律の可否判定に統合）。5章を修正：5.3節のP-AREA定義に、area_manager_role IS NOT NULLは必ずrole='admin'でもあるためA-38〜A-44の判定はP-ADMINに一本化されたこと、P-AREA自体はP-AREA-HEAD（副責任者の指定権限、5.5.6節A-26）のために引き続き使うことを追記。5.4節のA-38のスコープ判定を廃止（もはやスコープ差がない）。5.5.7節のA-38〜A-44をP-AREAからP-ADMINに変更。area_manager_role（T-01、2.3節）自体・その表示上の位置づけは変更していない。</td></tr>
       <tr><td>0.10</td><td>2026-08-27</td><td>「残りの確認事項は了承をもらったので大丈夫」との報告を受け、全6章のドラフトについて発注者・上司の確認が取れたことを末尾の注記に反映した。</td></tr>
       <tr><td>0.11</td><td>2026-08-27</td><td>S-06（管理メニュー）のコード実装にあたり、統計サマリー取得用のA-51 <code>GET /admin/summary</code>を新設（S-06自体はこれまで3章・5章のどちらにも対応節がなかった）。3章に3.6節「管理メニュー（S-06）」を挿入し、既存の3.6〜3.11節を3.7〜3.12節へ繰り下げ、これに伴う相互参照（3.7節・3.2〜3.11節）を修正した。5章はA-49・A-50の前例（末尾追加）にならい、5.5.10節として末尾に追加（既存節の番号は変更していない）。</td></tr>
+      <tr><td>0.12</td><td>2026-08-27</td><td>S-05（固定座席の指定）のコード実装にあたり、対象者検索用のA-52 <code>GET /fixed-seat-assignments/candidates?q=</code>を新設した（3章にはA-19・A-20・A-21のみ定義されており、4.4節が明記する「固定座席を持たない利用者のみを表示する」検索の裏付けとなるAPIが欠けていた）。3.5節・5.5.4節にA-52を追加。A-20の備考に、対象者が既に別の固定座席を持つ場合は解除してから割り当てる（1人1固定座席、「座席を変更する」ボタンも同じAPIで表現する）仕様を明記した。</td></tr>
+      <tr><td>0.13</td><td>2026-08-27</td><td>「固定座席の指定はすべての席から選べるようにしてほしい」との要望を受けた。従来のA-20はseat_id側が事前にseat_type='fixed'であることを要求していたが、この事前区分自体を撤廃し、座席タイプを問わず当日以降の有効な予約がなければ任意の座席を指定できるよう変更した。割当（A-20）は対象seat_idのseat_typeを'fixed'に変更し、当該座席の今後の有効な予約を取り消す。解除（A-21）は逆にseat_typeを'free'に戻す。3.5節（A-20・A-21の備考）・4.4節（callout）を修正。</td></tr>
+      <tr><td>0.14</td><td>2026-08-27</td><td>「固定座席とフリー座席で同日に複数の席を取っている状態になってしまうので、固定座席になった人は予約できないようにしてほしい」との報告を受けた。要件定義書v0.76でRULE-07（固定座席の利用者はフリー座席を予約できない）を新設したことを受け、A-09にRULE-07の検証を追加した（role='admin'でもスキップしない、RULE-02と同じ扱い）。3.3節（A-09備考）・4.1節（callout）・6.4節（RULE-07の行を追加）を修正。</td></tr>
+      <tr><td>0.15</td><td>2026-08-27</td><td>「固定座席なのですが変更がない限りずっとその席にするようにしてほしい」との報告を受けて調査したところ、A-20（座席を変更する）で対象者の元の座席のseat_typeを'fixed'のまま戻し忘れており、変更するたびに元の座席が誰にも使えない状態で残ってしまう不具合を発見した。A-20の処理に、元の座席（変更前）をseat_type='free'に戻す処理を追加した。3.5節（A-20の備考）を修正。</td></tr>
     </tbody>
   </table>
   </details>
@@ -762,7 +766,7 @@ footer.doc-footer {
       <tr><td><code>A-06</code></td><td><span class="method get">GET</span><code>/seats/availability?date=&area=</code></td><td>指定日・エリア（<code>all/north/east/west</code>）の座席状況一覧（FR-04-1〜3）。</td><td>本人</td><td>レスポンス例は後述。</td></tr>
       <tr><td><code>A-07</code></td><td><span class="method get">GET</span><code>/seats/availability/period?start=&end=&area=</code></td><td>期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。</td><td>本人</td><td><code>start</code>〜<code>end</code>はRULE-05の予約可能期間内。</td></tr>
       <tr><td><code>A-08</code></td><td><span class="method get">GET</span><code>/reservations/mine?scope=upcoming|past</code></td><td>自分の予約一覧（FR-01-4）。</td><td>本人</td><td></td></tr>
-      <tr><td><code>A-09</code></td><td><span class="method post">POST</span><code>/reservations</code></td><td>単発予約の登録（FR-01-1）。</td><td>本人（role='admin'はFR-01-7によりRULE-05等をスキップ）</td><td>Body: <code>{seat_id, date}</code></td></tr>
+      <tr><td><code>A-09</code></td><td><span class="method post">POST</span><code>/reservations</code></td><td>単発予約の登録（FR-01-1）。</td><td>本人（role='admin'はFR-01-7によりRULE-05等をスキップ）</td><td>Body: <code>{seat_id, date}</code>。呼び出し者が固定座席（T-04）を持つ場合はRULE-07により拒否する（role='admin'でもスキップしない、2026-08-27追加）。</td></tr>
       <tr><td><code>A-10</code></td><td><span class="method post">POST</span><code>/reservations/recurring</code></td><td>周期予約の登録（FR-01-6・D11）。</td><td>本人</td><td>Body: <code>{seat_id, pattern, start_date, end_date}</code>。レスポンスに登録できた日・除外された日（理由付き）を含む。</td></tr>
       <tr><td><code>A-11</code></td><td><span class="method delete">DELETE</span><code>/reservations/{id}</code></td><td>単発予約の取消。</td><td>本人（対象予約のuser_id＝自分）</td><td></td></tr>
       <tr><td><code>A-12</code></td><td><span class="method delete">DELETE</span><code>/reservations/recurring/{rule_id}?date=</code></td><td>周期予約のうち指定した1日分のみを取消（一部取消、REQ-F-03）。</td><td>本人</td><td>当該日のT-08行のみ<code>status='cancelled'</code>にする。</td></tr>
@@ -810,8 +814,9 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td><code>A-19</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments</code></td><td>固定座席の割当一覧。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><code>A-20</code></td><td><span class="method post">POST</span><code>/fixed-seat-assignments</code></td><td>固定座席を利用者に割り当てる。</td><td>role='admin'</td><td>Body: <code>{seat_id, user_id}</code>。seat_idはseat_type='fixed'かつ未割当のものに限る。</td></tr>
-      <tr><td><code>A-21</code></td><td><span class="method delete">DELETE</span><code>/fixed-seat-assignments/{seat_id}</code></td><td>固定座席の割当を解除（物理DELETE、基本設計書3.2節T-04）。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-52</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments/candidates?q=</code></td><td>新しく固定座席を指定する対象者検索（固定座席を持たない利用者、氏名の部分一致）。</td><td>role='admin'</td><td>2026-08-27追加。4.4節が明記する絞り込みの裏付けとなるAPIが3章に存在しなかったため新設（A-49・A-50と同様、末尾番号）。</td></tr>
+      <tr><td><code>A-20</code></td><td><span class="method post">POST</span><code>/fixed-seat-assignments</code></td><td>座席を利用者の固定座席として割り当てる。</td><td>role='admin'</td><td>Body: <code>{seat_id, user_id}</code>。座席タイプは問わず、当日以降の有効な予約が残っていないこと（あれば取消）を条件に、任意の座席を指定できる（2026-08-27再訂正。以前はseat_type='fixed'かつ未割当のものに限定していたが、「すべての席から選べるようにしてほしい」との要望を受け撤廃）。割当と同時にseat_id側のseat_typeを'fixed'に変更し、その座席の今後の有効な予約（T-08）を取り消す。対象者が既に別の固定座席を持つ場合はそちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」も本APIで表現する）。解除した元の座席はseat_typeを'free'に戻す（2026-08-27追加。戻さないと元の座席が誰にも使えない'fixed'のまま残ってしまう不具合があったため）。</td></tr>
+      <tr><td><code>A-21</code></td><td><span class="method delete">DELETE</span><code>/fixed-seat-assignments/{seat_id}</code></td><td>固定座席の割当を解除（物理DELETE、基本設計書3.2節T-04）。</td><td>role='admin'</td><td>解除後はseat_typeを'free'に戻す（2026-08-27追加、任意の座席を指定できるようになったことに伴う対応）。</td></tr>
     </tbody>
   </table>
 
@@ -916,7 +921,7 @@ footer.doc-footer {
       <tr><td>周期予約・適用期間（開始／終了）</td><td>date × 2</td><td>必須</td><td>いずれもRULE-05の予約可能期間の範囲内。開始 ≤ 終了。</td></tr>
     </tbody>
   </table>
-  <p class="callout">座席そのものの選択（フロアマップのタップ）は入力欄ではなく操作であるため本表には含めない。座席選択後の予約確定操作では、RULE-01（廃止座席）・RULE-02（同一日複数予約、固定座席利用者を除く）・RULE-03（同一座席・同一日の二重予約）・RULE-05（予約可能期間）をAPI側で検証する（4.1節の基本設計書の実現方針を参照。エラー時の表示は6章）。</p>
+  <p class="callout">座席そのものの選択（フロアマップのタップ）は入力欄ではなく操作であるため本表には含めない。座席選択後の予約確定操作では、RULE-01（廃止座席）・RULE-02（同一日複数予約）・RULE-03（同一座席・同一日の二重予約）・RULE-05（予約可能期間）・RULE-07（固定座席利用者はフリー座席を予約不可）をAPI側で検証する（4.1節の基本設計書の実現方針を参照。エラー時の表示は6章）。</p>
 
   <h3>4.3 S-04 プロジェクト座席（PM側）</h3>
   <table>
@@ -938,7 +943,7 @@ footer.doc-footer {
       <tr><td>氏名検索（新しく固定座席を指定する対象者の絞り込み）</td><td>search</td><td>任意</td><td>特になし（部分一致検索）。一覧には固定座席を持たない利用者のみを表示する。</td></tr>
     </tbody>
   </table>
-  <p class="callout">実際の座席番号の選択は、この画面には入力欄を持たず、「この人に固定座席を指定する」「座席を変更する」からS-02（空き状況・予約）のフロアマップへ遷移して行う（S-09の「座席の島を割り当てる」と同じ考え方）。S-02側での座席タップが実質的な入力にあたり、対象の座席がseat_type='fixed'かつ未割当であることをAPI側で検証する。</p>
+  <p class="callout">実際の座席番号の選択は、この画面には入力欄を持たず、「この人に固定座席を指定する」「座席を変更する」からS-02（空き状況・予約）のフロアマップへ遷移して行う（S-09の「座席の島を割り当てる」と同じ考え方）。S-02側での座席タップが実質的な入力にあたり、座席タイプを問わず当日空いている座席であれば選べる（2026-08-27訂正、A-20参照）。</p>
 
   <h3>4.5 S-07 座席マスタ管理</h3>
   <table>
@@ -1106,6 +1111,7 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td>A-19</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-52</td><td><code>P-ADMIN</code></td><td>2026-08-27追加。</td></tr>
       <tr><td>A-20</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-21</td><td><code>P-ADMIN</code></td><td></td></tr>
     </tbody>
@@ -1225,6 +1231,7 @@ footer.doc-footer {
     <tbody>
       <tr><td>RULE-01（廃止座席は予約不可）</td><td>—</td><td>—</td><td>—</td><td>座席一覧・フロアマップの取得APIが廃止済み座席（<code>status='retired'</code>）自体を返さないため、通常の操作でこのエラーには到達しない（基本設計書4.2.1節）。</td></tr>
       <tr><td>RULE-02（同一日に複数のフリー座席を予約できない）</td><td>A-09, A-10</td><td>400</td><td>「同じ日に複数の座席は予約できません」</td><td>予約確認画面でエラー表示し、「予約する」を実行させない。</td></tr>
+      <tr><td>RULE-07（固定座席の利用者はフリー座席を予約できない）</td><td>A-09, A-10</td><td>400</td><td>「固定座席が割り当てられているため、フリー座席は予約できません」</td><td>予約確認画面でエラー表示し、「予約する」を実行させない（2026-08-27追加）。</td></tr>
       <tr><td>RULE-03（同一座席・同一日の二重予約禁止）</td><td>A-09, A-10, A-47</td><td>409</td><td>「この座席はすでに予約されています」</td><td>予約確認操作時にエラー表示し、フロアマップの当該座席を最新の状態（使用中）に再取得する。</td></tr>
       <tr><td>RULE-05（フリー座席は前月26日以降でなければ予約不可）</td><td>A-09, A-10</td><td>400</td><td>「この座席は◯月26日から予約できます」（対象日に応じて日付を差し込む）</td><td>予約確認画面でエラー表示し、「予約する」を実行させない。呼び出し者が<code>P-ADMIN</code>の場合はこのチェック自体を行わない（FR-01-7、5.5.2節A-09備考）。</td></tr>
     </tbody>
@@ -1251,7 +1258,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.11 / 2026-08-27</span>
+    <span>版数 0.15 / 2026-08-27</span>
   </footer>
 
 </div>

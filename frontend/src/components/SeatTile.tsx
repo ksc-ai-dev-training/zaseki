@@ -15,14 +15,42 @@ interface SeatTileProps {
   onReserve: (seat: Seat) => void
   onCancel: (seat: Seat) => void
   style?: CSSProperties
+  /** S-05から遷移した「固定座席指定モード」。有効な間は通常の予約・取消を行わない */
+  fixedSeatAssignMode?: boolean
+  onAssignFixedSeat?: (seat: Seat) => void
 }
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
-export default function SeatTile({ seat, onReserve, onCancel, style }: SeatTileProps) {
+export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
   }
-  if (seat.status === 'free') {
+
+  if (fixedSeatAssignMode) {
+    // 座席タイプを問わず、当日空いている座席であれば指定できる（2026-08-27訂正）。
+    // 使用中・自分の予約・固定座席（他者）等はここでは選べないため非活性にする
+    const eligible = seat.status === 'free'
+    if (eligible) {
+      return (
+        <button
+          type="button"
+          className="seat-tile status-free ring-2 ring-blue-500"
+          style={style}
+          onClick={() => onAssignFixedSeat?.(seat)}
+        >
+          {seat.seat_no}
+        </button>
+      )
+    }
+    return (
+      <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style}>
+        {seat.seat_no}
+        {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+      </div>
+    )
+  }
+
+  if (seat.status === 'free' && seat.seat_type === 'free') {
     return (
       <button type="button" className="seat-tile status-free" style={style} onClick={() => onReserve(seat)}>
         {seat.seat_no}

@@ -20,7 +20,8 @@ class ReservationCreate(BaseModel):
 @router.post("")
 async def create_reservation(body: ReservationCreate, user: CurrentUser = Depends(require_auth)):
     """A-09: 単発予約の登録（FR-01-1）。role='admin'はFR-01-7によりRULE-05（予約可能期間）をスキップするが、
-    RULE-02（同一日複数予約禁止）は自分の予約として登録する限り管理部にも適用される（詳細設計書6章）。"""
+    RULE-02（同一日複数予約禁止）・RULE-07（固定座席利用者はフリー座席を予約不可）は
+    自分の予約として登録する限り管理部にも適用される（詳細設計書6章）。"""
     pool = get_pool()
     seat = await pool.fetchrow(
         "SELECT id, seat_no, seat_type, status FROM seats WHERE id = $1", body.seat_id
@@ -36,6 +37,14 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         open_date = await free_seat_open_date(body.date)
         if Date.today() < open_date:
             raise HTTPException(400, detail=f"この座席は{open_date.month}月{open_date.day}日から予約できます")
+
+    # RULE-07: 固定座席の利用者はフリー座席を予約できない（同一人物が固定座席とフリー座席を
+    # 同時に保有する状態を防ぐ）。RULE-02と同様、管理部が自分の予約として登録する場合も対象とする。
+    has_fixed_seat = await pool.fetchval(
+        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", user.id
+    )
+    if has_fixed_seat:
+        raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
 
     # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない。
     # 詳細設計書6章のとおりRULE-05と異なりP-ADMIN除外の定めがないため、管理部が自分の予約として

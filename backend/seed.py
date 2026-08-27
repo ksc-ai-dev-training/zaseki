@@ -16,13 +16,18 @@ USERS = [
 AREAS = ["NORTH", "EAST", "WEST"]
 
 # 画面モックアップ（S-02）の実際の座席配置（ブロック文字, 席数）。全83席。
-# 座席タイプはS-05（固定座席）・S-07（座席マスタ管理）・S-09（プロジェクト座席）が
-# 未実装のため、現時点では全て'free'とする（各画面の実装時に一部がfixed/projectへ変わる）。
+# 座席タイプはS-07（座席マスタ管理）・S-09（プロジェクト座席）が未実装のため、
+# 現時点ではS-05（固定座席の指定）で割り当てたもの以外は全て'free'とする
+# （各画面の実装時に残りが一部project等へ変わる）。
 AREA_BLOCKS = {
     "NORTH": [("A", 11), ("B", 8)],
     "EAST": [("C", 4), ("D", 4), ("E", 4), ("F", 8), ("G", 4), ("H", 4), ("I", 4)],
     "WEST": [("J", 4), ("K", 4), ("L", 4), ("M", 8), ("N", 4), ("O", 4), ("P", 4)],
 }
+
+# 座席タイプを問わず指定できるため（2026-08-27訂正）、事前に'fixed'として投入する座席はなく、
+# 割当（A-20）自体がseat_type='fixed'への変更を兼ねる。デモ用にA1だけ事前に割り当てておく。
+FIXED_SEAT_PRE_ASSIGN = {"A1": "sato@kogasoftware.com"}
 
 # (key, value, description) 詳細設計書2.17節の初期データ
 APP_SETTINGS = [
@@ -68,6 +73,17 @@ async def main():
                             f"{letter}{n}", area_ids[area_name],
                         )
             print("areas・seatsにシードデータを投入しました")
+
+            for seat_no, email in FIXED_SEAT_PRE_ASSIGN.items():
+                seat_id = await conn.fetchval("SELECT id FROM seats WHERE seat_no = $1", seat_no)
+                user_id = await conn.fetchval("SELECT id FROM users WHERE email = $1", email)
+                admin_id = await conn.fetchval("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")
+                await conn.execute("UPDATE seats SET seat_type = 'fixed' WHERE id = $1", seat_id)
+                await conn.execute(
+                    "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by) VALUES ($1, $2, $3)",
+                    seat_id, user_id, admin_id,
+                )
+            print("fixed_seat_assignmentsにシードデータを投入しました")
 
         settings_count = await conn.fetchval("SELECT COUNT(*) FROM app_settings")
         if settings_count > 0:

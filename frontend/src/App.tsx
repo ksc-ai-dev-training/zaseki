@@ -5,6 +5,7 @@ import { apiFetch } from './lib/api'
 import Login from './pages/Login'
 import Availability from './pages/Availability'
 import AdminMenu from './pages/AdminMenu'
+import FixedSeats from './pages/FixedSeats'
 import ComingSoon from './pages/ComingSoon'
 import Layout from './components/Layout'
 
@@ -43,7 +44,7 @@ export default function App() {
         <Route path="/project-seats" element={<ComingSoon id="S-04" name="プロジェクト座席" />} />
         <Route path="/project-seats-area" element={requireAdmin(<ComingSoon id="S-09" name="プロジェクト座席（エリア担当）" />)} />
         <Route path="/admin" element={requireAdmin(<AdminMenu />)} />
-        <Route path="/fixed-seats" element={requireAdmin(<ComingSoon id="S-05" name="固定座席の指定" />)} />
+        <Route path="/fixed-seats" element={requireAdmin(<FixedSeats />)} />
         <Route path="/proxy-booking" element={requireAdmin(<ComingSoon id="S-11" name="代理予約・取消" />)} />
         <Route path="/seat-master" element={requireAdmin(<ComingSoon id="S-07" name="座席マスタ管理" />)} />
         <Route path="/roles" element={requireAdmin(<ComingSoon id="S-08" name="権限・役割管理" />)} />

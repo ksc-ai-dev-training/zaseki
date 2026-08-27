@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS seats (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- T-04 fixed_seat_assignments。日次のreservation行は作らず、解除（A-21）は物理DELETEで表現する
+CREATE TABLE IF NOT EXISTS fixed_seat_assignments (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    seat_id     BIGINT NOT NULL UNIQUE REFERENCES seats(id),
+    user_id     BIGINT NOT NULL REFERENCES users(id),
+    assigned_by BIGINT NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- T-08 reservations
 CREATE TABLE IF NOT EXISTS reservations (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

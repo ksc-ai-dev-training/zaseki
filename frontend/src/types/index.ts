@@ -64,6 +64,28 @@ export interface AdminSummary {
   admin_count: number
 }
 
+// A-19 GET /fixed-seat-assignments（S-05 固定座席利用者一覧）
+export interface FixedSeatAssignment {
+  seat_id: number
+  seat_no: string
+  area: 'NORTH' | 'EAST' | 'WEST'
+  user_id: number
+  user_name: string
+}
+
+// A-52 GET /fixed-seat-assignments/candidates（S-05 対象者検索）
+export interface FixedSeatCandidate {
+  user_id: number
+  user_name: string
+  current_status: string
+}
+
+// S-02をS-05から「固定座席指定モード」で開く際にreact-routerのlocation.stateへ積む値
+export interface AssignFixedSeatFor {
+  userId: number
+  userName: string
+}
+
 // A-07 GET /seats/availability/period（S-02 期間ビュー）。固定座席（seat_type='fixed'）は対象外
 export type PeriodCellStatus = 'free' | 'mine' | 'occupied'
 

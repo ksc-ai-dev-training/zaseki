@@ -6,6 +6,8 @@ interface FloorProps {
   seatByNo: Record<string, Seat>
   onReserve: (seat: Seat) => void
   onCancel: (seat: Seat) => void
+  fixedSeatAssignMode?: boolean
+  onAssignFixedSeat?: (seat: Seat) => void
 }
 
 const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center', alignSelf: 'center' }
@@ -13,9 +15,9 @@ const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center
 // 画面モックアップ（docs/03_画面モックアップ/S-02_availability.html）の実際の
 // フロアマップ画像に基づく配置をそのまま再現する。座席の状態のみ実データに差し替える。
 
-export function NorthFloor({ seatByNo, onReserve, onCancel }: FloorProps) {
+export function NorthFloor({ seatByNo, ...tileProps }: FloorProps) {
   const tile = (no: string, style: CSSProperties) => (
-    <SeatTile seat={seatByNo[no]} onReserve={onReserve} onCancel={onCancel} style={style} />
+    <SeatTile seat={seatByNo[no]} style={style} {...tileProps} />
   )
   return (
     <div className="flex flex-col gap-3">
@@ -57,7 +59,7 @@ export function NorthFloor({ seatByNo, onReserve, onCancel }: FloorProps) {
   )
 }
 
-function SeatBlock({ label, seats, gridArea, seatByNo, onReserve, onCancel }: {
+function SeatBlock({ label, seats, gridArea, seatByNo, ...tileProps }: {
   label: string
   seats: string[]
   gridArea: string
@@ -67,7 +69,7 @@ function SeatBlock({ label, seats, gridArea, seatByNo, onReserve, onCancel }: {
       <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">{label}</div>
       <div className="seat-grid cols-2">
         {seats.map((no) => (
-          <SeatTile key={no} seat={seatByNo[no]} onReserve={onReserve} onCancel={onCancel} />
+          <SeatTile key={no} seat={seatByNo[no]} {...tileProps} />
         ))}
       </div>
     </div>
@@ -76,9 +78,9 @@ function SeatBlock({ label, seats, gridArea, seatByNo, onReserve, onCancel }: {
 
 const LOCKER = <div className="floor-room">ロッカー</div>
 
-export function EastFloor({ seatByNo, onReserve, onCancel }: FloorProps) {
+export function EastFloor({ seatByNo, ...tileProps }: FloorProps) {
   const block = (label: string, seats: string[], gridArea: string) => (
-    <SeatBlock label={label} seats={seats} gridArea={gridArea} seatByNo={seatByNo} onReserve={onReserve} onCancel={onCancel} />
+    <SeatBlock label={label} seats={seats} gridArea={gridArea} seatByNo={seatByNo} {...tileProps} />
   )
   return (
     <div className="floor-map map-east">
@@ -105,9 +107,9 @@ export function EastFloor({ seatByNo, onReserve, onCancel }: FloorProps) {
   )
 }
 
-export function WestFloor({ seatByNo, onReserve, onCancel }: FloorProps) {
+export function WestFloor({ seatByNo, ...tileProps }: FloorProps) {
   const block = (label: string, seats: string[], gridArea: string) => (
-    <SeatBlock label={label} seats={seats} gridArea={gridArea} seatByNo={seatByNo} onReserve={onReserve} onCancel={onCancel} />
+    <SeatBlock label={label} seats={seats} gridArea={gridArea} seatByNo={seatByNo} {...tileProps} />
   )
   return (
     <div className="floor-map map-west">
