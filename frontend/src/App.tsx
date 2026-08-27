@@ -1,11 +1,15 @@
+import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './lib/api'
 import Login from './pages/Login'
 import Availability from './pages/Availability'
+import AdminMenu from './pages/AdminMenu'
+import ComingSoon from './pages/ComingSoon'
+import Layout from './components/Layout'
 
-// ルーティング定義・認証ガード。S-01・S-02以外の画面はまだ実装されていないため、
-// ログイン後はS-02（空き状況・予約）をホームにする（後続の画面を実装するたびにルートを追加する）
+// ルーティング定義・認証ガード。画面は1つずつ実装していく方針のため、まだ実装していない
+// 画面へのリンクはComingSoonへ遷移する（後続の画面を実装するたびに置き換える）
 export default function App() {
   const { me, isLoading, mutate } = useMe()
 
@@ -27,23 +31,25 @@ export default function App() {
     await mutate()
   }
 
+  // S-05・S-07・S-08・S-09・S-10・S-11は全てrole='admin'必須（詳細設計書5.5節）。
+  // 一般利用者が直接URLを叩いても弾けるよう、ルート単位でも同じ条件をかけておく
+  const requireAdmin = (element: ReactNode) => (me.role === 'admin' ? element : <Navigate to="/" replace />)
+
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route
-        path="*"
-        element={
-          <div>
-            <div className="flex items-center justify-end gap-3 border-b border-slate-200 bg-white px-6 py-2 text-sm text-slate-500">
-              {me.last_name} {me.first_name}
-              <button onClick={logout} className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50">
-                ログアウト
-              </button>
-            </div>
-            <Availability />
-          </div>
-        }
-      />
+      <Route element={<Layout me={me} onLogout={logout} />}>
+        <Route path="/" element={<Availability />} />
+        <Route path="/project-seats" element={<ComingSoon id="S-04" name="プロジェクト座席" />} />
+        <Route path="/project-seats-area" element={requireAdmin(<ComingSoon id="S-09" name="プロジェクト座席（エリア担当）" />)} />
+        <Route path="/admin" element={requireAdmin(<AdminMenu />)} />
+        <Route path="/fixed-seats" element={requireAdmin(<ComingSoon id="S-05" name="固定座席の指定" />)} />
+        <Route path="/proxy-booking" element={requireAdmin(<ComingSoon id="S-11" name="代理予約・取消" />)} />
+        <Route path="/seat-master" element={requireAdmin(<ComingSoon id="S-07" name="座席マスタ管理" />)} />
+        <Route path="/roles" element={requireAdmin(<ComingSoon id="S-08" name="権限・役割管理" />)} />
+        <Route path="/history" element={requireAdmin(<ComingSoon id="S-10" name="座席状況の履歴照会" />)} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
     </Routes>
   )
 }

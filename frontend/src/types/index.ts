@@ -56,6 +56,14 @@ export interface AvailabilityResponse {
   areas: AreaAvailability[]
 }
 
+// A-51 GET /admin/summary（S-06 管理メニュー）
+export interface AdminSummary {
+  total_seats: number
+  active_areas: number
+  registered_users: number
+  admin_count: number
+}
+
 // A-07 GET /seats/availability/period（S-02 期間ビュー）。固定座席（seat_type='fixed'）は対象外
 export type PeriodCellStatus = 'free' | 'mine' | 'occupied'
 

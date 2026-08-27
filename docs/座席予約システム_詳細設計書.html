@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.10（ドラフト・作成中）</span>
+      <span>版数: 0.11（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -236,6 +236,7 @@ footer.doc-footer {
       <tr><td>0.8</td><td>2026-08-27</td><td>「プロジェクトの担当エリア割当（管理部）もいらない」との要望（要件定義書v0.73・基本設計書v1.66・D19）を受けた。2.4節（T-02 areas）のslack_webhook_urlを削除（nameのみの最小限マスタに）、2.9節（T-07 project_quarter_plans）のarea_id／area_assigned_byを削除した。2.17節（T-16 app_settings）にproject_seat_slack_webhook_url（プロジェクト座席共通の1つ）を追加し、本キーのみUI編集の例外として扱う旨を明記。2.2節のER図（図1のT-02、図2のT-07）を再生成し、図2からT-02 areasボックス自体を削除した（T-07がエリアを参照しなくなったため）。3章を修正：A-30を簡略化、A-31を廃止（欠番として保持）、A-39をエリア責任者・副責任者による「四半期計画の開始」に置き換えbodyからarea_idを削除、A-49・A-50（app_settingsの読み書き、通知設定タブ用）を新設。4.6節（S-08）・4.7節（S-09、担当エリア選択欄を削除）を修正。5章を修正：5.5.6節にA-49・A-50を追加しA-31を「廃止」に、5.5.7節のA-39をP-ADMINからP-AREAに変更。</td></tr>
       <tr><td>0.9</td><td>2026-08-27</td><td>「S-09は現状エリア責任者のみアクセス可能になっているが、管理部側でもアクセスできるようにしていい。エリア責任者というロールはそのまま保持」との要望（要件定義書v0.74・基本設計書v1.67）を受けた。3章のA-38〜A-44の認可欄をP-AREA（エリア責任者・副責任者限定）からrole='admin'に変更（A-38は「未割当」状態の消滅とあわせて廃止扱いだったスコープ判定自体を削除し、一律の可否判定に統合）。5章を修正：5.3節のP-AREA定義に、area_manager_role IS NOT NULLは必ずrole='admin'でもあるためA-38〜A-44の判定はP-ADMINに一本化されたこと、P-AREA自体はP-AREA-HEAD（副責任者の指定権限、5.5.6節A-26）のために引き続き使うことを追記。5.4節のA-38のスコープ判定を廃止（もはやスコープ差がない）。5.5.7節のA-38〜A-44をP-AREAからP-ADMINに変更。area_manager_role（T-01、2.3節）自体・その表示上の位置づけは変更していない。</td></tr>
       <tr><td>0.10</td><td>2026-08-27</td><td>「残りの確認事項は了承をもらったので大丈夫」との報告を受け、全6章のドラフトについて発注者・上司の確認が取れたことを末尾の注記に反映した。</td></tr>
+      <tr><td>0.11</td><td>2026-08-27</td><td>S-06（管理メニュー）のコード実装にあたり、統計サマリー取得用のA-51 <code>GET /admin/summary</code>を新設（S-06自体はこれまで3章・5章のどちらにも対応節がなかった）。3章に3.6節「管理メニュー（S-06）」を挿入し、既存の3.6〜3.11節を3.7〜3.12節へ繰り下げ、これに伴う相互参照（3.7節・3.2〜3.11節）を修正した。5章はA-49・A-50の前例（末尾追加）にならい、5.5.10節として末尾に追加（既存節の番号は変更していない）。</td></tr>
     </tbody>
   </table>
   </details>
@@ -814,7 +815,15 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.6 座席マスタ管理（S-07）</h3>
+  <h3>3.6 管理メニュー（S-06）</h3>
+  <table>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td><code>A-51</code></td><td><span class="method get">GET</span><code>/admin/summary</code></td><td>他画面への入口カード上部に表示するサマリー（総座席数・稼働エリア数・登録利用者数・管理部人数）。</td><td>role='admin'</td><td>2026-08-27追加。S-06自体は入力フォームを持たないため4章の対象外だが、この集計値の取得のみ本APIが必要。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.7 座席マスタ管理（S-07）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -824,7 +833,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.7 権限・役割管理（S-08）</h3>
+  <h3>3.8 権限・役割管理（S-08）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -846,7 +855,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.8 プロジェクト座席・エリア担当側（S-09）</h3>
+  <h3>3.9 プロジェクト座席・エリア担当側（S-09）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -860,7 +869,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.9 座席状況の履歴照会（S-10）</h3>
+  <h3>3.10 座席状況の履歴照会（S-10）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -868,7 +877,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.10 代理予約・取消（S-11）</h3>
+  <h3>3.11 代理予約・取消（S-11）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -878,7 +887,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.11 バッチ処理（参考、画面を持たない）</h3>
+  <h3>3.12 バッチ処理（参考、画面を持たない）</h3>
   <p>以下はUI操作から呼び出すAPIではなく、サーバー内部で定期実行するバッチ処理。実装方式（cron／スケジューラ）は本書のスコープ外とし、ここでは処理内容のみ定義する。</p>
   <table>
     <thead><tr><th>処理</th><th>実行頻度</th><th>内容</th></tr></thead>
@@ -887,7 +896,7 @@ footer.doc-footer {
       <tr><td>アーカイブの論理削除</td><td>日次</td><td>T-13.archived_atから<code>app_settings.reservation_retention_delete_days</code>（既定365日）経過した行の<code>deleted_at</code>を設定（D10）。</td></tr>
     </tbody>
   </table>
-  <p class="callout warn"><strong>RULE-06の実行は日次バッチではない:</strong> 利用者の退職済みへの変更（deleted_at設定・固定座席解除・今後の予約取消）は、3.7節<code>PUT /users/{id}</code>のリクエスト内で同期的に実行する（変更操作の一部として即座に反映するため）。</p>
+  <p class="callout warn"><strong>RULE-06の実行は日次バッチではない:</strong> 利用者の退職済みへの変更（deleted_at設定・固定座席解除・今後の予約取消）は、3.8節<code>PUT /users/{id}</code>のリクエスト内で同期的に実行する（変更操作の一部として即座に反映するため）。</p>
 
   <h2 id="sec4">4. 画面項目定義</h2>
   <h3>4.1 本章の前提</h3>
@@ -1051,7 +1060,7 @@ footer.doc-footer {
   </table>
 
   <h3>5.5 API別の認可条件一覧</h3>
-  <p>3.2〜3.10節の各APIについて、5.1節の認証（A-01〜A-03を除き全API必須、以下では省略）に加えて必要な追加条件を、5.3節のコードで示す。</p>
+  <p>3.2〜3.11節の各APIについて、5.1節の認証（A-01〜A-03を除き全API必須、以下では省略）に加えて必要な追加条件を、5.3節のコードで示す。</p>
 
   <h4>5.5.1 認証（S-01）</h4>
   <table>
@@ -1122,7 +1131,7 @@ footer.doc-footer {
       <tr><td>A-28</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-29</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-30</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-31</td><td>—</td><td>廃止（2026-08-27）。3.7節参照。</td></tr>
+      <tr><td>A-31</td><td>—</td><td>廃止（2026-08-27）。3.8節参照。</td></tr>
       <tr><td>A-32</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-33</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-34</td><td><code>P-ADMIN</code></td><td></td></tr>
@@ -1163,6 +1172,15 @@ footer.doc-footer {
       <tr><td>A-46</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-47</td><td><code>P-ADMIN</code></td><td>FR-01-7により、A-09・A-10と異なりRULE-05等のスキップ判定を追加で行う必要はない（呼び出し者は常にP-ADMIN）。</td></tr>
       <tr><td>A-48</td><td><code>P-ADMIN</code></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h4>5.5.10 管理メニュー（S-06）</h4>
+  <p class="muted">2026-08-27追加。S-06は3章の並びでは3.6節（S-05とS-07の間）だが、5.5節へは他画面より後に追加したため、A-49・A-50と同様に末尾に置く。</p>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-51</td><td><code>P-ADMIN</code></td><td></td></tr>
     </tbody>
   </table>
 
@@ -1233,7 +1251,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.10 / 2026-08-27</span>
+    <span>版数 0.11 / 2026-08-27</span>
   </footer>
 
 </div>
