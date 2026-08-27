@@ -65,7 +65,7 @@
       <div class="tabs">
         <button class="tab active" id="tab-users" type="button" onclick="switchRoleTab('users')">利用者ロール管理</button>
         <button class="tab" id="tab-projects" type="button" onclick="switchRoleTab('projects')">プロジェクト・PM管理</button>
-        <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">エリア責任者管理</button>
+        <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">エリア通知設定</button>
         <button class="tab" id="tab-customroles" type="button" onclick="switchRoleTab('customroles')">役割マスタ管理</button>
       </div>
 
@@ -93,13 +93,14 @@
 
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>氏名</th><th>メールアドレス</th><th>雇用形態</th><th>役割</th><th>在籍状況</th><th></th></tr></thead>
+            <thead><tr><th>氏名</th><th>メールアドレス</th><th>雇用形態</th><th>役割</th><th>エリア担当</th><th>在籍状況</th><th></th></tr></thead>
             <tbody>
               <tr>
                 <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
                 <td class="cell-sub">t.chida@kogasoftware.com</td>
                 <td>社員</td>
                 <td><span class="badge badge-role role-admin">管理部</span></td>
+                <td><span class="badge badge-status-on">エリア責任者</span></td>
                 <td><span class="badge badge-status-on">在籍中</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('千田 太郎','管理部')">編集</button></td>
               </tr>
@@ -108,6 +109,7 @@
                 <td class="cell-sub">h.suzuki@kogasoftware.com</td>
                 <td>社員</td>
                 <td><span class="badge badge-role role-employee">社員</span></td>
+                <td class="cell-sub">なし</td>
                 <td><span class="badge badge-status-on">在籍中</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('鈴木 花子','一般')">編集</button></td>
               </tr>
@@ -116,6 +118,7 @@
                 <td class="cell-sub">i.tanaka@kogasoftware.com</td>
                 <td>社員</td>
                 <td><span class="badge badge-role role-employee">社員</span></td>
+                <td class="cell-sub">なし</td>
                 <td><span class="badge badge-status-warn">休職中</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('田中 一郎','一般')">編集</button></td>
               </tr>
@@ -124,6 +127,7 @@
                 <td class="cell-sub">j.sato@kogasoftware.com</td>
                 <td>契約職員</td>
                 <td><span class="badge badge-role role-ab">AB</span></td>
+                <td class="cell-sub">なし</td>
                 <td><span class="badge badge-status-on">在籍中</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('佐藤 次郎','一般')">編集</button></td>
               </tr>
@@ -132,12 +136,14 @@
                 <td class="cell-sub">m.takahashi@kogasoftware.com</td>
                 <td>BP</td>
                 <td><span class="badge badge-role role-bp">BP</span></td>
+                <td class="cell-sub">なし</td>
                 <td><span class="badge badge-status-off">退職済み</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openRoleEditModal('高橋 美咲','一般')">編集</button></td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p class="muted" style="margin-top:8px">「エリア担当」（エリア責任者・副責任者）はrole=管理部の利用者のみ設定できる（2026-08-27追加。特定のエリアへの配置は行わず、全プロジェクト共通の役割として設定する）。</p>
       </div>
 
       <div class="tab-panel" id="panel-projects">
@@ -171,28 +177,23 @@
       </div>
 
       <div class="tab-panel" id="panel-areas">
+        <p class="muted" style="margin-bottom:8px">出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）をエリアごとに設定する（要件定義書FR-03-9）。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う（2026-08-27訂正。エリア責任者・副責任者は特定のエリアに紐づかなくなったため、本タブでは扱わない）。</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>エリア</th><th>責任者</th><th>副責任者</th><th>Slack通知</th><th></th></tr></thead>
+            <thead><tr><th>エリア</th><th>Slack通知先</th><th></th></tr></thead>
             <tbody>
               <tr>
                 <td class="cell-main">NORTH</td>
-                <td class="cell-sub">未設定</td>
-                <td class="cell-sub">未設定</td>
                 <td class="cell-sub">未設定</td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('NORTH')">編集</button></td>
               </tr>
               <tr>
                 <td class="cell-main">EAST</td>
-                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
-                <td class="cell-sub">未設定</td>
                 <td><span class="badge badge-status-on">設定済み</span></td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('EAST')">編集</button></td>
               </tr>
               <tr>
                 <td class="cell-main">WEST</td>
-                <td><span class="avatar" style="margin-right:8px">千</span>千田 太郎</td>
-                <td class="cell-sub">未設定</td>
                 <td class="cell-sub">未設定</td>
                 <td><button class="btn btn-secondary btn-sm" type="button" onclick="openAreaEditModal('WEST')">編集</button></td>
               </tr>
@@ -258,6 +259,14 @@
           <span class="track"></span>
           <span class="toggle-text">管理部ロールを付与する</span>
         </label>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>エリア担当（管理部ロールの利用者のみ設定可。2026-08-27追加。特定のエリアへの配置ではなく全プロジェクト共通の役割）</label>
+        <select id="role-edit-area-manager">
+          <option value="">なし</option>
+          <option value="manager">エリア責任者</option>
+          <option value="deputy">副責任者</option>
+        </select>
       </div>
       <div class="field" style="margin-top:14px">
         <label>在籍状況</label>
@@ -367,19 +376,11 @@
 <div class="modal-overlay" id="area-edit-modal" onclick="if(event.target===this)closeAreaEditModal()">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="area-edit-title">エリア責任者を編集</div>
+      <div class="modal-title" id="area-edit-title">エリア通知設定を編集</div>
       <button class="modal-close" type="button" aria-label="閉じる" onclick="closeAreaEditModal()">×</button>
     </div>
     <div class="modal-body">
       <div class="field">
-        <label>責任者（管理部が指定）</label>
-        <input type="text" placeholder="氏名で検索して選択（管理部ロールの利用者のみ）">
-      </div>
-      <div class="field">
-        <label>副責任者（責任者が指定）</label>
-        <input type="text" placeholder="氏名で検索して選択（管理部ロールの利用者のみ）">
-      </div>
-      <div class="field" style="margin-top:14px">
         <label>Slack通知先（Webhook URL）</label>
         <input type="text" placeholder="https://hooks.slack.com/services/...">
       </div>
@@ -456,7 +457,7 @@ function closeProjectEditModal() {
   document.getElementById('project-edit-modal').classList.remove('open');
 }
 function openAreaEditModal(area) {
-  document.getElementById('area-edit-title').textContent = 'エリア責任者を編集（' + area + '）';
+  document.getElementById('area-edit-title').textContent = 'エリア通知設定を編集（' + area + '）';
   document.getElementById('area-edit-modal').classList.add('open');
 }
 function closeAreaEditModal() {
