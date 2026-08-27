@@ -194,16 +194,49 @@ export default function Availability() {
 
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
-      <div className="overflow-x-auto pb-2">
-        {availability?.areas.map((a) => (
-          <div key={a.area} className="mb-6 inline-block w-full align-top">
-            <h2 className={`area-heading area-${a.area.toLowerCase()} mb-3`}>{a.area}エリア</h2>
-            {a.area === 'NORTH' && <NorthFloor {...floorProps} />}
-            {a.area === 'EAST' && <EastFloor {...floorProps} />}
-            {a.area === 'WEST' && <WestFloor {...floorProps} />}
+      {(() => {
+        const areaNames = new Set(availability?.areas.map((a) => a.area))
+        const hasNorth = areaNames.has('NORTH')
+        const hasEast = areaNames.has('EAST')
+        const hasWest = areaNames.has('WEST')
+        if (!hasNorth && !hasEast && !hasWest) return null
+        return (
+          <div className="mb-6 overflow-x-auto pb-2">
+            <div className="floor-overview inline-flex">
+              {hasNorth && (
+                <div className="north-column">
+                  {areaFilter === 'all' && (
+                    <div className="north-side-rooms">
+                      <div className="floor-room" style={{ flex: 1 }}>会議室D</div>
+                      <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
+                    </div>
+                  )}
+                  <div className="panel-north">
+                    <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
+                    <NorthFloor {...floorProps} />
+                  </div>
+                </div>
+              )}
+              {(hasEast || hasWest) && (
+                <div className="floor-overview-stack">
+                  {hasEast && (
+                    <div className="panel-east">
+                      <h2 className="area-heading area-east mb-3">EASTエリア</h2>
+                      <EastFloor {...floorProps} />
+                    </div>
+                  )}
+                  {hasWest && (
+                    <div className="panel-west">
+                      <h2 className="area-heading area-west mb-3">WESTエリア</h2>
+                      <WestFloor {...floorProps} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        ))}
-      </div>
+        )
+      })()}
 
       <div className="seat-legend mb-8 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
         {LEGEND.map((l) => (
