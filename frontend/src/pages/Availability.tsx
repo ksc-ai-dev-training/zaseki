@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
 import { useMyReservations } from '../hooks/useMyReservations'
+import { useFloorZoom } from '../hooks/useFloorZoom'
 import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import type { Seat, SeatStatus } from '../types'
@@ -136,17 +137,24 @@ export default function Availability() {
     onCancel: (seat: Seat) => openCancel(seat, seatArea[seat.seat_no]),
   }
 
+  const areaNames = new Set(availability?.areas.map((a) => a.area))
+  const hasNorth = areaNames.has('NORTH')
+  const hasEast = areaNames.has('EAST')
+  const hasWest = areaNames.has('WEST')
+  const hasAnyArea = hasNorth || hasEast || hasWest
+  const { viewportRef, overviewRef } = useFloorZoom(areaFilter, hasAnyArea)
+
   return (
     <div className="p-6">
       <h1 className="mb-4 text-xl font-bold">空き状況・予約</h1>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1">
+      <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex items-center justify-between gap-1 sm:justify-start">
           <button
             type="button"
             onClick={() => setDate((d) => shiftDateStr(d, -1))}
             aria-label="前日"
-            className="h-8 w-8 rounded border border-slate-300 hover:bg-slate-50"
+            className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
           >
             ‹
           </button>
@@ -154,20 +162,20 @@ export default function Availability() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="h-8 rounded border border-slate-300 px-2 text-sm"
+            className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm sm:flex-none"
           />
           <button
             type="button"
             onClick={() => setDate((d) => shiftDateStr(d, 1))}
             aria-label="翌日"
-            className="h-8 w-8 rounded border border-slate-300 hover:bg-slate-50"
+            className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
           >
             ›
           </button>
           <button
             type="button"
             onClick={() => setDate(todayStr())}
-            className="h-8 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50"
+            className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50"
           >
             今日
           </button>
@@ -175,13 +183,13 @@ export default function Availability() {
         <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-slate-200">
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
         {AREA_TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setAreaFilter(t.key)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm ${
               areaFilter === t.key
                 ? 'border-blue-800 font-semibold text-blue-800'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -194,49 +202,42 @@ export default function Availability() {
 
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
-      {(() => {
-        const areaNames = new Set(availability?.areas.map((a) => a.area))
-        const hasNorth = areaNames.has('NORTH')
-        const hasEast = areaNames.has('EAST')
-        const hasWest = areaNames.has('WEST')
-        if (!hasNorth && !hasEast && !hasWest) return null
-        return (
-          <div className="mb-6 overflow-x-auto pb-2">
-            <div className="floor-overview inline-flex">
-              {hasNorth && (
-                <div className="north-column">
-                  {areaFilter === 'all' && (
-                    <div className="north-side-rooms">
-                      <div className="floor-room" style={{ flex: 1 }}>会議室D</div>
-                      <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
-                    </div>
-                  )}
-                  <div className="panel-north">
-                    <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
-                    <NorthFloor {...floorProps} />
+      {hasAnyArea && (
+        <div ref={viewportRef} className="floor-zoom-viewport mb-6 overflow-auto pb-2">
+          <div ref={overviewRef} className="floor-overview inline-flex">
+            {hasNorth && (
+              <div className="north-column">
+                {areaFilter === 'all' && (
+                  <div className="north-side-rooms">
+                    <div className="floor-room" style={{ flex: 1 }}>会議室D</div>
+                    <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
                   </div>
+                )}
+                <div className="panel-north">
+                  <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
+                  <NorthFloor {...floorProps} />
                 </div>
-              )}
-              {(hasEast || hasWest) && (
-                <div className="floor-overview-stack">
-                  {hasEast && (
-                    <div className="panel-east">
-                      <h2 className="area-heading area-east mb-3">EASTエリア</h2>
-                      <EastFloor {...floorProps} />
-                    </div>
-                  )}
-                  {hasWest && (
-                    <div className="panel-west">
-                      <h2 className="area-heading area-west mb-3">WESTエリア</h2>
-                      <WestFloor {...floorProps} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
+            {(hasEast || hasWest) && (
+              <div className="floor-overview-stack">
+                {hasEast && (
+                  <div className="panel-east">
+                    <h2 className="area-heading area-east mb-3">EASTエリア</h2>
+                    <EastFloor {...floorProps} />
+                  </div>
+                )}
+                {hasWest && (
+                  <div className="panel-west">
+                    <h2 className="area-heading area-west mb-3">WESTエリア</h2>
+                    <WestFloor {...floorProps} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       <div className="seat-legend mb-8 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
         {LEGEND.map((l) => (
@@ -249,18 +250,18 @@ export default function Availability() {
 
       <div className="rounded border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3 font-semibold">自分の予約</div>
-        <div className="flex gap-1 border-b border-slate-200 px-4 pt-2">
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-200 px-4 pt-2">
           <button
             type="button"
             onClick={() => setReservationTab('upcoming')}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${reservationTab === 'upcoming' ? 'border-blue-800 font-semibold text-blue-800' : 'border-transparent text-slate-500'}`}
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm ${reservationTab === 'upcoming' ? 'border-blue-800 font-semibold text-blue-800' : 'border-transparent text-slate-500'}`}
           >
             今後の予約 <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-xs">{upcoming.items.length}</span>
           </button>
           <button
             type="button"
             onClick={() => setReservationTab('past')}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${reservationTab === 'past' ? 'border-blue-800 font-semibold text-blue-800' : 'border-transparent text-slate-500'}`}
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm ${reservationTab === 'past' ? 'border-blue-800 font-semibold text-blue-800' : 'border-transparent text-slate-500'}`}
           >
             過去の予約
           </button>

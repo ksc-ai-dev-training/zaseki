@@ -122,10 +122,41 @@ button.seat-tile:hover { box-shadow: 0 2px 8px rgba(26, 29, 33, 0.07); transform
   align-items: stretch;
   border-radius: 8px;
   border: 1px solid #e7eaee;
+  width: fit-content;
+  max-width: 100%;
 }
 .north-column { display: flex; flex-direction: column; flex: 0 0 auto; }
 .north-side-rooms { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; padding: 16px 24px; }
 .north-side-rooms .floor-room { min-height: 0; }
 .panel-north { background: #fdf6e3; padding: 28px 24px; flex: 0 0 auto; display: flex; flex-direction: column; }
-.floor-overview-stack { display: flex; flex-direction: column; gap: 0; flex: 1 1 auto; background: #e8f5ea; }
+.floor-overview-stack { display: flex; flex-direction: column; gap: 0; flex: 0 0 auto; background: #e8f5ea; }
 .panel-east, .panel-west { padding: 24px; }
+
+/* スマホ対応（FR-02-1）: フロアマップのみ2本指ピンチで拡大・縮小できるようにする
+   （画面モックアップのS-02_availability.html・mock.cssをそのまま移植。JS本体は
+   frontend/src/hooks/useFloorZoom.ts）。zoomプロパティはtransform:scaleと異なり
+   専有サイズごと縮小するため、縮小後に下の要素との間に余白が残らない。 */
+.floor-zoom-viewport {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 640px) {
+  .floor-overview {
+    zoom: var(--pinch-scale, 1);
+  }
+  .floor-overview .seat-tile {
+    border-width: 3px;
+  }
+  .floor-overview .seat-tile.status-free {
+    border-color: #6b7280;
+  }
+  .floor-overview .seat-tile.status-pending {
+    border-color: #ca8a04;
+  }
+  .floor-overview .floor-block {
+    border-width: 2px;
+  }
+  .floor-overview.zoomed-out .seat-tile .seat-tag {
+    display: none;
+  }
+}
