@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.7（ドラフト・作成中）</span>
+      <span>版数: 0.8（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -233,6 +233,7 @@ footer.doc-footer {
       <tr><td>0.5</td><td>2026-08-26</td><td>「5・6章一気に作成していきましょう」との要望を受け、5章（権限の判定）・6章（エラー時の動き）をあわせて作成し、全章のドラフトが揃った。5章は基本設計書4.2節の権限マトリクスを、認証（401）／認可（403）の2段階と、P-ANY／P-OWNER／P-ADMIN／P-AREA／P-AREA-HEAD／P-PROXY／P-PMPL／P-SEATASSIGNの8種の条件コードに分解し、A-01〜A-48全件に条件を割り当てた（5.5節）。一覧系APIが可否ではなく返す範囲を変える「スコープ」判定（A-08・A-13・A-25・A-38・A-46）は5.4節で区別して整理した。6章はKeireki踏襲でエラーコード体系を独自定義せず<code>{"detail": "..."}</code>形式のみとし、401（認証）・403（認可）・400／409（業務ルール・入力チェック違反）・404（対象なし）・500（想定外エラー）の使い分けと、基本設計書4.2.1節のメッセージ文言・表示方法をAPI ID単位で再整理した。</td></tr>
       <tr><td>0.6</td><td>2026-08-26</td><td>「詳細設計に細かなER図を作成してほしい」との要望を受け、2.2節「ER図」を新設した。基本設計書3.1節のER図は中心6テーブルのみを対象にしていたが、本節はT-01〜T-16（T-12は欠番）の全テーブルを、関連の強さに応じて図1（座席・予約系: T-01・T-02・T-03・T-04・T-08・T-09・T-10・T-13）／図2（プロジェクト座席系: T-05・T-06・T-07・T-11、T-01・T-02は図1と共通のため列を絞って再掲）／図3（権限・設定系: T-14・T-15・T-16、T-01は図1と共通のため列を絞って再掲）の3枚に分けて示す。各テーブルはid・created_at・updated_at（2.1節の共通ルールにより全テーブル共通）を除く全列を列挙し、外部キー列には「→ T-xx」で参照先を明記した（基本設計書3.1節が2〜3列の抜粋だったのに対し、より粒度の細かい図とした）。線の輻輳を避けるため、登録者・操作者を表す列（例: reservations.created_by）のFK線は図から省略し、各図の脚注に明記した。既存のT-01〜T-16の節番号は2.3〜2.17へ1つずつ繰り下げ、本文中の相互参照（project_membersの2.7節→2.8節）も修正した。図の座標配置は、コネクタ線が無関係のテーブル枠を通過しないことをスクリプトで検証したうえで確定させた。</td></tr>
       <tr><td>0.7</td><td>2026-08-27</td><td>「エリア責任者自体は置くが、各エリアへの配置はなくしてほしい」との要望（要件定義書v0.72・基本設計書v1.65）を受けた。2.4節（T-02 areas）のmanager_user_id／deputy_user_idを削除し、2.3節（T-01 users）にarea_manager_role（'manager'/'deputy'/NULL）を新設した。2.2節のER図（図1のT-01・T-02ボックス、図2のT-01・T-02の再掲）を新しい列構成で再生成し、コネクタ線の非干渉をスクリプトで再検証した。3章のAPI設計を修正：A-30・A-31（エリア）から責任者・副責任者フィールドを削除しSlack Webhook URLのみに簡略化、A-25・A-26（利用者）にarea_manager_roleを追加、A-38・A-40〜A-44の認可欄から「担当エリアの」の限定を削除（A-43はarea_idパラメータも削除、各plan_idで自明のため）。5章を修正：P-AREA・P-AREA-HEADを、対象データに紐づく条件からP-ADMINと同種の単純な属性チェック（T-01.area_manager_role）に単純化し、5.3節の「対象データに依存する認可チェック」の分類から外した。5.4節（A-38のスコープ）・5.5.6節（A-26に新設したarea_manager_role='deputy'のフィールド単位の例外、A-31の簡略化）・5.5.7節を整合させた。</td></tr>
+      <tr><td>0.8</td><td>2026-08-27</td><td>「プロジェクトの担当エリア割当（管理部）もいらない」との要望（要件定義書v0.73・基本設計書v1.66・D19）を受けた。2.4節（T-02 areas）のslack_webhook_urlを削除（nameのみの最小限マスタに）、2.9節（T-07 project_quarter_plans）のarea_id／area_assigned_byを削除した。2.17節（T-16 app_settings）にproject_seat_slack_webhook_url（プロジェクト座席共通の1つ）を追加し、本キーのみUI編集の例外として扱う旨を明記。2.2節のER図（図1のT-02、図2のT-07）を再生成し、図2からT-02 areasボックス自体を削除した（T-07がエリアを参照しなくなったため）。3章を修正：A-30を簡略化、A-31を廃止（欠番として保持）、A-39をエリア責任者・副責任者による「四半期計画の開始」に置き換えbodyからarea_idを削除、A-49・A-50（app_settingsの読み書き、通知設定タブ用）を新設。4.6節（S-08）・4.7節（S-09、担当エリア選択欄を削除）を修正。5章を修正：5.5.6節にA-49・A-50を追加しA-31を「廃止」に、5.5.7節のA-39をP-ADMINからP-AREAに変更。</td></tr>
     </tbody>
   </table>
   </details>
@@ -301,13 +302,12 @@ footer.doc-footer {
   <p><strong>図1: 座席・予約系</strong>（T-01, T-02, T-03, T-04, T-08, T-09, T-10, T-13）</p>
   <div class="diagram">
     <svg width="880" height="758" viewBox="0 0 880 758" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
-    <rect x="30" y="40" width="380" height="68" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+    <rect x="30" y="40" width="380" height="54" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
     <rect x="30" y="40" width="380" height="24" rx="8" fill="#1e40af"/>
     <rect x="30" y="56" width="380" height="8" fill="#1e40af"/>
     <text x="220" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-02 areas</text>
     <text x="40" y="78" font-size="10.5" fill="#8a8f98">エリア</text>
     <text x="40" y="92" font-size="10" fill="#1a1d21">name</text>
-    <text x="40" y="106" font-size="10" fill="#1a1d21">slack_webhook_url</text>
     <rect x="470" y="40" width="380" height="166" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
     <rect x="470" y="40" width="380" height="24" rx="8" fill="#1e40af"/>
     <rect x="470" y="56" width="380" height="8" fill="#1e40af"/>
@@ -382,8 +382,8 @@ footer.doc-footer {
     <text x="480" y="628" font-size="10" fill="#1a1d21">reservation_id → T-08</text>
     <text x="480" y="642" font-size="10" fill="#1a1d21">action</text>
     <text x="480" y="656" font-size="10" fill="#1a1d21">actor_user_id → T-01</text>
-    <line x1="220" y1="108" x2="220" y2="256" stroke="#60656d" stroke-width="1.3"/>
-    <text x="208" y="120" font-size="11" font-weight="600" fill="#1e40af">1</text>
+    <line x1="220" y1="94" x2="220" y2="256" stroke="#60656d" stroke-width="1.3"/>
+    <text x="208" y="106" font-size="11" font-weight="600" fill="#1e40af">1</text>
     <text x="208" y="250" font-size="11" font-weight="600" fill="#1e40af">N</text>
     <line x1="660" y1="206" x2="660" y2="256" stroke="#60656d" stroke-width="1.3"/>
     <text x="648" y="218" font-size="11" font-weight="600" fill="#1e40af">1</text>
@@ -407,9 +407,9 @@ footer.doc-footer {
     </svg>
   </div>
 
-  <p><strong>図2: プロジェクト座席系</strong>（T-05, T-06, T-07, T-11。T-01・T-02は図1と共通のため列を絞って再掲）</p>
+  <p><strong>図2: プロジェクト座席系</strong>（T-05, T-06, T-07, T-11。T-01は図1と共通のため列を絞って再掲。T-02は2026-08-27にproject_quarter_plans.area_idを削除したため本図から除いた）</p>
   <div class="diagram">
-    <svg width="760" height="548" viewBox="0 0 760 548" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
+    <svg width="760" height="520" viewBox="0 0 760 520" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
     <rect x="30" y="40" width="320" height="68" rx="8" fill="#f3f4f6" stroke="#1e40af" stroke-width="1.5" />
     <rect x="30" y="40" width="320" height="24" rx="8" fill="#9ca3af"/>
     <rect x="30" y="56" width="320" height="8" fill="#9ca3af"/>
@@ -417,12 +417,6 @@ footer.doc-footer {
     <text x="40" y="78" font-size="10.5" fill="#8a8f98">利用者（図1参照）</text>
     <text x="40" y="92" font-size="10" fill="#1a1d21">role</text>
     <text x="40" y="106" font-size="10" fill="#1a1d21">employment_status</text>
-    <rect x="410" y="40" width="320" height="54" rx="8" fill="#f3f4f6" stroke="#1e40af" stroke-width="1.5" />
-    <rect x="410" y="40" width="320" height="24" rx="8" fill="#9ca3af"/>
-    <rect x="410" y="56" width="320" height="8" fill="#9ca3af"/>
-    <text x="570" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-02 areas</text>
-    <text x="420" y="78" font-size="10.5" fill="#8a8f98">エリア（図1参照）</text>
-    <text x="420" y="92" font-size="10" fill="#1a1d21">name</text>
     <rect x="30" y="168" width="320" height="68" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
     <rect x="30" y="168" width="320" height="24" rx="8" fill="#1e40af"/>
     <rect x="30" y="184" width="320" height="8" fill="#1e40af"/>
@@ -440,21 +434,19 @@ footer.doc-footer {
     <text x="420" y="248" font-size="10" fill="#1a1d21">project_title</text>
     <text x="420" y="262" font-size="10" fill="#1a1d21">can_assign_seats</text>
     <text x="420" y="276" font-size="10" fill="#1a1d21">seat_assign_granted_by → T-01</text>
-    <rect x="30" y="338" width="320" height="180" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
+    <rect x="30" y="338" width="320" height="152" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
     <rect x="30" y="338" width="320" height="24" rx="8" fill="#1e40af"/>
     <rect x="30" y="354" width="320" height="8" fill="#1e40af"/>
     <text x="190" y="354" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">T-07 project_quarter_plans</text>
     <text x="40" y="376" font-size="10.5" fill="#8a8f98">プロジェクト座席の四半期計画</text>
     <text x="40" y="390" font-size="10" fill="#1a1d21">project_id → T-05</text>
-    <text x="40" y="404" font-size="10" fill="#1a1d21">area_id → T-02</text>
-    <text x="40" y="418" font-size="10" fill="#1a1d21">area_assigned_by → T-01</text>
-    <text x="40" y="432" font-size="10" fill="#1a1d21">period_start</text>
-    <text x="40" y="446" font-size="10" fill="#1a1d21">period_end</text>
-    <text x="40" y="460" font-size="10" fill="#1a1d21">required_seats</text>
-    <text x="40" y="474" font-size="10" fill="#1a1d21">weekdays_finalized</text>
-    <text x="40" y="488" font-size="10" fill="#1a1d21">allocated_seats</text>
-    <text x="40" y="502" font-size="10" fill="#1a1d21">status</text>
-    <text x="40" y="516" font-size="10" fill="#1a1d21">decided_by → T-01</text>
+    <text x="40" y="404" font-size="10" fill="#1a1d21">period_start</text>
+    <text x="40" y="418" font-size="10" fill="#1a1d21">period_end</text>
+    <text x="40" y="432" font-size="10" fill="#1a1d21">required_seats</text>
+    <text x="40" y="446" font-size="10" fill="#1a1d21">weekdays_finalized</text>
+    <text x="40" y="460" font-size="10" fill="#1a1d21">allocated_seats</text>
+    <text x="40" y="474" font-size="10" fill="#1a1d21">status</text>
+    <text x="40" y="488" font-size="10" fill="#1a1d21">decided_by → T-01</text>
     <rect x="410" y="338" width="320" height="138" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
     <rect x="410" y="338" width="320" height="24" rx="8" fill="#1e40af"/>
     <rect x="410" y="354" width="320" height="8" fill="#1e40af"/>
@@ -479,13 +471,10 @@ footer.doc-footer {
     <line x1="190" y1="236" x2="190" y2="338" stroke="#60656d" stroke-width="1.3"/>
     <text x="178" y="248" font-size="11" font-weight="600" fill="#1e40af">1</text>
     <text x="178" y="332" font-size="11" font-weight="600" fill="#1e40af">N</text>
-    <polyline points="410,77.8 380,77.8 380,374 350,374" fill="none" stroke="#60656d" stroke-width="1.3"/>
-    <text x="396" y="71.8" font-size="11" font-weight="600" fill="#1e40af">1</text>
-    <text x="356" y="368" font-size="11" font-weight="600" fill="#1e40af">N</text>
-    <line x1="350" y1="428" x2="410" y2="407" stroke="#60656d" stroke-width="1.3"/>
-    <text x="356" y="422" font-size="11" font-weight="600" fill="#1e40af">1</text>
+    <line x1="350" y1="414" x2="410" y2="407" stroke="#60656d" stroke-width="1.3"/>
+    <text x="356" y="408" font-size="11" font-weight="600" fill="#1e40af">1</text>
     <text x="396" y="401" font-size="11" font-weight="600" fill="#1e40af">1</text>
-    <text x="30" y="538" font-size="10.5" fill="#8a8f98">※ project_members.seat_assign_granted_by、project_quarter_plans.area_assigned_by／decided_by、project_weekday_responses.responded_by もusersを参照するが、線が輻輳するため図では省略。T-01 users・T-02 areasは図1と同一（詳細列は図1参照）。</text>
+    <text x="30" y="510" font-size="10.5" fill="#8a8f98">※ project_members.seat_assign_granted_by、project_quarter_plans.decided_by、project_weekday_responses.responded_by もusersを参照するが、線が輻輳するため図では省略。T-01 usersは図1と同一（詳細列は図1参照）。T-02 areasは2026-08-27にproject_quarter_plans.area_idを削除したため、本図とは無関係になった（プロジェクトの担当エリア割当を廃止したため）。</text>
     </svg>
   </div>
 
@@ -556,10 +545,9 @@ footer.doc-footer {
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
       <tr><td><code>name</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>UNIQUE, CHECK</td><td><code>'NORTH' / 'EAST' / 'WEST'</code>。3行のみ、初期データとして投入する（後から増える想定はない）。</td></tr>
-      <tr><td><code>slack_webhook_url</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>出社曜日アンケート関連のSlack通知先（Incoming Webhook URL）。未設定の場合は通知しない（FR-03-9）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。<strong>2026-08-27変更:</strong> <code>manager_user_id</code>／<code>deputy_user_id</code>（FK→users）を削除した。エリア責任者・副責任者は特定のエリアに紐づかなくなったため、T-01 users.area_manager_roleへ移した。</p>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。<strong>2026-08-27変更:</strong> <code>manager_user_id</code>／<code>deputy_user_id</code>（FK→users）を削除した。エリア責任者・副責任者は特定のエリアに紐づかなくなったため、T-01 users.area_manager_roleへ移した。<code>slack_webhook_url</code>も削除し、T-16 app_settings.project_seat_slack_webhook_url（プロジェクト座席共通の1つ）に置き換えた（管理部によるプロジェクトの担当エリア割当〔FR-03-1〕を廃止し、通知先をエリア単位で持つ意味がなくなったため）。座席の物理的な位置を示す<code>name</code>のみを持つ最小限のマスタになった。</p>
 
   <h3>2.5 T-03 seats（座席）</h3>
   <table>
@@ -612,18 +600,16 @@ footer.doc-footer {
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
       <tr><td><code>project_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→projects, UNIQUE(project_id, period_start)</td><td></td></tr>
-      <tr><td><code>area_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→areas</td><td>プロジェクトの担当エリア（FR-03-1）。</td></tr>
-      <tr><td><code>area_assigned_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>担当エリアを割り当てた管理部担当者。</td></tr>
       <tr><td><code>period_start</code></td><td>DATE</td><td>不可</td><td>—</td><td>UNIQUE(project_id, period_start)</td><td>四半期の開始日（1/1・4/1・7/1・10/1のいずれか）。</td></tr>
       <tr><td><code>period_end</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>四半期の終了日。</td></tr>
       <tr><td><code>required_seats</code></td><td>INTEGER</td><td>不可</td><td>—</td><td></td><td>必要座席数。行作成時点でT-06の人数を既定値として自動算出。S-04でPM(PL)が変更希望を入力すると自動更新（T-11.requested_seats経由）。</td></tr>
       <tr><td><code>weekdays_finalized</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>確定した出社曜日の配列（例: <code>["tue","thu"]</code>）。曜日調整前はNULL。</td></tr>
       <tr><td><code>allocated_seats</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>割り当てられた座席の島（座席IDの配列）。座席の島の割当前はNULL。</td></tr>
       <tr><td><code>status</code></td><td>VARCHAR(20)</td><td>不可</td><td><code>'seats_confirmed'</code></td><td>CHECK</td><td><code>'seats_confirmed'</code>（アンケート未送信）/ <code>'survey_open'</code>（曜日アンケート中）/ <code>'weekdays_finalized'</code>（曜日確定済み）/ <code>'seats_allocated'</code>（座席割当済み）。</td></tr>
-      <tr><td><code>decided_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>必要座席数の確認〜座席の島の割当を行ったエリア責任者または副責任者。</td></tr>
+      <tr><td><code>decided_by</code></td><td>BIGINT</td><td>可</td><td>NULL</td><td>FK→users</td><td>四半期計画の開始〜座席の島の割当を行ったエリア責任者または副責任者。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。新規行は、管理部がプロジェクトを担当エリアに割り当てた時点（area_id確定と同時）に<code>status='seats_confirmed'</code>で作成される。</p>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。<strong>2026-08-27変更:</strong> <code>area_id</code>（FK→areas）／<code>area_assigned_by</code>（FK→users）を削除した。管理部によるプロジェクトの担当エリア割当（旧FR-03-1）を廃止したため、四半期計画とエリアを結びつける列は不要になった（座席の島の割当で選んだ座席が属するエリアはT-03.seats.area_id側から自明に分かる）。新規行は、エリア責任者・副責任者が対象プロジェクトの計画を「開始する」操作を行った時点に<code>status='seats_confirmed'</code>で作成される（旧: 管理部がプロジェクトを担当エリアに割り当てた時点）。</p>
 
   <h3>2.10 T-08 reservations（予約）</h3>
   <table>
@@ -728,7 +714,7 @@ footer.doc-footer {
       <tr><td><code>description</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>設定内容の説明（管理画面での表示用）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。管理画面（設定変更UI）は本フェーズのスコープに含まれておらず、初期データ投入・DBへの直接更新で運用する（管理画面が必要になった場合は別途要件定義書・基本設計書を改訂する）。</p>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ。管理画面（設定変更UI）は本フェーズのスコープに含まれておらず、初期データ投入・DBへの直接更新で運用する（管理画面が必要になった場合は別途要件定義書・基本設計書を改訂する）。<strong>ただしproject_seat_slack_webhook_urlのみ例外</strong>とし、S-08「通知設定」タブから編集できるようにする（A-49・A-50、2026-08-27追加。要件定義書FR-03-9、プロジェクトの担当エリア割当〔FR-03-1〕廃止に伴いエリアごとの3値からアプリケーション共通の1値に変更したため、他の設定項目と異なりUIでの変更ニーズが生じた）。</p>
   <p>初期データとして投入する行の想定（基本設計書3.4節・4.6節を反映）:</p>
   <table>
     <thead><tr><th>key</th><th>value（初期値）</th><th>description</th></tr></thead>
@@ -739,6 +725,7 @@ footer.doc-footer {
       <tr><td><code>reservation_retention_archive_days</code></td><td><code>365</code></td><td>予約日からT-13へ退避するまでの日数（D10）</td></tr>
       <tr><td><code>reservation_retention_delete_days</code></td><td><code>365</code></td><td>T-13退避後、論理削除するまでの日数（D10）</td></tr>
       <tr><td><code>seat_history_lookback_days</code></td><td><code>31</code></td><td>座席状況の履歴照会（S-10）で遡れる日数（D12）</td></tr>
+      <tr><td><code>project_seat_slack_webhook_url</code></td><td>NULL</td><td>出社曜日アンケート関連のSlack通知先（Incoming Webhook URL）。プロジェクト座席共通の1つ（2026-08-27追加。旧T-02 areas.slack_webhook_urlのエリアごと3値から統合）。未設定時は通知しない。</td></tr>
     </tbody>
   </table>
 
@@ -844,14 +831,16 @@ footer.doc-footer {
       <tr><td><code>A-27</code></td><td><span class="method get">GET</span><code>/projects</code></td><td>全プロジェクト一覧（プロジェクト・PM管理タブ）。</td><td>role='admin'</td><td></td></tr>
       <tr><td><code>A-28</code></td><td><span class="method post">POST</span><code>/projects</code></td><td>プロジェクトの新規作成。</td><td>role='admin'</td><td>Body: <code>{name}</code></td></tr>
       <tr><td><code>A-29</code></td><td><span class="method put">PUT</span><code>/projects/{id}/members</code></td><td>メンバー構成・PM/PL/SL・PJ席決担当をまとめて更新。</td><td>role='admin'</td><td>Body: <code>{members: [{user_id, project_title}], proxy_user_id}</code>。proxy_user_idはproject_title∈{'PM','PL'}のいずれかに限る（SLは対象外）。</td></tr>
-      <tr><td><code>A-30</code></td><td><span class="method get">GET</span><code>/areas</code></td><td>エリア一覧（Slack通知先）。</td><td>role='admin'</td><td>2026-08-27訂正、責任者・副責任者はエリアに紐づかなくなったため本APIからは削除（A-25で利用者の属性として取得する）。</td></tr>
-      <tr><td><code>A-31</code></td><td><span class="method put">PUT</span><code>/areas/{id}</code></td><td>Slack Webhook URLの設定。</td><td>role='admin'</td><td>Body: <code>{slack_webhook_url}</code>。2026-08-27訂正、エリア責任者・副責任者の指定はA-26（<code>PUT /users/{id}</code>）に移設したため本APIからは削除。</td></tr>
+      <tr><td><code>A-30</code></td><td><span class="method get">GET</span><code>/areas</code></td><td>エリア一覧（NORTH/EAST/WEST。座席マスタ管理・空き状況の絞り込み等で使う静的なマスタ参照）。</td><td>role='admin'</td><td>2026-08-27訂正、責任者・副責任者はエリアに紐づかなくなったため削除（A-25で利用者の属性として取得する）。Slack通知先もエリアに紐づかなくなったため削除（A-49・A-50参照）。</td></tr>
+      <tr><td><code>A-31</code></td><td colspan="4"><em>廃止（2026-08-27）。</em>エリアはnameのみの静的マスタになり、UIから編集する項目がなくなったため。責任者・副責任者の指定はA-26、Slack Webhook URLの設定はA-50に移設した。ID自体は欠番として保持する。</td></tr>
       <tr><td><code>A-32</code></td><td><span class="method get">GET</span><code>/role-master</code></td><td>役割マスタ一覧（役割マスタ管理タブ）。</td><td>role='admin'</td><td></td></tr>
       <tr><td><code>A-33</code></td><td><span class="method post">POST</span><code>/role-master</code></td><td>役割マスタの追加。</td><td>role='admin'</td><td>Body: <code>{name, description}</code></td></tr>
       <tr><td><code>A-34</code></td><td><span class="method put">PUT</span><code>/role-master/{id}</code></td><td>役割マスタの編集。</td><td>role='admin'</td><td></td></tr>
       <tr><td><code>A-35</code></td><td><span class="method delete">DELETE</span><code>/role-master/{id}</code></td><td>役割マスタの削除。</td><td>role='admin'</td><td></td></tr>
       <tr><td><code>A-36</code></td><td><span class="method post">POST</span><code>/users/{id}/custom-roles</code></td><td>利用者への役割マスタ付与（FR-07-2）。</td><td>role='admin'</td><td>Body: <code>{role_master_id}</code>。権限判定には一切使用しない（基本設計書4.2節）。</td></tr>
       <tr><td><code>A-37</code></td><td><span class="method delete">DELETE</span><code>/users/{id}/custom-roles/{role_master_id}</code></td><td>付与の取消。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-49</code></td><td><span class="method get">GET</span><code>/app-settings?keys=</code></td><td>UIから編集可能な設定値の取得（通知設定タブ）。本フェーズで対象とするのは<code>project_seat_slack_webhook_url</code>のみ。</td><td>role='admin'</td><td>2026-08-27追加（A-38〜A-48より後に新設したためIDは末尾）。T-16 app_settingsの大半は管理画面を持たずDB直接更新で運用するが（2.17節）、本キーのみ例外的にUIを持つ。</td></tr>
+      <tr><td><code>A-50</code></td><td><span class="method put">PUT</span><code>/app-settings/{key}</code></td><td>UIから編集可能な設定値の更新（通知設定タブ）。</td><td>role='admin'</td><td>Body: <code>{value}</code>。<code>key</code>は<code>project_seat_slack_webhook_url</code>のみ受け付ける（他のapp_settingsキーは本APIの対象外、2026-08-27追加）。</td></tr>
     </tbody>
   </table>
 
@@ -860,7 +849,7 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?area=&quarter=</code></td><td>四半期での一覧（未割当プロジェクトを含む）。<code>area</code>は任意の絞り込み用クエリパラメータ（表示上のフィルタであり、認可の範囲を制限するものではない）。</td><td>role='admin'（未割当一覧を含む）／エリア責任者・副責任者（全件、2026-08-27訂正。エリアを問わず全プロジェクトが対象）</td><td></td></tr>
-      <tr><td><code>A-39</code></td><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>プロジェクトを担当エリアに割り当て、四半期計画を新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>role='admin'</td><td>Body: <code>{area_id, period_start}</code></td></tr>
+      <tr><td><code>A-39</code></td><td><span class="method post">POST</span><code>/projects/{id}/quarter-plans</code></td><td>対象プロジェクトの四半期計画を開始し新規作成する（FR-03-1）。<code>status='seats_confirmed'</code>で作成。</td><td>エリア責任者・副責任者（2026-08-27訂正。従来はrole='admin'によるプロジェクトの担当エリア割当だったが廃止した）</td><td>Body: <code>{period_start}</code>。2026-08-27訂正、area_idを削除（座席の島の割当〔A-44〕で選んだ座席から自明に決まるため、四半期計画にエリアを持たせる必要がなくなった）。</td></tr>
       <tr><td><code>A-40</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
       <tr><td><code>A-41</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。対象プロジェクトの担当エリアのSlackチャンネルへ通知（FR-03-9①）。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td></td></tr>
       <tr><td><code>A-42</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>エリア責任者・副責任者（2026-08-27訂正、「担当エリアの」の限定を削除）</td><td></td></tr>
@@ -967,17 +956,17 @@ footer.doc-footer {
       <tr><td>PJ席決担当</td><td>radio（メンバー行ごと、単一選択）</td><td>任意（プロジェクトに1名まで）</td><td>役割がPMまたはPLの行のみ選択可（SL・なしの行はUIでdisabled）。プロジェクトにつき最大1名。API側でも役割がPM/PLでない利用者がproxy_user_idに指定されないよう検証する。</td></tr>
       <tr><td>責任者（エリア）</td><td>text（氏名検索）</td><td>任意（未設定可）</td><td>role='admin'の利用者のみ選択可（発注者確認済み、基本設計書3.2節T-02）。</td></tr>
       <tr><td>副責任者（エリア）</td><td>text（氏名検索）</td><td>任意（未設定可）</td><td>role='admin'の利用者のみ選択可。責任者が未設定の間は入力不可（画面側でdisabled、API側でも責任者未設定時は拒否）。</td></tr>
-      <tr><td>Slack通知先（Webhook URL）</td><td>text</td><td>任意</td><td>入力する場合は<code>https://hooks.slack.com/services/</code>で始まるURL形式であることを確認する。未入力の場合は当該エリアへの通知を送信しない（FR-03-9）。</td></tr>
+      <tr><td>Slack通知先（Webhook URL）</td><td>text</td><td>任意</td><td>入力する場合は<code>https://hooks.slack.com/services/</code>で始まるURL形式であることを確認する。未入力の場合は通知を送信しない（FR-03-9、2026-08-27訂正。プロジェクト座席共通の1つのみを持つ。当該エリアという概念はなくなった）。</td></tr>
       <tr><td>役割名（役割マスタ）</td><td>text</td><td>必須</td><td>1文字以上、役割マスタ内でユニーク（T-14.name UNIQUE）。</td></tr>
       <tr><td>説明（役割マスタ）</td><td>text</td><td>任意</td><td>最大200文字程度（明確な上限は実装時に決定）。</td></tr>
     </tbody>
   </table>
 
   <h3>4.7 S-09 プロジェクト座席（エリア担当）</h3>
+  <p class="callout">「四半期計画を開始する」（A-39）は入力欄を持たないボタン操作である（2026-08-27訂正。従来はエリア選択欄〔select〕を持っていたが、管理部によるプロジェクトの担当エリア割当を廃止したため削除した）。</p>
   <table>
     <thead><tr><th>項目</th><th>種別</th><th>必須</th><th>入力チェック内容</th></tr></thead>
     <tbody>
-      <tr><td>担当エリアの選択（未割当プロジェクトの行）</td><td>select</td><td>必須</td><td>NORTH／EAST／WESTのいずれか。「エリアを選択」（未選択）のまま送信不可。</td></tr>
       <tr><td>必要座席数（修正）</td><td>number</td><td>必須</td><td>1以上の整数。<code>status='seats_allocated'</code>（座席の島の割当済み）になった後は変更不可（API側で拒否）。</td></tr>
       <tr><td>出社曜日の調整表・各セル</td><td>checkbox（プロジェクト×曜日）</td><td>—</td><td>各プロジェクト行について、確定曜日として送信できるのは全曜日のうちの任意の組み合わせ（第一・第二希望に限定しない、要件定義書FR-03-5の方針）。0曜日での確定が業務上意味を持つかは運用次第だが、システムとしては0曜日（曜日を1つも確定しない）確定操作自体はエラーにしない（実装時の要検討事項として残す）。</td></tr>
       <tr><td>座席の島（範囲）の選択</td><td>—（S-02のフロアマップから選択）</td><td>必須</td><td>必要座席数と一致する座席数を選ぶことを画面側で推奨表示するが、一致しなくても送信は妨げない（現地判断の余地を残す）。既に他プロジェクトへ割当済みの座席は選択肢から除外する（座席単位の判定、基本設計書3.3節）。</td></tr>
@@ -1131,13 +1120,15 @@ footer.doc-footer {
       <tr><td>A-28</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-29</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-30</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-31</td><td><code>P-ADMIN</code></td><td>2026-08-27訂正。従来はmanager_user_id／deputy_user_idのフィールド単位の例外（deputy_user_idはP-AREA-HEADでも設定可）があったが、両フィールドがA-26へ移設されたため、本APIは<code>slack_webhook_url</code>のみを扱うシンプルな<code>P-ADMIN</code>限定APIになった。</td></tr>
+      <tr><td>A-31</td><td>—</td><td>廃止（2026-08-27）。3.7節参照。</td></tr>
       <tr><td>A-32</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-33</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-34</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-35</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-36</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-37</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-49</td><td><code>P-ADMIN</code></td><td>2026-08-27追加。</td></tr>
+      <tr><td>A-50</td><td><code>P-ADMIN</code></td><td>2026-08-27追加。</td></tr>
     </tbody>
   </table>
 
@@ -1146,7 +1137,7 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td>A-38</td><td><code>P-ADMIN</code> または <code>P-AREA</code></td><td>5.4節のとおりいずれで呼ぶかで返る範囲が変わる。</td></tr>
-      <tr><td>A-39</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-39</td><td><code>P-AREA</code></td><td>2026-08-27訂正。従来は<code>P-ADMIN</code>（管理部によるプロジェクトの担当エリア割当）だったが、この操作自体をエリア責任者・副責任者による四半期計画の開始に置き換えた。</td></tr>
       <tr><td>A-40</td><td><code>P-AREA</code></td><td></td></tr>
       <tr><td>A-41</td><td><code>P-AREA</code></td><td></td></tr>
       <tr><td>A-42</td><td><code>P-AREA</code></td><td></td></tr>
@@ -1240,7 +1231,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.7 / 2026-08-27</span>
+    <span>版数 0.8 / 2026-08-27</span>
   </footer>
 
 </div>
