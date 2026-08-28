@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import database
-from routers import admin, auth, fixed_seats, reservations, seats
+from routers import admin, auth, fixed_seats, project_pm, project_seats, proxy, reservations, roles, seat_master, seats
 
 
 @asynccontextmanager
@@ -24,6 +24,12 @@ app.include_router(seats.router)
 app.include_router(reservations.router)
 app.include_router(admin.router)
 app.include_router(fixed_seats.router)
+app.include_router(seat_master.router)
+app.include_router(seat_master.areas_router)
+app.include_router(proxy.router)
+app.include_router(roles.router)
+app.include_router(project_seats.router)
+app.include_router(project_pm.router)
 
 
 @app.get("/healthz", include_in_schema=False)

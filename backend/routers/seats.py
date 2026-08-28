@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 
 from auth_helpers import CurrentUser, require_auth
-from database import free_seat_bookable_period, get_pool
+from database import free_seat_bookable_period, get_pool, project_blocked_seats, release_expired_fixed_seats
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -34,12 +34,20 @@ async def get_availability(
 ):
     """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。
 
-    座席タイプが'project'の座席は、T-07が未実装のため通常のフリー座席と同じ予約有無ベースで
-    判定する（該当画面の実装時に対応する）。'fixed'座席はT-04（S-05）の恒久割当で判定し、
-    日次のreservationは参照しない（T-04には日次の行が存在しないため）。
+    'fixed'座席はT-04（S-05）の恒久割当で判定し、日次のreservationは参照しない（T-04には
+    日次の行が存在しないため）。プロジェクト座席はT-07（S-09）の座席の島の割当（allocated_seats）
+    のうち、指定dateがその計画のperiod_start〜period_endに含まれるものだけを対象とする
+    （project_blocked_seats、2026-08-28訂正。割当が決定した四半期の前でも通常のフリー座席として
+    予約できる必要があるため、座席自体を恒久的にproject化する実装は撤回した）。対象期間中の
+    プロジェクト座席のうち、指定dateに実際の予約（S-04 A-18の周期予約〔T-09〕から生成されたT-08行）
+    があれば'project_confirmed'（個人確定済み、display_nameはその利用者の姓）、なければ
+    'project_pending'（未確定、display_nameはプロジェクト名）とする（2026-08-28、A-10・S-04実装に
+    伴い区別を追加）。
     """
-    rows = await get_pool().fetch(
-        """SELECT s.id, s.seat_no, s.seat_type, a.name AS area_name,
+    await release_expired_fixed_seats()
+    pool = get_pool()
+    rows = await pool.fetch(
+        """SELECT s.id, s.seat_no, s.seat_type, s.pos_x, s.pos_y, a.name AS area_name,
                   r.id AS reservation_id, r.user_id AS reserved_user_id, ru.last_name, ru.first_name,
                   fsa.user_id AS fixed_user_id, fu.last_name AS fixed_last_name
            FROM seats s
@@ -54,6 +62,8 @@ async def get_availability(
            ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
         date, area,
     )
+
+    project_name_by_seat_id = await project_blocked_seats(date)
 
     # 座席タイルの表示名（基本設計書3.3節）: 使用中の座席の姓が同一フロアで重複する場合のみ
     # 「姓（名の頭文字）」に切り替える。自分の予約は常に「姓（自分）」で区別不要。
@@ -72,6 +82,17 @@ async def get_availability(
                 status, display_name = "free", None
             else:
                 status, display_name = "occupied_fixed", r["fixed_last_name"]
+        elif r["id"] in project_name_by_seat_id:
+            if r["reserved_user_id"] is None:
+                status, display_name = "project_pending", project_name_by_seat_id[r["id"]]
+            elif r["reserved_user_id"] == user.id:
+                status, display_name = "mine", f"{r['last_name']}（自分）"
+            else:
+                status = "project_confirmed"
+                display_name = (
+                    r["last_name"] if last_name_counts[r["last_name"]] <= 1
+                    else f"{r['last_name']}（{r['first_name'][:1]}）"
+                )
         elif r["reserved_user_id"] is None:
             status, display_name = "free", None
         elif r["reserved_user_id"] == user.id:
@@ -91,6 +112,10 @@ async def get_availability(
             "status": status,
             "display_name": display_name,
             "title": None,
+            # 仕様書のレスポンス例にはないが、S-02「座席配置モード」で配置した座席のみ設定される
+            # フロアマップ上の自由配置座標（エリアパネルに対する%）。未設定ならnull
+            "pos_x": r["pos_x"],
+            "pos_y": r["pos_y"],
             # 仕様書のレスポンス例にはないが、フロアマップから直接取消する（A-11）ために
             # 自分の予約にのみ付与する拡張フィールド
             "reservation_id": r["reservation_id"] if status == "mine" else None,

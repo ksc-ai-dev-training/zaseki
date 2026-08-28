@@ -18,10 +18,13 @@ interface SeatTileProps {
   /** S-05から遷移した「固定座席指定モード」。有効な間は通常の予約・取消を行わない */
   fixedSeatAssignMode?: boolean
   onAssignFixedSeat?: (seat: Seat) => void
+  /** S-09「座席の島の割当モード」で選択済みの座席id一覧（見た目のハイライトのみに使う。
+   * クリック自体は通常の空き座席クリックと同じonReserve経由で、Availability.tsx側で分岐する） */
+  selectedSeatIds?: Set<number>
 }
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
-export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat }: SeatTileProps) {
+export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
   }
@@ -51,8 +54,14 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
   }
 
   if (seat.status === 'free' && seat.seat_type === 'free') {
+    const selected = selectedSeatIds?.has(seat.id)
     return (
-      <button type="button" className="seat-tile status-free" style={style} onClick={() => onReserve(seat)}>
+      <button
+        type="button"
+        className={`seat-tile status-free ${selected ? 'ring-2 ring-green-600' : ''}`}
+        style={style}
+        onClick={() => onReserve(seat)}
+      >
         {seat.seat_no}
       </button>
     )

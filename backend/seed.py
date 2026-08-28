@@ -50,6 +50,22 @@ APP_SETTINGS = [
     ("seat_history_lookback_days", "31", "座席状況の履歴照会（S-10）で遡れる日数（D12）"),
 ]
 
+# S-09動作確認用のデモプロジェクト（S-08プロジェクト・PM管理タブが未実装のため、
+# プロジェクト自体の作成手段が現時点でシード以外にない。(name, [(email, project_title), ...])）
+PROJECTS = [
+    ("Zaseki研修プロジェクト", [
+        ("tanaka@kogasoftware.com", "PM"),
+        ("nakamura@kogasoftware.com", "PL"),
+        ("yamamoto@kogasoftware.com", None),
+        ("shimizu@kogasoftware.com", None),
+    ]),
+    ("経歴書刷新プロジェクト", [
+        ("takahashi@kogasoftware.com", "PM"),
+        ("ishii@kogasoftware.com", None),
+        ("kimura@kogasoftware.com", None),
+    ]),
+]
+
 
 async def main():
     pool = await database.init_pool()
@@ -106,6 +122,22 @@ async def main():
                     key, value, description,
                 )
             print("app_settingsにシードデータを投入しました")
+
+        project_count = await conn.fetchval("SELECT COUNT(*) FROM projects")
+        if project_count > 0:
+            print("projects にデータが存在するためスキップしました")
+        else:
+            for name, members in PROJECTS:
+                project_id = await conn.fetchval(
+                    "INSERT INTO projects (name) VALUES ($1) RETURNING id", name
+                )
+                for email, project_title in members:
+                    user_id = await conn.fetchval("SELECT id FROM users WHERE email = $1", email)
+                    await conn.execute(
+                        "INSERT INTO project_members (project_id, user_id, project_title) VALUES ($1, $2, $3)",
+                        project_id, user_id, project_title,
+                    )
+            print("projects・project_membersにシードデータを投入しました")
     await database.close_pool()
 
 

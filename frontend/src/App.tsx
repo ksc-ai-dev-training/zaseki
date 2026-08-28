@@ -6,6 +6,11 @@ import Login from './pages/Login'
 import Availability from './pages/Availability'
 import AdminMenu from './pages/AdminMenu'
 import FixedSeats from './pages/FixedSeats'
+import ProjectSeatAllocation from './pages/ProjectSeatAllocation'
+import ProjectSeatRequest from './pages/ProjectSeatRequest'
+import ProxyBooking from './pages/ProxyBooking'
+import RoleManagement from './pages/RoleManagement'
+import SeatMaster from './pages/SeatMaster'
 import ComingSoon from './pages/ComingSoon'
 import Layout from './components/Layout'
 
@@ -41,13 +46,13 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route element={<Layout me={me} onLogout={logout} />}>
         <Route path="/" element={<Availability />} />
-        <Route path="/project-seats" element={<ComingSoon id="S-04" name="プロジェクト座席" />} />
-        <Route path="/project-seats-area" element={requireAdmin(<ComingSoon id="S-09" name="プロジェクト座席（エリア担当）" />)} />
+        <Route path="/project-seats" element={<ProjectSeatRequest />} />
+        <Route path="/project-seats-area" element={requireAdmin(<ProjectSeatAllocation />)} />
         <Route path="/admin" element={requireAdmin(<AdminMenu />)} />
         <Route path="/fixed-seats" element={requireAdmin(<FixedSeats />)} />
-        <Route path="/proxy-booking" element={requireAdmin(<ComingSoon id="S-11" name="代理予約・取消" />)} />
-        <Route path="/seat-master" element={requireAdmin(<ComingSoon id="S-07" name="座席マスタ管理" />)} />
-        <Route path="/roles" element={requireAdmin(<ComingSoon id="S-08" name="権限・役割管理" />)} />
+        <Route path="/proxy-booking" element={requireAdmin(<ProxyBooking />)} />
+        <Route path="/seat-master" element={requireAdmin(<SeatMaster />)} />
+        <Route path="/roles" element={requireAdmin(<RoleManagement />)} />
         <Route path="/history" element={requireAdmin(<ComingSoon id="S-10" name="座席状況の履歴照会" />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

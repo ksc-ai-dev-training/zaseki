@@ -91,16 +91,16 @@
           <table class="table">
             <thead><tr><th>座席番号</th><th>エリア</th><th>座席タイプ</th><th>状態</th><th></th></tr></thead>
             <tbody>
-              <tr><td class="cell-main">A1</td><td>NORTH</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('A1')">編集</button></td></tr>
-              <tr><td class="cell-main">A3</td><td>NORTH</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('A3')">編集</button></td></tr>
-              <tr><td class="cell-main">B1</td><td>NORTH</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('B1')">編集</button></td></tr>
-              <tr><td class="cell-main">C1</td><td>EAST</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('C1')">編集</button></td></tr>
-              <tr><td class="cell-main">C2</td><td>EAST</td><td><span class="chip">プロジェクト</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('C2')">編集</button></td></tr>
-              <tr><td class="cell-main">F1</td><td>EAST</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('F1')">編集</button></td></tr>
-              <tr><td class="cell-main">G3</td><td>EAST</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('G3')">編集</button></td></tr>
-              <tr><td class="cell-main">J1</td><td>WEST</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('J1')">編集</button></td></tr>
-              <tr><td class="cell-main">M7</td><td>WEST</td><td><span class="chip">プロジェクト</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('M7')">編集</button></td></tr>
-              <tr><td class="cell-main">P4</td><td>WEST</td><td><span class="chip">フリー</span></td><td class="cell-sub"><span class="badge badge-status-off">廃止</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('P4')">編集</button></td></tr>
+              <tr><td class="cell-main">A1</td><td>NORTH</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('A1')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('A1','NORTH')">削除</button></td></tr>
+              <tr><td class="cell-main">A3</td><td>NORTH</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('A3')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('A3','NORTH')">削除</button></td></tr>
+              <tr><td class="cell-main">B1</td><td>NORTH</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('B1')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('B1','NORTH')">削除</button></td></tr>
+              <tr><td class="cell-main">C1</td><td>EAST</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('C1')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('C1','EAST')">削除</button></td></tr>
+              <tr><td class="cell-main">C2</td><td>EAST</td><td><span class="chip">プロジェクト</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('C2')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('C2','EAST')">削除</button></td></tr>
+              <tr><td class="cell-main">F1</td><td>EAST</td><td><span class="chip">フリー</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('F1')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('F1','EAST')">削除</button></td></tr>
+              <tr><td class="cell-main">G3</td><td>EAST</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('G3')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('G3','EAST')">削除</button></td></tr>
+              <tr><td class="cell-main">J1</td><td>WEST</td><td><span class="chip">固定</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('J1')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('J1','WEST')">削除</button></td></tr>
+              <tr><td class="cell-main">M7</td><td>WEST</td><td><span class="chip">プロジェクト</span></td><td><span class="badge badge-status-on">有効</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('M7')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('M7','WEST')">削除</button></td></tr>
+              <tr><td class="cell-main">P4</td><td>WEST</td><td><span class="chip">フリー</span></td><td class="cell-sub"><span class="badge badge-status-off">廃止</span></td><td><button class="btn btn-secondary btn-sm" type="button" onclick="openSeatEditModal('P4')">編集</button> <button class="btn btn-danger-ghost btn-sm" type="button" onclick="openDeleteModal('P4','WEST')">削除</button></td></tr>
             </tbody>
           </table>
         </div>
@@ -166,6 +166,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="delete-modal" onclick="if(event.target===this)closeDeleteModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">座席の削除</div>
+      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeDeleteModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p>座席「<strong id="delete-modal-seat">A1</strong>」（<span id="delete-modal-area">NORTH</span>）を削除します。廃止（一覧に残したまま新規予約対象から外す）とは異なり、座席データ自体を完全に削除します。この操作は取り消せません。</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" type="button" onclick="closeDeleteModal()">キャンセル</button>
+      <button class="btn btn-primary" type="button" onclick="closeDeleteModal()">削除する</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // 編集モーダル開閉（静的モック確認用の最小限のJS）
 function openSeatEditModal(seatNo) {
@@ -175,6 +191,15 @@ function openSeatEditModal(seatNo) {
 }
 function closeSeatEditModal() {
   document.getElementById('seat-edit-modal').classList.remove('open');
+}
+// 削除確認モーダル（2026-08-28追加。「席は削除する機能も追加してほしい。廃止とは別」との要望に対応）
+function openDeleteModal(seatNo, area) {
+  document.getElementById('delete-modal-seat').textContent = seatNo;
+  document.getElementById('delete-modal-area').textContent = area;
+  document.getElementById('delete-modal').classList.add('open');
+}
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.remove('open');
 }
 </script>
 

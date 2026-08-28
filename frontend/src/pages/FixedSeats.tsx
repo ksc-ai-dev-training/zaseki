@@ -103,6 +103,7 @@ export default function FixedSeats() {
                   <th className="pb-2 pr-3">氏名</th>
                   <th className="pb-2 pr-3">固定座席</th>
                   <th className="pb-2 pr-3">エリア</th>
+                  <th className="pb-2 pr-3">期限</th>
                   <th className="pb-2"></th>
                 </tr>
               </thead>
@@ -112,6 +113,7 @@ export default function FixedSeats() {
                     <td className="py-2 pr-3">{a.user_name}</td>
                     <td className="py-2 pr-3">{a.seat_no}</td>
                     <td className="py-2 pr-3">{a.area}</td>
+                    <td className="py-2 pr-3 text-xs text-slate-500">{a.valid_until ?? '無期限'}</td>
                     <td className="py-2">
                       <div className="flex justify-end gap-2">
                         <button
@@ -134,7 +136,7 @@ export default function FixedSeats() {
                 ))}
                 {!assignmentsLoading && assignments.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-slate-400">固定座席の割当はありません</td>
+                    <td colSpan={5} className="py-4 text-center text-slate-400">固定座席の割当はありません</td>
                   </tr>
                 )}
               </tbody>

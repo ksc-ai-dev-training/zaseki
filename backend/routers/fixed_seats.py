@@ -1,9 +1,11 @@
 # A-19, A-20, A-21, A-52 固定座席の指定（S-05）。詳細設計書3.5節
+from datetime import date as Date
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool
+from database import get_pool, release_expired_fixed_seats
 
 router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assignments"])
 
@@ -11,8 +13,10 @@ router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assig
 @router.get("")
 async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
     """A-19: 固定座席の割当一覧（現在の割当パネル）"""
+    await release_expired_fixed_seats()
     rows = await get_pool().fetch(
-        """SELECT fsa.seat_id, s.seat_no, a.name AS area_name, u.id AS user_id, u.last_name, u.first_name
+        """SELECT fsa.seat_id, s.seat_no, a.name AS area_name, u.id AS user_id, u.last_name, u.first_name,
+                  fsa.valid_until
            FROM fixed_seat_assignments fsa
            JOIN seats s ON s.id = fsa.seat_id
            JOIN areas a ON a.id = s.area_id
@@ -24,6 +28,7 @@ async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
             {
                 "seat_id": r["seat_id"], "seat_no": r["seat_no"], "area": r["area_name"],
                 "user_id": r["user_id"], "user_name": f"{r['last_name']} {r['first_name']}",
+                "valid_until": r["valid_until"].isoformat() if r["valid_until"] else None,
             }
             for r in rows
         ]
@@ -60,6 +65,8 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
 class FixedSeatAssign(BaseModel):
     seat_id: int
     user_id: int
+    # 任意の有効期限（FR-01-5、2026-08-28追加）。未指定（None）は従来どおり無期限。
+    valid_until: Date | None = None
 
 
 @router.post("")
@@ -68,8 +75,12 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
     座席タイプを問わず選べる、2026-08-27訂正）。割り当てと同時にseat_type='fixed'に変更し、
     以後の予約有無に基づく判定（A-06）を恒久割当ベースに切り替える。当該座席に残っている
     今後の通常予約（T-08）は割当と矛盾するため取り消す。対象者が既に別の固定座席を持つ場合は
-    そちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」もこのAPIで表現する）。"""
+    そちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」もこのAPIで表現する）。
+    valid_untilを指定した場合、その日を過ぎるとrelease_expired_fixed_seats()により自動的に
+    フリー座席へ戻る（2026-08-28追加）。"""
     pool = get_pool()
+    if body.valid_until is not None and body.valid_until <= Date.today():
+        raise HTTPException(400, detail="有効期限は明日以降の日付を指定してください")
     seat = await pool.fetchrow("SELECT id, seat_type, status FROM seats WHERE id = $1", body.seat_id)
     if seat is None or seat["status"] != "active":
         raise HTTPException(404, detail="対象が見つかりません")
@@ -100,8 +111,8 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
                 body.seat_id,
             )
             await conn.execute(
-                "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by) VALUES ($1, $2, $3)",
-                body.seat_id, body.user_id, user.id,
+                "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_until) VALUES ($1, $2, $3, $4)",
+                body.seat_id, body.user_id, user.id, body.valid_until,
             )
     return {"detail": "固定座席を指定しました"}
 

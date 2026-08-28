@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
 import { useMyReservations } from '../hooks/useMyReservations'
 import { useFloorZoom } from '../hooks/useFloorZoom'
 import { usePeriodAvailability } from '../hooks/usePeriodAvailability'
+import { useAreas } from '../hooks/useAreas'
 import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
-import type { AssignFixedSeatFor, Seat, SeatStatus, SeatType } from '../types'
+import SeatTile from '../components/SeatTile'
+import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
+import type { AssignFixedSeatFor, ProxyBookingFor, SeatBlockFor, Seat, SeatStatus, SeatType } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -73,6 +76,12 @@ export default function Availability() {
   const navigate = useNavigate()
   // S-05から「この人に固定座席を指定する」で遷移した場合、location.stateに対象者が積まれる
   const assignFixedSeatFor = (location.state as { assignFixedSeatFor?: AssignFixedSeatFor } | null)?.assignFixedSeatFor
+  // S-07から「座席表に配置する」で遷移した場合の座席配置モード
+  const placeSeatMode = Boolean((location.state as { placeSeatMode?: boolean } | null)?.placeSeatMode)
+  // S-11から「この人を代理予約する」で遷移した場合、location.stateに対象者が積まれる（代理予約モード）
+  const proxyBookingFor = (location.state as { proxyBookingFor?: ProxyBookingFor } | null)?.proxyBookingFor
+  // S-09から「座席の島を割り当てる」で遷移した場合、location.stateに対象計画が積まれる（座席の島の割当モード）
+  const seatBlockFor = (location.state as { seatBlockFor?: SeatBlockFor } | null)?.seatBlockFor
 
   const [date, setDate] = useState(todayStr())
   const [viewMode, setViewMode] = useState<'floormap' | 'period'>('floormap')
@@ -82,10 +91,17 @@ export default function Availability() {
   const [reserveTarget, setReserveTarget] = useState<{ seatId: number; seatNo: string; area: string; date: string } | null>(null)
   const [cancelTarget, setCancelTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignFixedSeatTarget, setAssignFixedSeatTarget] = useState<{ seat: Seat; area: string } | null>(null)
+  const [assignIndefinite, setAssignIndefinite] = useState(true)
+  const [assignValidUntil, setAssignValidUntil] = useState('')
+  const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number } | null>(null)
+  const [newSeatNo, setNewSeatNo] = useState('')
+  const [newSeatType, setNewSeatType] = useState<SeatType>('free')
+  const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { availability, isLoading, refresh: refreshAvailability } = useAvailability(date, areaFilter)
+  const { items: areas } = useAreas(placeSeatMode)
   const { period, isLoading: periodLoading, refresh: refreshPeriod } = usePeriodAvailability(periodOverride?.start, periodOverride?.end, areaFilter)
   const upcoming = useMyReservations('upcoming')
   const past = useMyReservations('past')
@@ -102,6 +118,16 @@ export default function Availability() {
 
   const openReserve = (seatId: number, seatNo: string, area: string, targetDate: string) => {
     setActionError(null)
+    if (seatBlockFor) {
+      // S-09「座席の島の割当モード」: モーダルは開かず、クリックのたびに選択をトグルする
+      setSeatBlockSelection((prev) => {
+        const next = new Set(prev)
+        if (next.has(seatId)) next.delete(seatId)
+        else next.add(seatId)
+        return next
+      })
+      return
+    }
     setReserveTarget({ seatId, seatNo, area, date: targetDate })
   }
   const openCancel = (seat: Seat, area: string) => {
@@ -110,16 +136,64 @@ export default function Availability() {
   }
   const openAssignFixedSeat = (seat: Seat, area: string) => {
     setActionError(null)
+    setAssignIndefinite(true)
+    setAssignValidUntil('')
     setAssignFixedSeatTarget({ seat, area })
   }
   const resetPeriodFilter = () => setPeriodOverride(null)
   const exitAssignFixedSeatMode = () => navigate('.', { replace: true, state: null })
+  const exitPlaceSeatMode = () => navigate('.', { replace: true, state: null })
+  const exitSeatBlockMode = () => { setSeatBlockSelection(new Set()); navigate('.', { replace: true, state: null }) }
+
+  const confirmSeatBlock = async () => {
+    if (!seatBlockFor || seatBlockSelection.size === 0) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch(`/api/project-quarter-plans/${seatBlockFor.planId}/seat-block`, {
+        method: 'PUT',
+        body: JSON.stringify({ seat_ids: [...seatBlockSelection] }),
+      })
+      setSeatBlockSelection(new Set())
+      navigate('/project-seats-area', { replace: true })
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '座席の島の割当に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const exitProxyBookingMode = () => navigate('.', { replace: true, state: null })
+
+  // 座席配置モード中、パネルの本当に何もない背景をクリックした場合のみ配置を開始する
+  // （既存の座席タイル・部屋・柱等の上のクリックはそれぞれの本来の動作に任せる）
+  const handlePanelClick = (e: MouseEvent<HTMLDivElement>, area: 'NORTH' | 'EAST' | 'WEST') => {
+    if (!placeSeatMode || e.target !== e.currentTarget) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    setActionError(null)
+    setNewSeatNo('')
+    setNewSeatType('free')
+    setPlaceSeatTarget({
+      area,
+      posX: ((e.clientX - rect.left) / rect.width) * 100,
+      posY: ((e.clientY - rect.top) / rect.height) * 100,
+    })
+  }
 
   const confirmReserve = async () => {
     if (!reserveTarget) return
     setSubmitting(true)
     setActionError(null)
     try {
+      if (proxyBookingFor) {
+        // S-11「代理予約モード」: 対象者の代理でA-47を呼び、完了後はS-11に戻る（4.11節）
+        await apiFetch('/api/reservations/proxy', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: proxyBookingFor.userId, seat_id: reserveTarget.seatId, date: reserveTarget.date }),
+        })
+        setReserveTarget(null)
+        navigate('/proxy-booking', { replace: true })
+        return
+      }
       await apiFetch('/api/reservations', {
         method: 'POST',
         body: JSON.stringify({ seat_id: reserveTarget.seatId, date: reserveTarget.date }),
@@ -150,18 +224,47 @@ export default function Availability() {
 
   const confirmAssignFixedSeat = async () => {
     if (!assignFixedSeatTarget || !assignFixedSeatFor) return
+    if (!assignIndefinite && !assignValidUntil) return
     setSubmitting(true)
     setActionError(null)
     try {
       await apiFetch('/api/fixed-seat-assignments', {
         method: 'POST',
-        body: JSON.stringify({ seat_id: assignFixedSeatTarget.seat.id, user_id: assignFixedSeatFor.userId }),
+        body: JSON.stringify({
+          seat_id: assignFixedSeatTarget.seat.id,
+          user_id: assignFixedSeatFor.userId,
+          valid_until: assignIndefinite ? null : assignValidUntil,
+        }),
       })
       setAssignFixedSeatTarget(null)
-      await refreshAvailability()
-      navigate('.', { replace: true, state: null })
+      // 指定完了後はこの画面（S-02）に留まらず、固定座席の指定（S-05）に戻る
+      navigate('/fixed-seats', { replace: true })
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '固定座席の指定に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const confirmPlaceSeat = async () => {
+    if (!placeSeatTarget) return
+    const area = areas.find((a) => a.name === placeSeatTarget.area)
+    if (!area) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch('/api/seats', {
+        method: 'POST',
+        body: JSON.stringify({
+          seat_no: newSeatNo, area_id: area.id, seat_type: newSeatType,
+          pos_x: placeSeatTarget.posX, pos_y: placeSeatTarget.posY,
+        }),
+      })
+      setPlaceSeatTarget(null)
+      await refreshAvailability()
+      // 配置モード自体は続行し、続けて別の座席を配置できるようにする
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '座席の追加に失敗しました')
     } finally {
       setSubmitting(false)
     }
@@ -192,6 +295,7 @@ export default function Availability() {
     onCancel: (seat: Seat) => openCancel(seat, seatArea[seat.seat_no]),
     fixedSeatAssignMode: Boolean(assignFixedSeatFor),
     onAssignFixedSeat: (seat: Seat) => openAssignFixedSeat(seat, seatArea[seat.seat_no]),
+    selectedSeatIds: seatBlockFor ? seatBlockSelection : undefined,
   }
 
   const areaNames = new Set(availability?.areas.map((a) => a.area))
@@ -200,6 +304,39 @@ export default function Availability() {
   const hasWest = areaNames.has('WEST')
   const hasAnyArea = hasNorth || hasEast || hasWest
   const { viewportRef, overviewRef } = useFloorZoom(areaFilter, hasAnyArea)
+
+  // S-07から追加した座席のうち、フロアマップの固定レイアウト（実際の配置図）に含まれないものは
+  // 通常のフロアマップの図には現れない。座席配置モード（pos_x/pos_yあり）で配置済みのものは
+  // パネル上に直接重ねて表示し、それ以外（座標未設定）は「追加座席」として下に別枠一覧表示する。
+  const extraSeatGroups = new Map<string, Seat[]>()
+  const freePositionedByArea: Record<'NORTH' | 'EAST' | 'WEST', Seat[]> = { NORTH: [], EAST: [], WEST: [] }
+  Object.keys(seatByNo).forEach((no) => {
+    const area = seatArea[no] as 'NORTH' | 'EAST' | 'WEST' | undefined
+    if (!area || FLOOR_LAYOUT_SEATS[area].has(no)) return
+    const seat = seatByNo[no]
+    if (seat.pos_x !== null && seat.pos_y !== null) {
+      freePositionedByArea[area].push(seat)
+      return
+    }
+    const label = `${area} ${blockLabelOf(no)}`
+    if (!extraSeatGroups.has(label)) extraSeatGroups.set(label, [])
+    extraSeatGroups.get(label)!.push(seat)
+  })
+  extraSeatGroups.forEach((seats) => seats.sort((a, b) => a.seat_no.localeCompare(b.seat_no)))
+
+  const renderFreePositionedSeats = (area: 'NORTH' | 'EAST' | 'WEST') =>
+    freePositionedByArea[area].map((seat) => (
+      <div key={seat.id} className="free-placed-seat" style={{ left: `${seat.pos_x}%`, top: `${seat.pos_y}%` }}>
+        <SeatTile
+          seat={seat}
+          onReserve={floorProps.onReserve}
+          onCancel={floorProps.onCancel}
+          fixedSeatAssignMode={floorProps.fixedSeatAssignMode}
+          onAssignFixedSeat={floorProps.onAssignFixedSeat}
+          selectedSeatIds={floorProps.selectedSeatIds}
+        />
+      </div>
+    ))
 
   return (
     <div>
@@ -217,6 +354,51 @@ export default function Availability() {
             キャンセル
           </button>
         </div>
+      )}
+
+      {placeSeatMode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
+          <span>新しい座席を配置中です。フロアマップの空いている位置をクリックしてください。</span>
+          <button type="button" onClick={exitPlaceSeatMode} className="shrink-0 text-blue-700 underline hover:text-blue-900">
+            完了・キャンセル
+          </button>
+        </div>
+      )}
+
+      {proxyBookingFor && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
+          <span>
+            <strong>{proxyBookingFor.userName}</strong>さんの代理予約中です。フロアマップまたは期間ビューで空いている座席をクリックしてください。
+          </span>
+          <button type="button" onClick={exitProxyBookingMode} className="shrink-0 text-blue-700 underline hover:text-blue-900">
+            キャンセル
+          </button>
+        </div>
+      )}
+
+      {seatBlockFor && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
+          <span>
+            <strong>{seatBlockFor.projectName}</strong>の座席の島を割り当て中です（必要座席数: {seatBlockFor.requiredSeats}名）。
+            フロアマップの空いている座席をクリックして選択・解除してください。選択中: {seatBlockSelection.size}席
+          </span>
+          <span className="flex shrink-0 gap-3">
+            <button
+              type="button"
+              disabled={submitting || seatBlockSelection.size === 0}
+              onClick={confirmSeatBlock}
+              className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
+            >
+              この内容で割り当てる
+            </button>
+            <button type="button" onClick={exitSeatBlockMode} className="text-blue-700 underline hover:text-blue-900">
+              キャンセル
+            </button>
+          </span>
+        </div>
+      )}
+      {seatBlockFor && actionError && (
+        <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
       <div className="p-6">
@@ -304,28 +486,68 @@ export default function Availability() {
                     <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
                   </div>
                 )}
-                <div className="panel-north">
+                <div
+                  className={`panel-north ${placeSeatMode ? 'placement-mode-active' : ''}`}
+                  onClick={(e) => handlePanelClick(e, 'NORTH')}
+                >
                   <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
                   <NorthFloor {...floorProps} />
+                  {renderFreePositionedSeats('NORTH')}
                 </div>
               </div>
             )}
             {(hasEast || hasWest) && (
               <div className="floor-overview-stack">
                 {hasEast && (
-                  <div className="panel-east">
+                  <div
+                    className={`panel-east ${placeSeatMode ? 'placement-mode-active' : ''}`}
+                    onClick={(e) => handlePanelClick(e, 'EAST')}
+                  >
                     <h2 className="area-heading area-east mb-3">EASTエリア</h2>
                     <EastFloor {...floorProps} />
+                    {renderFreePositionedSeats('EAST')}
                   </div>
                 )}
                 {hasWest && (
-                  <div className="panel-west">
+                  <div
+                    className={`panel-west ${placeSeatMode ? 'placement-mode-active' : ''}`}
+                    onClick={(e) => handlePanelClick(e, 'WEST')}
+                  >
                     <h2 className="area-heading area-west mb-3">WESTエリア</h2>
                     <WestFloor {...floorProps} />
+                    {renderFreePositionedSeats('WEST')}
                   </div>
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {extraSeatGroups.size > 0 && (
+        <div className="mb-6 rounded border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <h3 className="font-semibold">追加座席</h3>
+            <span className="text-xs text-slate-400">座席マスタ管理（S-07）で追加された座席（配置図には未反映）</span>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            {[...extraSeatGroups.entries()].map(([label, seats]) => (
+              <div key={label}>
+                <div className="mb-1 text-xs font-semibold text-slate-500">{label}</div>
+                <div className="flex flex-wrap gap-2">
+                  {seats.map((seat) => (
+                    <SeatTile
+                      key={seat.id}
+                      seat={seat}
+                      onReserve={floorProps.onReserve}
+                      onCancel={floorProps.onCancel}
+                      fixedSeatAssignMode={floorProps.fixedSeatAssignMode}
+                      onAssignFixedSeat={floorProps.onAssignFixedSeat}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -549,7 +771,7 @@ export default function Availability() {
 
       {reserveTarget && (
         <Modal
-          title="座席の予約"
+          title={proxyBookingFor ? '座席の代理予約' : '座席の予約'}
           onClose={() => setReserveTarget(null)}
           footer={
             <>
@@ -559,6 +781,9 @@ export default function Availability() {
           }
         >
           <dl className="space-y-1.5 text-sm">
+            {proxyBookingFor && (
+              <div className="flex justify-between"><dt className="text-slate-500">対象者</dt><dd>{proxyBookingFor.userName}</dd></div>
+            )}
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{reserveTarget.seatNo}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
@@ -594,7 +819,14 @@ export default function Availability() {
           footer={
             <>
               <button type="button" onClick={() => setAssignFixedSeatTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={submitting} onClick={confirmAssignFixedSeat} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">指定する</button>
+              <button
+                type="button"
+                disabled={submitting || (!assignIndefinite && !assignValidUntil)}
+                onClick={confirmAssignFixedSeat}
+                className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                指定する
+              </button>
             </>
           }
         >
@@ -603,6 +835,69 @@ export default function Availability() {
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{assignFixedSeatTarget.seat.seat_no}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{assignFixedSeatTarget.area}</dd></div>
           </dl>
+          <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={assignIndefinite}
+                onChange={(e) => setAssignIndefinite(e.target.checked)}
+              />
+              <span>無期限にする（変更するまでこの座席を使い続ける）</span>
+            </label>
+            {!assignIndefinite && (
+              <label className="block">
+                <span className="mb-1 block text-slate-500">期限を決めてください（この日まで固定座席として使用、翌日以降は自動的にフリー座席に戻る）</span>
+                <input
+                  type="date"
+                  value={assignValidUntil}
+                  onChange={(e) => setAssignValidUntil(e.target.value)}
+                  min={shiftDateStr(todayStr(), 1)}
+                  className="h-9 w-full rounded border border-slate-300 px-3"
+                />
+              </label>
+            )}
+          </div>
+          {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+        </Modal>
+      )}
+
+      {placeSeatTarget && (
+        <Modal
+          title="新しい座席を配置"
+          onClose={() => setPlaceSeatTarget(null)}
+          footer={
+            <>
+              <button type="button" onClick={() => setPlaceSeatTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" disabled={submitting || !newSeatNo.trim()} onClick={confirmPlaceSeat} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">配置する</button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between"><span className="text-slate-500">エリア</span><span>{placeSeatTarget.area}</span></div>
+            <label className="block">
+              <span className="mb-1 block text-slate-500">座席番号</span>
+              <input
+                type="text"
+                value={newSeatNo}
+                onChange={(e) => setNewSeatNo(e.target.value)}
+                placeholder="例: Q1"
+                className="h-9 w-full rounded border border-slate-300 px-3"
+                autoFocus
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-slate-500">座席タイプ</span>
+              <select
+                value={newSeatType}
+                onChange={(e) => setNewSeatType(e.target.value as SeatType)}
+                className="h-9 w-full rounded border border-slate-300 px-2"
+              >
+                <option value="free">フリー</option>
+                <option value="fixed">固定</option>
+                <option value="project">プロジェクト</option>
+              </select>
+            </label>
+          </div>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
         </Modal>
       )}

@@ -8,6 +8,7 @@ interface FloorProps {
   onCancel: (seat: Seat) => void
   fixedSeatAssignMode?: boolean
   onAssignFixedSeat?: (seat: Seat) => void
+  selectedSeatIds?: Set<number>
 }
 
 const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center', alignSelf: 'center' }
