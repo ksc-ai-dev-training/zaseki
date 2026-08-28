@@ -1,7 +1,5 @@
-# A-27, A-38〜A-44 プロジェクト座席・エリア担当側（S-09）。詳細設計書3.9節
-# S-08「プロジェクト・PM管理」タブ（プロジェクト・メンバーのCRUD、A-28・A-29）は
-# S-04（PM側）とあわせて別途実装するため、本フェーズはS-09が必要とする読み取り専用の
-# A-27のみ実装する（2026-08-28）。プロジェクト・メンバー自体はseed.pyで投入する。
+# A-27〜A-29 プロジェクト・PM管理（S-08）、A-38〜A-44 プロジェクト座席・エリア担当側（S-09）。
+# 詳細設計書3.8節・3.9節
 import json
 import re
 from datetime import date as Date, timedelta
@@ -12,13 +10,35 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import get_pool, get_setting
+from slack import send_slack_notification
 
 router = APIRouter(prefix="/api", tags=["project-seats"])
+
+_WEEKDAY_JA = {"mon": "月", "tue": "火", "wed": "水", "thu": "木", "fri": "金"}
 
 
 async def _base_months() -> list[int]:
     raw = await get_setting("quarter_base_months")
     return json.loads(raw) if raw else [1, 4, 7, 10]
+
+
+async def _ensure_next_quarter_plans(pool) -> None:
+    """次の四半期の計画データを、対象プロジェクトごとに自動的に起票する（FR-03-1、2026-08-28実装）。
+    従来はエリア責任者・管理部が「四半期計画を開始する」ボタンを押す手動操作だったが、全プロジェクトが
+    毎四半期必ず1件必要とするものであり手動操作を要する理由がないとの要望を受け、A-27・A-38の
+    参照時に不足分を自動起票する方式に変更した。ON CONFLICT DO NOTHINGのため複数回呼んでも副作用はない。"""
+    base_months = await _base_months()
+    next_start = _next_quarter_start(Date.today(), base_months)
+    next_end = _quarter_end(next_start, base_months)
+    await pool.execute(
+        """INSERT INTO project_quarter_plans (project_id, period_start, period_end, required_seats)
+           SELECT p.id, $1, $2, GREATEST(COUNT(pm.id), 1)
+           FROM projects p
+           LEFT JOIN project_members pm ON pm.project_id = p.id
+           GROUP BY p.id
+           ON CONFLICT (project_id, period_start) DO NOTHING""",
+        next_start, next_end,
+    )
 
 
 def _quarter_start_for(d: Date, base_months: list[int]) -> Date:
@@ -64,40 +84,150 @@ def _format_seat_range(seat_nos: list[str]) -> str:
 
 @router.get("/projects")
 async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
-    """A-27: 全プロジェクト一覧。プロジェクトの作成・編集（A-28・A-29）はS-08「プロジェクト・PM管理」
-    タブとあわせて別途実装するため未実装。S-09の「四半期計画を開始する」パネルで、次の四半期の
-    計画がまだないプロジェクトを判定するために使う（2026-08-28追加、has_plan_for_next_quarter）。"""
+    """A-27: 全プロジェクト一覧。S-08「プロジェクト・PM管理」タブの一覧・編集モーダルのメンバー表で使う
+    （2026-08-28、members・member_count・proxy_user_id・proxy_user_nameを追加）。呼び出し時に次の四半期の
+    計画データの自動作成（_ensure_next_quarter_plans）を行う（2026-08-28追加、FR-03-1改訂）。"""
     pool = get_pool()
-    base_months = await _base_months()
-    next_start = _next_quarter_start(Date.today(), base_months)
-    next_end = _quarter_end(next_start, base_months)
+    await _ensure_next_quarter_plans(pool)
 
     rows = await pool.fetch(
-        """SELECT p.id, p.name,
+        """SELECT p.id, p.name, p.proxy_user_id,
                   string_agg(DISTINCT (u.last_name || ' ' || u.first_name), '、')
                       FILTER (WHERE pm.project_title IN ('PM', 'PL')) AS pm_pl_names,
-                  EXISTS(
-                      SELECT 1 FROM project_quarter_plans pqp
-                      WHERE pqp.project_id = p.id AND pqp.period_start = $1
-                  ) AS has_plan_for_next_quarter
+                  COUNT(pm.id) AS member_count,
+                  COALESCE(json_agg(json_build_object(
+                      'member_id', pm.id, 'user_id', pm.user_id,
+                      'name', u.last_name || ' ' || u.first_name,
+                      'project_title', pm.project_title
+                  ) ORDER BY pm.id) FILTER (WHERE pm.id IS NOT NULL), '[]') AS members_json
            FROM projects p
            LEFT JOIN project_members pm ON pm.project_id = p.id
            LEFT JOIN users u ON u.id = pm.user_id
            GROUP BY p.id
-           ORDER BY p.name""",
-        next_start,
+           ORDER BY p.name"""
     )
-    return {
-        "next_quarter_start": next_start.isoformat(),
-        "next_quarter_end": next_end.isoformat(),
-        "items": [
-            {
-                "id": r["id"], "name": r["name"], "pm_pl_names": r["pm_pl_names"] or "未設定",
-                "has_plan_for_next_quarter": r["has_plan_for_next_quarter"],
-            }
-            for r in rows
-        ],
-    }
+    items = []
+    for r in rows:
+        members = json.loads(r["members_json"])
+        proxy_name = next((m["name"] for m in members if m["user_id"] == r["proxy_user_id"]), None)
+        items.append({
+            "id": r["id"], "name": r["name"], "pm_pl_names": r["pm_pl_names"] or "未設定",
+            "member_count": r["member_count"], "members": members,
+            "proxy_user_id": r["proxy_user_id"], "proxy_user_name": proxy_name,
+        })
+    return {"items": items}
+
+
+class ProjectCreate(BaseModel):
+    name: str
+
+
+@router.post("/projects")
+async def create_project(body: ProjectCreate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-28: プロジェクトの新規作成（S-08プロジェクト・PM管理タブ）。同名プロジェクトの重複チェックは
+    行わない（要件定義書に禁止規定なし、4.6節）。"""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, detail="プロジェクト名を入力してください")
+    row = await get_pool().fetchrow("INSERT INTO projects (name) VALUES ($1) RETURNING id", name)
+    return {"id": row["id"], "detail": "プロジェクトを追加しました"}
+
+
+class ProjectMemberItem(BaseModel):
+    user_id: int
+    project_title: Literal["PM", "PL", "SL"] | None = None
+
+
+class ProjectMembersUpdate(BaseModel):
+    name: str
+    members: list[ProjectMemberItem]
+    proxy_user_id: int | None = None
+
+
+@router.put("/projects/{id}/members")
+async def update_project_members(id: int, body: ProjectMembersUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-29: メンバー構成・PM/PL/SL・PJ席決担当をまとめて更新する。bodyに含まれないuser_idの既存メンバーは
+    削除、新規はcan_assign_seats=falseで追加、既存は所属継続のままproject_titleのみ更新する（UPSERT。
+    2026-08-28追加。can_assign_seats・seat_assign_granted_byはbodyの対象外のため既存メンバーの値を保持する）。
+    メンバー削除に伴う既存のプロジェクト座席予約（A-18生成分）・アンケート回答（T-11）の連鎖処理は行わない
+    （要件定義書・基本設計書のいずれにも規定がないため、本フェーズのスコープ外とする）。<code>name</code>も
+    あわせて更新する（2026-08-28追加。画面モックアップの編集モーダルがプロジェクト名・メンバーを1つの
+    フォームとして一括保存する設計のため、名称変更用に別APIを新設せずA-29に統合した）。"""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, detail="プロジェクト名を入力してください")
+    if len(body.members) != len({m.user_id for m in body.members}):
+        raise HTTPException(400, detail="同じ利用者が複数の行に指定されています")
+
+    pool = get_pool()
+    project = await pool.fetchrow("SELECT id FROM projects WHERE id = $1", id)
+    if project is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    user_ids = [m.user_id for m in body.members]
+    if user_ids:
+        valid_count = await pool.fetchval(
+            "SELECT COUNT(*) FROM users WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL", user_ids
+        )
+        if valid_count != len(user_ids):
+            raise HTTPException(404, detail="対象が見つかりません")
+
+    if body.proxy_user_id is not None:
+        proxy_member = next((m for m in body.members if m.user_id == body.proxy_user_id), None)
+        if proxy_member is None or proxy_member.project_title not in ("PM", "PL"):
+            raise HTTPException(400, detail="PJ席決担当にはPMまたはPLのみ指定できます")
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = {r["user_id"] for r in await conn.fetch(
+                "SELECT user_id FROM project_members WHERE project_id = $1", id
+            )}
+            to_remove = existing - set(user_ids)
+            if to_remove:
+                await conn.execute(
+                    "DELETE FROM project_members WHERE project_id = $1 AND user_id = ANY($2::bigint[])",
+                    id, list(to_remove),
+                )
+            for m in body.members:
+                await conn.execute(
+                    """INSERT INTO project_members (project_id, user_id, project_title)
+                       VALUES ($1, $2, $3)
+                       ON CONFLICT (project_id, user_id) DO UPDATE SET project_title = $3, updated_at = now()""",
+                    id, m.user_id, m.project_title,
+                )
+            await conn.execute(
+                "UPDATE projects SET name = $1, proxy_user_id = $2, updated_at = now() WHERE id = $3",
+                name, body.proxy_user_id, id,
+            )
+    return {"detail": "プロジェクトを更新しました"}
+
+
+@router.delete("/projects/{id}")
+async def delete_project(id: int, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-55: プロジェクトの削除（S-08プロジェクト・PM管理タブ、2026-08-28追加）。project_membersと
+    project_quarter_plans（FK経由でproject_weekday_responsesも連動）はプロジェクト自体が消える以上
+    存在意義を失うため、本APIの一部としてあわせて削除する（A-29のメンバー削除とは異なり、削除対象を
+    選べる余地がないためスコープ外にはできない）。座席の島の割当（allocated_seats）は削除される
+    project_quarter_plans行の一部にすぎず、project_blocked_seats()はJOIN projectsで判定するため
+    削除後は自動的にプロジェクト専有として扱われなくなる。一方、メンバーが個別に確保済みの座席予約
+    （A-18生成分のreservations・recurring_rules）はproject_idを持たない独立したデータのため削除せず
+    残す（本人が実際にその座席を使っている実態を、プロジェクトという管理上の入れ物の削除で消さない）。"""
+    pool = get_pool()
+    project = await pool.fetchrow("SELECT id, name FROM projects WHERE id = $1", id)
+    if project is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """DELETE FROM project_weekday_responses
+                   WHERE plan_id IN (SELECT id FROM project_quarter_plans WHERE project_id = $1)""",
+                id,
+            )
+            await conn.execute("DELETE FROM project_quarter_plans WHERE project_id = $1", id)
+            await conn.execute("DELETE FROM project_members WHERE project_id = $1", id)
+            await conn.execute("DELETE FROM projects WHERE id = $1", id)
+    return {"detail": f"プロジェクト「{project['name']}」を削除しました"}
 
 
 @router.get("/project-quarter-plans")
@@ -107,8 +237,10 @@ async def list_quarter_plans(
 ):
     """A-38: 四半期での一覧。quarterはperiod_start（YYYY-MM-DD）での絞り込み（任意）。
     areaクエリパラメータは2026-08-27にT-07からarea_id自体が削除されたため対象外とした
-    （2026-08-28、ドキュメントの記載漏れを整理）。"""
+    （2026-08-28、ドキュメントの記載漏れを整理）。A-27と同様、呼び出し時に次の四半期の計画データの
+    自動作成を行う（2026-08-28追加、FR-03-1改訂）。"""
     pool = get_pool()
+    await _ensure_next_quarter_plans(pool)
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
                   pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats, pqp.status,
@@ -157,36 +289,6 @@ async def list_quarter_plans(
     return {"items": items}
 
 
-class QuarterPlanCreate(BaseModel):
-    period_start: Date
-
-
-@router.post("/projects/{id}/quarter-plans")
-async def start_quarter_plan(id: int, body: QuarterPlanCreate, user: CurrentUser = Depends(require_roles("admin"))):
-    """A-39: 対象プロジェクトの四半期計画を開始し新規作成する（FR-03-1）。status='seats_confirmed'で
-    作成。required_seatsは作成時点のproject_membersの人数を既定値として自動算出する。"""
-    pool = get_pool()
-    project = await pool.fetchrow("SELECT id FROM projects WHERE id = $1", id)
-    if project is None:
-        raise HTTPException(404, detail="対象が見つかりません")
-    base_months = await _base_months()
-    if body.period_start.month not in base_months or body.period_start.day != 1:
-        raise HTTPException(400, detail="対象四半期の開始日が不正です")
-    period_end = _quarter_end(body.period_start, base_months)
-    member_count = await pool.fetchval(
-        "SELECT COUNT(*) FROM project_members WHERE project_id = $1", id
-    )
-    try:
-        row = await pool.fetchrow(
-            """INSERT INTO project_quarter_plans (project_id, period_start, period_end, required_seats, decided_by)
-               VALUES ($1, $2, $3, $4, $5) RETURNING id""",
-            id, body.period_start, period_end, max(member_count, 1), user.id,
-        )
-    except Exception:
-        raise HTTPException(409, detail="この四半期の計画は既に開始されています")
-    return {"id": row["id"], "detail": "四半期計画を開始しました"}
-
-
 class RequiredSeatsUpdate(BaseModel):
     required_seats: int
 
@@ -211,10 +313,15 @@ async def update_required_seats(id: int, body: RequiredSeatsUpdate, _: CurrentUs
 
 @router.post("/project-quarter-plans/{id}/survey")
 async def send_survey(id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-41: 出社曜日アンケートを送信（FR-03-3）。status→'survey_open'。Slack通知（FR-03-9①）は
-    本フェーズでは未実装（S-08通知設定タブでWebhook URLの保存はできるが、実際の送信処理はまだない）。"""
+    """A-41: 出社曜日アンケートを送信（FR-03-3）。status→'survey_open'。Slack通知（FR-03-9①）を送信する
+    （2026-08-28実装。Webhook URL未設定時は送信しない、送信失敗しても本操作は成功扱いとする）。"""
     pool = get_pool()
-    plan = await pool.fetchrow("SELECT id, status FROM project_quarter_plans WHERE id = $1", id)
+    plan = await pool.fetchrow(
+        """SELECT pqp.id, pqp.status, pqp.period_start, pqp.period_end, p.name AS project_name
+           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.id = $1""",
+        id,
+    )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_confirmed":
@@ -222,18 +329,29 @@ async def send_survey(id: int, _: CurrentUser = Depends(require_roles("admin")))
     await pool.execute(
         "UPDATE project_quarter_plans SET status = 'survey_open', updated_at = now() WHERE id = $1", id
     )
+    await send_slack_notification(
+        f"「{plan['project_name']}」（{plan['period_start']}〜{plan['period_end']}）の出社曜日アンケートを送信しました。"
+    )
     return {"detail": "アンケートを送信しました"}
 
 
 @router.post("/project-quarter-plans/{id}/survey-reminder")
 async def send_survey_reminder(id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-42: 未回答のプロジェクトへのリマインドを手動送信（FR-03-9②）。A-41と同様、実際のSlack送信は
-    本フェーズでは未実装。"""
-    plan = await get_pool().fetchrow("SELECT id, status FROM project_quarter_plans WHERE id = $1", id)
+    """A-42: 未回答のプロジェクトへのリマインドを手動送信（FR-03-9②）。A-41と同様、Slack通知を送信する
+    （2026-08-28実装）。"""
+    plan = await get_pool().fetchrow(
+        """SELECT pqp.id, pqp.status, p.name AS project_name
+           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.id = $1""",
+        id,
+    )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "survey_open":
         raise HTTPException(400, detail="この状態ではリマインドを送信できません")
+    await send_slack_notification(
+        f"リマインド: 「{plan['project_name']}」の出社曜日アンケートが未回答です。ご回答をお願いします。"
+    )
     return {"detail": "リマインドを送信しました"}
 
 
@@ -248,13 +366,18 @@ class WeekdayFinalizeBody(BaseModel):
 
 @router.put("/project-quarter-plans/finalize-weekdays")
 async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depends(require_roles("admin"))):
-    """A-43: 指定した複数の計画の出社曜日を一括確定（FR-03-5）。status→'weekdays_finalized'。"""
+    """A-43: 指定した複数の計画の出社曜日を一括確定（FR-03-5）。status→'weekdays_finalized'。対象プロジェクト
+    ごとの確定結果をまとめてSlack通知する（FR-03-9③、2026-08-28実装）。"""
     pool = get_pool()
+    notified_lines = []
     async with pool.acquire() as conn:
         async with conn.transaction():
             for item in body.plans:
                 plan = await conn.fetchrow(
-                    "SELECT id, status FROM project_quarter_plans WHERE id = $1", item.plan_id
+                    """SELECT pqp.id, pqp.status, p.name AS project_name
+                       FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+                       WHERE pqp.id = $1""",
+                    item.plan_id,
                 )
                 if plan is None:
                     raise HTTPException(404, detail="対象が見つかりません")
@@ -266,6 +389,11 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                        WHERE id = $3""",
                     json.dumps(item.weekdays_finalized), user.id, item.plan_id,
                 )
+                weekday_label = "・".join(_WEEKDAY_JA[w] for w in item.weekdays_finalized) or "なし"
+                notified_lines.append(f"・「{plan['project_name']}」: {weekday_label}")
+    await send_slack_notification(
+        "出社曜日を確定しました。\n" + "\n".join(notified_lines)
+    )
     return {"detail": "出社曜日を確定しました"}
 
 
@@ -283,16 +411,21 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     'project'に変更する実装だったが、それだと割当決定〜四半期開始前の間も通常のフリー座席として
     予約できなくなってしまうため撤回した。専有判定はdatabase.project_blocked_seats()が
     その都度period_start〜period_endで行う）。残っている、その期間中の通常予約（T-08）のみ
-    割当と矛盾するため取り消す（期間外の予約は影響しない）。"""
+    割当と矛盾するため取り消す（期間外の予約は影響しない）。status='seats_allocated'（割当済み）
+    への再呼び出しも許可し、既存の割当を編集できる（2026-08-28追加。「S-09で座席の割り当てを
+    編集できるようにしたい」との要望を受けた）。編集時は、旧・新いずれの割当座席についても
+    その期間中の予約（A-18で生成済みのメンバー個人の周期予約を含む）を取り消す。座席の島が
+    変わればメンバーごとの具体的な座席（A-18）も作り直す必要があるため、PJ席決担当が編集後に
+    再度確保し直す想定である。"""
     if not body.seat_ids:
         raise HTTPException(400, detail="座席を1つ以上選択してください")
     pool = get_pool()
     plan = await pool.fetchrow(
-        "SELECT id, status, period_start, period_end FROM project_quarter_plans WHERE id = $1", id
+        "SELECT id, status, period_start, period_end, allocated_seats FROM project_quarter_plans WHERE id = $1", id
     )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if plan["status"] != "weekdays_finalized":
+    if plan["status"] not in ("weekdays_finalized", "seats_allocated"):
         raise HTTPException(400, detail="出社曜日の確定後でなければ座席の島を割り当てられません")
 
     seats = await pool.fetch(
@@ -315,12 +448,15 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     if already_allocated & set(body.seat_ids):
         raise HTTPException(409, detail="既に他プロジェクトへ割り当てられている座席が含まれています")
 
+    old_seat_ids = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
+    cancel_target_ids = list(set(old_seat_ids) | set(body.seat_ids))
+
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
                 """UPDATE reservations SET status = 'cancelled', updated_at = now()
                    WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3""",
-                body.seat_ids, plan["period_start"], plan["period_end"],
+                cancel_target_ids, plan["period_start"], plan["period_end"],
             )
             await conn.execute(
                 """UPDATE project_quarter_plans
@@ -328,4 +464,5 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
                    WHERE id = $3""",
                 json.dumps(body.seat_ids), user.id, id,
             )
-    return {"detail": "座席の島を割り当てました"}
+    was_edit = plan["status"] == "seats_allocated"
+    return {"detail": "座席の島の割当を更新しました" if was_edit else "座席の島を割り当てました"}

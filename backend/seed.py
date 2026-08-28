@@ -22,6 +22,27 @@ USERS = [
     ("watanabe@kogasoftware.com", "渡辺", "真一", "general", None),
     ("ito@kogasoftware.com", "伊藤", "大輝", "general", None),
     ("kato@kogasoftware.com", "加藤", "彩子", "general", None),
+    # 追加ダミー利用者20名（2026-08-28、S-08プロジェクト・PM管理タブ等の複数人での動作確認用）
+    ("kobayashi@kogasoftware.com", "小林", "健太", "general", None),
+    ("matsumoto@kogasoftware.com", "松本", "由美", "general", None),
+    ("inoue@kogasoftware.com", "井上", "直樹", "general", None),
+    ("kinoshita@kogasoftware.com", "木下", "愛", "general", None),
+    ("saito@kogasoftware.com", "斎藤", "亮", "general", None),
+    ("endo@kogasoftware.com", "遠藤", "舞", "general", None),
+    ("fujita@kogasoftware.com", "藤田", "翔太", "general", None),
+    ("okada@kogasoftware.com", "岡田", "恵美", "general", None),
+    ("hasegawa@kogasoftware.com", "長谷川", "大和", "general", None),
+    ("murakami@kogasoftware.com", "村上", "沙織", "general", None),
+    ("kondo@kogasoftware.com", "近藤", "拓真", "general", None),
+    ("ishikawa@kogasoftware.com", "石川", "美穂", "general", None),
+    ("yoshida@kogasoftware.com", "吉田", "隼人", "general", None),
+    ("yamaguchi@kogasoftware.com", "山口", "彩", "general", None),
+    ("matsuda@kogasoftware.com", "松田", "龍之介", "general", None),
+    ("abe@kogasoftware.com", "阿部", "千夏", "general", None),
+    ("mori@kogasoftware.com", "森", "悠斗", "general", None),
+    ("hayashi@kogasoftware.com", "林", "麻衣", "general", None),
+    ("shimada@kogasoftware.com", "島田", "康介", "general", None),
+    ("sakurai@kogasoftware.com", "桜井", "陽菜", "general", None),
 ]
 
 AREAS = ["NORTH", "EAST", "WEST"]

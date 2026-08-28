@@ -77,10 +77,10 @@ export default function ProxyBooking() {
               placeholder="氏名で検索（登録済みの利用者が対象）"
               className="mb-3 h-9 w-full max-w-sm rounded border border-slate-300 px-3 text-sm"
             />
-            <div className="overflow-x-auto">
+            <div className="max-h-96 overflow-y-auto overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-slate-500">
                     <th className="pb-2 pr-3">氏名</th>
                     <th className="pb-2 pr-3">雇用形態</th>
                     <th className="pb-2 pr-3">現在の座席利用状況</th>
@@ -149,10 +149,10 @@ export default function ProxyBooking() {
                 className="h-9 rounded border border-slate-300 px-2 text-sm"
               />
             </div>
-            <div className="overflow-x-auto">
+            <div className="max-h-96 overflow-y-auto overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-slate-500">
                     <th className="pb-2 pr-3">氏名</th>
                     <th className="pb-2 pr-3">座席種別</th>
                     <th className="pb-2 pr-3">日付</th>

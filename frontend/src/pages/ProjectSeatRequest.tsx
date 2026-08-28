@@ -320,7 +320,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<SeatAssignmentResult[] | null>(null)
 
-  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null)
+  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.has_fixed_seat)
   const assignedSeatIds = new Set(plan.members.map((m) => m.assigned_seat_id).filter((v): v is number => v !== null))
   const seatOptions = (plan.allocated_seats ?? []).filter((s) => !assignedSeatIds.has(s.id))
 
@@ -366,10 +366,12 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
               <tr key={m.member_id} className="border-b border-slate-100">
                 <td className="py-2 pr-3">{m.name}</td>
                 <td className="py-2 pr-3 text-xs text-slate-500">
-                  {m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
+                  {m.has_fixed_seat ? '固定座席あり' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
                 </td>
                 <td className="py-2">
-                  {m.assigned_seat_id === null ? (
+                  {m.has_fixed_seat ? (
+                    <span className="text-xs text-slate-400">対象外（固定座席保有者）</span>
+                  ) : m.assigned_seat_id === null ? (
                     <select
                       value={picks[m.user_id] ?? ''}
                       onChange={(e) => setPicks((prev) => ({ ...prev, [m.user_id]: e.target.value ? Number(e.target.value) : '' }))}

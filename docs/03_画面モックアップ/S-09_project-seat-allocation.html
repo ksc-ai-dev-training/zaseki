@@ -62,27 +62,6 @@
 
     <div class="page-body">
 
-      <div class="panel" style="margin-bottom:20px">
-        <div class="panel-header">
-          <div class="panel-title">四半期計画を開始する</div>
-        </div>
-        <div class="panel-body">
-          <p class="muted" style="margin-top:0">対象四半期の計画がまだ始まっていないプロジェクトの一覧（2026-08-27訂正。従来は管理部がプロジェクトを担当エリアへ割り当てる操作だったが、担当エリア割当自体を廃止したため、エリア選択なしで計画を開始する操作に変更した）。</p>
-          <div class="table-wrap">
-            <table class="table">
-              <thead><tr><th>プロジェクト</th><th>対象四半期</th><th></th></tr></thead>
-              <tbody>
-                <tr>
-                  <td class="cell-main">経費精算システム刷新プロジェクト</td>
-                  <td>2027-04-01 〜 2027-06-30</td>
-                  <td><button class="btn btn-primary btn-sm" type="button" onclick="startPlan()">開始する</button></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
       <div class="tabs">
         <button class="tab active" id="tab-q-all" type="button" onclick="setQuarterFilter('all')">すべて</button>
         <button class="tab" id="tab-q-2026-10" type="button" onclick="setQuarterFilter('2026-10')">2026年10〜12月</button>
@@ -101,7 +80,7 @@
               <td>2026-10-01 〜 2026-12-31</td>
               <td class="cell-main">4名</td>
               <td><span class="badge badge-status-on">座席割当済み（D1〜D4）</span></td>
-              <td><button class="btn btn-secondary btn-sm" type="button" disabled>完了</button></td>
+              <td><a class="btn btn-secondary btn-sm" href="S-02_availability.html">座席を編集</a></td>
             </tr>
             <tr data-quarter="2026-10">
               <td class="cell-main">経歴書刷新プロジェクト</td>
@@ -312,9 +291,6 @@ function openSurveyModal() { document.getElementById('survey-modal').classList.a
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function confirmWeekdays() {
   alert('曜日を確定しました（モック）。各プロジェクトの状態が「座席の島の割当待ち」に変わります。');
-}
-function startPlan() {
-  alert('四半期計画を開始しました（モック）。必要座席数の確認・出社曜日アンケートの実施へ進めます。');
 }
 function sendReminder(projectName) {
   alert(projectName + ' の未回答PM（PL）宛に、Slackチャンネルへリマインドを送信しました（モック。FR-03-9、手動送信）。');

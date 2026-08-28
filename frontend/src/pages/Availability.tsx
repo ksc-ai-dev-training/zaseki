@@ -10,9 +10,13 @@ import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
-import type { AssignFixedSeatFor, ProxyBookingFor, SeatBlockFor, Seat, SeatStatus, SeatType } from '../types'
+import type { AssignFixedSeatFor, ProxyBookingFor, RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
+const RECURRING_WEEKDAYS: { key: Weekday; label: string }[] = [
+  { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
+  { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
+]
 
 function toLocalDateStr(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -89,6 +93,11 @@ export default function Availability() {
   const [reservationTab, setReservationTab] = useState<'upcoming' | 'past'>('upcoming')
   const [periodOverride, setPeriodOverride] = useState<{ start: string; end: string } | null>(null)
   const [reserveTarget, setReserveTarget] = useState<{ seatId: number; seatNo: string; area: string; date: string } | null>(null)
+  const [recurring, setRecurring] = useState(false)
+  const [recurringType, setRecurringType] = useState<'daily' | 'weekly'>('weekly')
+  const [recurringWeekdays, setRecurringWeekdays] = useState<Set<Weekday>>(new Set())
+  const [recurringEndDate, setRecurringEndDate] = useState('')
+  const [recurringResult, setRecurringResult] = useState<RecurringReservationResult | null>(null)
   const [cancelTarget, setCancelTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignFixedSeatTarget, setAssignFixedSeatTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignIndefinite, setAssignIndefinite] = useState(true)
@@ -96,7 +105,10 @@ export default function Availability() {
   const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number } | null>(null)
   const [newSeatNo, setNewSeatNo] = useState('')
   const [newSeatType, setNewSeatType] = useState<SeatType>('free')
-  const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(new Set())
+  // 割当済み計画を「編集」で開いた場合、現在の割当座席を初期選択状態にする（2026-08-28追加）
+  const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(
+    () => new Set(seatBlockFor?.allocatedSeatIds ?? []),
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -129,6 +141,11 @@ export default function Availability() {
       return
     }
     setReserveTarget({ seatId, seatNo, area, date: targetDate })
+    setRecurring(false)
+    setRecurringType('weekly')
+    setRecurringWeekdays(new Set())
+    setRecurringEndDate('')
+    setRecurringResult(null)
   }
   const openCancel = (seat: Seat, area: string) => {
     setActionError(null)
@@ -185,13 +202,36 @@ export default function Availability() {
     setActionError(null)
     try {
       if (proxyBookingFor) {
-        // S-11「代理予約モード」: 対象者の代理でA-47を呼び、完了後はS-11に戻る（4.11節）
+        // S-11「代理予約モード」: 対象者の代理でA-47を呼び、完了後はS-11に戻る（4.11節）。
+        // A-47は単発のみ対応のため、この分岐に周期予約は存在しない（詳細設計書3.11節）。
         await apiFetch('/api/reservations/proxy', {
           method: 'POST',
           body: JSON.stringify({ user_id: proxyBookingFor.userId, seat_id: reserveTarget.seatId, date: reserveTarget.date }),
         })
         setReserveTarget(null)
         navigate('/proxy-booking', { replace: true })
+        return
+      }
+      if (recurring) {
+        if (recurringType === 'weekly' && recurringWeekdays.size === 0) {
+          setActionError('毎週の場合は曜日を1つ以上選択してください')
+          return
+        }
+        if (!recurringEndDate || recurringEndDate < reserveTarget.date) {
+          setActionError('終了日は開始日以降の日付を指定してください')
+          return
+        }
+        const data = await apiFetch<RecurringReservationResult>('/api/reservations/recurring', {
+          method: 'POST',
+          body: JSON.stringify({
+            seat_id: reserveTarget.seatId,
+            pattern: { type: recurringType, weekdays: recurringType === 'weekly' ? [...recurringWeekdays] : undefined },
+            start_date: reserveTarget.date,
+            end_date: recurringEndDate,
+          }),
+        })
+        setRecurringResult(data)
+        await refreshAll()
         return
       }
       await apiFetch('/api/reservations', {
@@ -379,8 +419,8 @@ export default function Availability() {
       {seatBlockFor && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
           <span>
-            <strong>{seatBlockFor.projectName}</strong>の座席の島を割り当て中です（必要座席数: {seatBlockFor.requiredSeats}名）。
-            フロアマップの空いている座席をクリックして選択・解除してください。選択中: {seatBlockSelection.size}席
+            <strong>{seatBlockFor.projectName}</strong>の座席の島を{seatBlockFor.allocatedSeatIds ? '編集' : '割り当て'}中です（必要座席数: {seatBlockFor.requiredSeats}名）。
+            フロアマップの座席をクリックして選択・解除してください。選択中: {seatBlockSelection.size}席
           </span>
           <span className="flex shrink-0 gap-3">
             <button
@@ -389,7 +429,7 @@ export default function Availability() {
               onClick={confirmSeatBlock}
               className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
             >
-              この内容で割り当てる
+              {seatBlockFor.allocatedSeatIds ? 'この内容で更新する' : 'この内容で割り当てる'}
             </button>
             <button type="button" onClick={exitSeatBlockMode} className="text-blue-700 underline hover:text-blue-900">
               キャンセル
@@ -771,24 +811,111 @@ export default function Availability() {
 
       {reserveTarget && (
         <Modal
-          title={proxyBookingFor ? '座席の代理予約' : '座席の予約'}
+          title={proxyBookingFor ? '座席の代理予約' : recurring ? '繰り返し予約' : '座席の予約'}
           onClose={() => setReserveTarget(null)}
           footer={
-            <>
-              <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">予約する</button>
-            </>
+            recurringResult ? (
+              <button type="button" onClick={() => setReserveTarget(null)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white">閉じる</button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+                  {recurring ? 'この内容で登録する' : '予約する'}
+                </button>
+              </>
+            )
           }
         >
-          <dl className="space-y-1.5 text-sm">
-            {proxyBookingFor && (
-              <div className="flex justify-between"><dt className="text-slate-500">対象者</dt><dd>{proxyBookingFor.userName}</dd></div>
-            )}
-            <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{reserveTarget.seatNo}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
-          </dl>
-          {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+          {recurringResult ? (
+            <div>
+              <p className="mb-2 text-sm text-slate-600">{recurringResult.seat_no} への繰り返し予約の登録結果</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <th className="pb-1 pr-3">日付</th>
+                    <th className="pb-1">結果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recurringResult.results.map((r) => (
+                    <tr key={r.date} className="border-b border-slate-100">
+                      <td className="py-1 pr-3">{formatDateJa(r.date)}</td>
+                      <td className="py-1">
+                        {r.status === 'created' ? (
+                          <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">登録済み</span>
+                        ) : (
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <dl className="space-y-1.5 text-sm">
+                {proxyBookingFor && (
+                  <div className="flex justify-between"><dt className="text-slate-500">対象者</dt><dd>{proxyBookingFor.userName}</dd></div>
+                )}
+                <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{reserveTarget.seatNo}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">{recurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
+              </dl>
+              {!proxyBookingFor && (
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <label className="flex items-center gap-1.5 text-sm">
+                    <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+                    繰り返し予約にする
+                  </label>
+                  {recurring && (
+                    <div className="mt-3 space-y-3 text-sm">
+                      <div className="flex gap-4">
+                        <label className="inline-flex items-center gap-1">
+                          <input type="radio" checked={recurringType === 'daily'} onChange={() => setRecurringType('daily')} />
+                          毎日
+                        </label>
+                        <label className="inline-flex items-center gap-1">
+                          <input type="radio" checked={recurringType === 'weekly'} onChange={() => setRecurringType('weekly')} />
+                          毎週（曜日を選択）
+                        </label>
+                      </div>
+                      {recurringType === 'weekly' && (
+                        <div className="flex gap-3">
+                          {RECURRING_WEEKDAYS.map((w) => (
+                            <label key={w.key} className="inline-flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={recurringWeekdays.has(w.key)}
+                                onChange={(e) => {
+                                  const next = new Set(recurringWeekdays)
+                                  if (e.target.checked) next.add(w.key)
+                                  else next.delete(w.key)
+                                  setRecurringWeekdays(next)
+                                }}
+                              />
+                              {w.label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-slate-500">終了日（この日を含む）</span>
+                        <input
+                          type="date"
+                          min={reserveTarget.date}
+                          value={recurringEndDate}
+                          onChange={(e) => setRecurringEndDate(e.target.value)}
+                          className="h-9 w-44 rounded border border-slate-300 px-3"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+              {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+            </>
+          )}
         </Modal>
       )}
 

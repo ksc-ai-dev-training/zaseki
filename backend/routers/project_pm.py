@@ -103,7 +103,8 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
     )
 
     members_rows = await pool.fetch(
-        """SELECT pm.id AS member_id, pm.user_id, u.last_name, u.first_name, pm.project_title, pm.can_assign_seats
+        """SELECT pm.id AS member_id, pm.user_id, u.last_name, u.first_name, pm.project_title, pm.can_assign_seats,
+                  EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id) AS has_fixed_seat
            FROM project_members pm JOIN users u ON u.id = pm.user_id
            WHERE pm.project_id = $1 ORDER BY pm.id""",
         plan["project_id"],
@@ -163,6 +164,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
                 "member_id": m["member_id"], "user_id": m["user_id"],
                 "name": f"{m['last_name']} {m['first_name']}",
                 "project_title": m["project_title"], "can_assign_seats": m["can_assign_seats"],
+                "has_fixed_seat": m["has_fixed_seat"],
                 "assigned_seat_id": assigned_seat_by_user.get(m["user_id"]),
                 "assigned_seat_no": seat_no_by_id.get(assigned_seat_by_user.get(m["user_id"])),
             }
@@ -298,7 +300,8 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     ルール）を生成し、確定した出社曜日（weekdays_finalized）・対象四半期をもとにT-08を一括生成する。
     role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（T-06.can_assign_seats）。
     座席はallocated_seatsの範囲外を指定不可。同一座席を複数のメンバーに重複して指定した場合、
-    当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。"""
+    当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。固定座席保有者は
+    そもそもプロジェクト座席が不要なため、指定されても確保せず除外する（RULE-07、2026-08-28追加）。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
 
@@ -328,6 +331,12 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
             "SELECT user_id FROM project_members WHERE project_id = $1", plan["project_id"]
         )
     }
+    fixed_seat_user_ids = {
+        r["user_id"] for r in await pool.fetch(
+            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[])",
+            list(member_user_ids),
+        )
+    }
     weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
     seat_no_by_id = await _seat_labels(pool, list(allocated_seat_ids))
 
@@ -342,6 +351,10 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         if a.member_user_id not in member_user_ids or a.seat_id not in allocated_seat_ids:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "excluded", "reason": "対象が見つかりません"})
+            continue
+        if a.member_user_id in fixed_seat_user_ids:
+            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+                             "status": "excluded", "reason": "固定座席が割り当てられているため、プロジェクト座席は確保できません"})
             continue
         if seat_counts[a.seat_id] > 1:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,

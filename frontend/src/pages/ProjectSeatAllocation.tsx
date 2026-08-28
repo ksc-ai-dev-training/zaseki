@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
-import { useProjects } from '../hooks/useProjects'
 import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import Modal from '../components/Modal'
 import type { QuarterPlanItem, QuarterPlanStatus, Weekday } from '../types'
@@ -31,10 +30,10 @@ function formatQuarterLabel(periodStart: string): string {
 }
 
 // S-09 プロジェクト座席（エリア担当）。座席の島の割当（A-44）はS-02のフロアマップへ
-// 「座席の島の割当モード」で遷移して行う（4.7節）
+// 「座席の島の割当モード」で遷移して行う（4.7節）。四半期計画データはA-38の呼び出し時に
+// サーバー側で自動作成されるため、この画面に「開始する」操作はない（2026-08-28、FR-03-1改訂）。
 export default function ProjectSeatAllocation() {
   const navigate = useNavigate()
-  const { items: projects, nextQuarterStart, nextQuarterEnd, refresh: refreshProjects } = useProjects()
   const { items: allPlans, refresh: refreshAllPlans } = useQuarterPlans('')
 
   const [selectedQuarter, setSelectedQuarter] = useState('')
@@ -49,33 +48,13 @@ export default function ProjectSeatAllocation() {
   const [surveyTarget, setSurveyTarget] = useState<QuarterPlanItem | null>(null)
 
   const refreshAll = async () => {
-    await Promise.all([refreshProjects(), refreshAllPlans(), refreshPlans()])
+    await Promise.all([refreshAllPlans(), refreshPlans()])
   }
 
   const quarterTabs = useMemo(() => {
     const starts = [...new Set(allPlans.map((p) => p.period_start))].sort()
     return starts
   }, [allPlans])
-
-  const startablePlans = projects.filter((p) => !p.has_plan_for_next_quarter)
-
-  const startPlan = async (projectId: number) => {
-    if (!nextQuarterStart) return
-    setSubmitting(true)
-    setActionError(null)
-    try {
-      await apiFetch(`/api/projects/${projectId}/quarter-plans`, {
-        method: 'POST',
-        body: JSON.stringify({ period_start: nextQuarterStart }),
-      })
-      setActionMessage('四半期計画を開始しました')
-      await refreshAll()
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : '開始に失敗しました')
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const openHeadcount = (p: QuarterPlanItem) => {
     setActionError(null)
@@ -131,7 +110,14 @@ export default function ProjectSeatAllocation() {
   }
 
   const goSeatBlock = (p: QuarterPlanItem) => {
-    navigate('/', { state: { seatBlockFor: { planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats } } })
+    navigate('/', {
+      state: {
+        seatBlockFor: {
+          planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
+          allocatedSeatIds: p.allocated_seat_ids ?? undefined,
+        },
+      },
+    })
   }
 
   return (
@@ -144,38 +130,6 @@ export default function ProjectSeatAllocation() {
       <div className="space-y-6 p-6">
         {actionMessage && <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{actionMessage}</p>}
         {actionError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
-
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 font-semibold">四半期計画を開始する</div>
-          <div className="p-4">
-            <p className="mb-3 text-xs text-slate-500">対象四半期の計画がまだ始まっていないプロジェクトの一覧。</p>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="pb-2 pr-3">プロジェクト</th>
-                  <th className="pb-2 pr-3">対象四半期</th>
-                  <th className="pb-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {startablePlans.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100">
-                    <td className="py-2 pr-3 font-semibold">{p.name}</td>
-                    <td className="py-2 pr-3 text-xs text-slate-500">{nextQuarterStart} 〜 {nextQuarterEnd}</td>
-                    <td className="py-2">
-                      <button type="button" disabled={submitting} onClick={() => startPlan(p.id)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900 disabled:opacity-50">
-                        開始する
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {startablePlans.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-center text-slate-400">対象のプロジェクトはありません</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
 
         <div className="flex flex-wrap gap-1 border-b border-slate-200">
           <button
@@ -236,7 +190,7 @@ export default function ProjectSeatAllocation() {
                         <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
                       )}
                       {p.status === 'seats_allocated' && (
-                        <button type="button" disabled className="rounded border border-slate-200 px-3 py-1 text-xs text-slate-400">完了</button>
+                        <button type="button" onClick={() => goSeatBlock(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">座席を編集</button>
                       )}
                     </div>
                   </td>

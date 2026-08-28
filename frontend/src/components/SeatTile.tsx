@@ -53,7 +53,10 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
     )
   }
 
-  if (seat.status === 'free' && seat.seat_type === 'free') {
+  if ((seat.status === 'free' && seat.seat_type === 'free') || selectedSeatIds?.has(seat.id)) {
+    // 座席の島の割当・編集モードでは、既に選択済みの座席は実際の予約状況に関わらずトグル
+    // できるようにする（編集時、自分のプロジェクトの既存の個人予約がある座席も選択解除
+    // できる必要があるため。2026-08-28追加）
     const selected = selectedSeatIds?.has(seat.id)
     return (
       <button

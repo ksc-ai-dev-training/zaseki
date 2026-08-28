@@ -7,11 +7,12 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import get_pool
+from slack import SLACK_WEBHOOK_SETTING_KEY
 
 router = APIRouter(prefix="/api", tags=["roles"])
 
 # 通知設定タブで編集可能なapp_settingsのキーはこの1つのみ（詳細設計書2.17節・A-49・A-50）
-EDITABLE_SETTING_KEY = "project_seat_slack_webhook_url"
+EDITABLE_SETTING_KEY = SLACK_WEBHOOK_SETTING_KEY
 
 
 @router.get("/users")
@@ -244,10 +245,14 @@ class AppSettingUpdate(BaseModel):
 
 @router.put("/app-settings/{key}")
 async def update_app_setting(key: str, body: AppSettingUpdate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-50: UIから編集可能な設定値の更新。keyはproject_seat_slack_webhook_urlのみ受け付ける。"""
+    """A-50: UIから編集可能な設定値の更新。keyはproject_seat_slack_webhook_urlのみ受け付ける。
+    入力する場合はhttps://hooks.slack.com/services/で始まるURL形式であることを検証する（4.6節、
+    2026-08-28実装。未入力〔空文字〕は通知を送信しない設定として許可する）。"""
     if key != EDITABLE_SETTING_KEY:
         raise HTTPException(404, detail="対象が見つかりません")
     value = body.value.strip()
+    if value and not value.startswith("https://hooks.slack.com/services/"):
+        raise HTTPException(400, detail="Slack通知先URLはhttps://hooks.slack.com/services/で始まる形式で入力してください")
     await get_pool().execute(
         """INSERT INTO app_settings (key, value) VALUES ($1, $2)
            ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()""",

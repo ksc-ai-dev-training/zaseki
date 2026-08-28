@@ -214,12 +214,22 @@ export interface AppSettingItem {
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri'
 
-// A-27 GET /projects（S-09「四半期計画を開始する」パネル）
+// A-27 GET /projects（S-08「プロジェクト・PM管理」タブ）
+export interface ProjectMemberSummary {
+  member_id: number
+  user_id: number
+  name: string
+  project_title: ProjectTitle
+}
+
 export interface ProjectListItem {
   id: number
   name: string
   pm_pl_names: string
-  has_plan_for_next_quarter: boolean
+  member_count: number
+  members: ProjectMemberSummary[]
+  proxy_user_id: number | null
+  proxy_user_name: string | null
 }
 
 export type QuarterPlanStatus = 'seats_confirmed' | 'survey_open' | 'weekdays_finalized' | 'seats_allocated'
@@ -248,6 +258,9 @@ export interface SeatBlockFor {
   planId: number
   projectName: string
   requiredSeats: number
+  // 割当済み（status='seats_allocated'）の計画を「編集」で開いた場合、現在の割当座席（2026-08-28追加）。
+  // 新規割当（weekdays_finalizedから遷移）の場合はundefined
+  allocatedSeatIds?: number[]
 }
 
 export type ProjectTitle = 'PM' | 'PL' | 'SL' | null
@@ -277,6 +290,7 @@ export interface ProjectPlanMember {
   name: string
   project_title: ProjectTitle
   can_assign_seats: boolean
+  has_fixed_seat: boolean
   assigned_seat_id: number | null
   assigned_seat_no: string | null
 }
@@ -320,6 +334,20 @@ export interface PreviousPlanDetail {
   period_start: string
   period_end: string
   assignments: PreviousPlanAssignment[]
+}
+
+// A-10 POST /reservations/recurring（S-02）
+export interface RecurringReservationDayResult {
+  date: string
+  status: 'created' | 'excluded'
+  reason?: string
+}
+
+export interface RecurringReservationResult {
+  rule_id: number
+  seat_id: number
+  seat_no: string
+  results: RecurringReservationDayResult[]
 }
 
 // A-18 POST /project-quarter-plans/{id}/seat-assignments（S-04）

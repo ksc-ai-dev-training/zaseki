@@ -3,8 +3,12 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useUsers, type UserRoleFilter, type UserStatusFilter } from '../hooks/useUsers'
 import { useRoleMaster } from '../hooks/useRoleMaster'
 import { useAppSettings } from '../hooks/useAppSettings'
+import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
-import type { AreaManagerRole, EmploymentType, EmploymentStatus, Role, RoleMasterItem, UserRoleItem } from '../types'
+import type {
+  AreaManagerRole, EmploymentType, EmploymentStatus, ProjectListItem, ProjectMemberSummary, ProjectTitle,
+  Role, RoleMasterItem, UserRoleItem,
+} from '../types'
 
 type Tab = 'users' | 'projects' | 'notifications' | 'customroles'
 
@@ -49,8 +53,7 @@ interface UserForm {
   customRoleIds: number[]
 }
 
-// S-08 権限・役割管理。プロジェクト・PM管理タブはT-05/T-06（プロジェクト管理）が
-// 未実装のため、本フェーズでは利用者ロール管理・通知設定・役割マスタ管理の3タブのみ実装する
+// S-08 権限・役割管理
 export default function RoleManagement() {
   const [tab, setTab] = useState<Tab>('users')
 
@@ -324,11 +327,303 @@ function UsersTab() {
   )
 }
 
+const PROJECT_TITLE_LABEL: Record<'PM' | 'PL' | 'SL', string> = { PM: 'PM', PL: 'PL', SL: 'SL' }
+
+interface ProjectMemberRow {
+  user_id: number
+  name: string
+  project_title: ProjectTitle
+}
+
+interface ProjectForm {
+  id: number | null
+  name: string
+  members: ProjectMemberRow[]
+  proxyUserId: number | null
+}
+
 function ProjectsTab() {
+  const { items, isLoading, refresh } = useProjects()
+  const [form, setForm] = useState<ProjectForm | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectListItem | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await apiFetch(`/api/projects/${deleteTarget.id}`, { method: 'DELETE' })
+      setDeleteTarget(null)
+      await refresh()
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : '削除に失敗しました')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const openAdd = () => {
+    setFormError(null)
+    setForm({ id: null, name: '', members: [], proxyUserId: null })
+  }
+  const openEdit = (p: ProjectListItem) => {
+    setFormError(null)
+    setForm({
+      id: p.id, name: p.name,
+      members: p.members.map((m) => ({ user_id: m.user_id, name: m.name, project_title: m.project_title })),
+      proxyUserId: p.proxy_user_id,
+    })
+  }
+
+  const submitForm = async () => {
+    if (!form) return
+    if (!form.name.trim()) { setFormError('プロジェクト名を入力してください'); return }
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      const id = form.id ?? (await apiFetch<{ id: number }>('/api/projects', {
+        method: 'POST', body: JSON.stringify({ name: form.name }),
+      })).id
+      await apiFetch(`/api/projects/${id}/members`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: form.name,
+          members: form.members.map((m) => ({ user_id: m.user_id, project_title: m.project_title })),
+          proxy_user_id: form.proxyUserId,
+        }),
+      })
+      setForm(null)
+      await refresh()
+    } catch (e) {
+      setFormError(e instanceof ApiError ? e.message : '保存に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
-    <div className="rounded border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-      プロジェクト・PM管理は、プロジェクト・メンバーのデータモデル（T-05・T-06）を扱う画面（S-04・S-09等）とあわせて別途実装予定です。
+    <div className="rounded border border-slate-200 bg-white">
+      <div className="flex justify-end border-b border-slate-200 p-4">
+        <button type="button" onClick={openAdd} className="rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900">
+          ＋ プロジェクトを追加
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-slate-500">
+              <th className="px-4 py-2">プロジェクト名</th>
+              <th className="px-4 py-2">PM・PL・SL</th>
+              <th className="px-4 py-2">PJ席決担当</th>
+              <th className="px-4 py-2">メンバー数</th>
+              <th className="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((p) => {
+              const titled = p.members.filter((m): m is ProjectMemberSummary & { project_title: 'PM' | 'PL' | 'SL' } => m.project_title !== null)
+              return (
+                <tr key={p.id} className="border-b border-slate-100">
+                  <td className="px-4 py-2 font-semibold">{p.name}</td>
+                  <td className="px-4 py-2">
+                    {titled.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {titled.map((m) => (
+                          <span key={m.member_id} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                            {PROJECT_TITLE_LABEL[m.project_title]} {m.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-slate-400">未設定</span>}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{p.proxy_user_name ?? '未設定'}</td>
+                  <td className="px-4 py-2">{p.member_count}名</td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => openEdit(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                        編集
+                      </button>
+                      <button type="button" onClick={() => { setDeleteError(null); setDeleteTarget(p) }} className="rounded border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50">
+                        削除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {!isLoading && items.length === 0 && (
+              <tr><td colSpan={5} className="py-6 text-center text-slate-400">プロジェクトが登録されていません</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {form && (
+        <ProjectEditModal
+          form={form}
+          setForm={setForm}
+          onClose={() => setForm(null)}
+          onSubmit={submitForm}
+          submitting={submitting}
+          error={formError}
+        />
+      )}
+
+      {deleteTarget && (
+        <Modal
+          title="プロジェクトの削除"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" disabled={deleting} onClick={confirmDelete} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">削除する</button>
+            </>
+          }
+        >
+          <p className="text-sm">プロジェクト「{deleteTarget.name}」を削除しますか？メンバー構成・四半期ごとの座席計画（アンケート回答・座席の島の割当を含む）もあわせて削除されます。メンバーが既に個別に確保済みの座席予約は取り消されません。</p>
+          {deleteError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p>}
+        </Modal>
+      )}
     </div>
+  )
+}
+
+function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error }: {
+  form: ProjectForm
+  setForm: (f: ProjectForm) => void
+  onClose: () => void
+  onSubmit: () => void
+  submitting: boolean
+  error: string | null
+}) {
+  const [query, setQuery] = useState('')
+  const { items: candidates } = useUsers('all', 'active', false, query)
+  const memberIds = new Set(form.members.map((m) => m.user_id))
+  const searchResults = query ? candidates.filter((c) => !memberIds.has(c.id)).slice(0, 6) : []
+
+  const addMember = (u: UserRoleItem) => {
+    setForm({ ...form, members: [...form.members, { user_id: u.id, name: `${u.last_name} ${u.first_name}`, project_title: null }] })
+    setQuery('')
+  }
+  const removeMember = (userId: number) => {
+    setForm({
+      ...form,
+      members: form.members.filter((m) => m.user_id !== userId),
+      proxyUserId: form.proxyUserId === userId ? null : form.proxyUserId,
+    })
+  }
+  const setTitle = (userId: number, title: ProjectTitle) => {
+    const members = form.members.map((m) => (m.user_id === userId ? { ...m, project_title: title } : m))
+    const proxyStillValid = form.proxyUserId !== null && members.some((m) => m.user_id === form.proxyUserId && (m.project_title === 'PM' || m.project_title === 'PL'))
+    setForm({ ...form, members, proxyUserId: proxyStillValid ? form.proxyUserId : null })
+  }
+
+  return (
+    <Modal
+      title={form.id === null ? 'プロジェクトを追加' : `プロジェクトを編集（${form.name}）`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+          <button type="button" disabled={submitting} onClick={onSubmit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">保存する</button>
+        </>
+      }
+    >
+      <div className="space-y-4 text-sm">
+        <label className="block">
+          <span className="mb-1 block text-slate-500">プロジェクト名</span>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="例: Zaseki研修プロジェクト"
+            className="h-9 w-full rounded border border-slate-300 px-3"
+          />
+        </label>
+
+        <div>
+          <span className="mb-1 block text-slate-500">メンバー・PM／PL・PJ席決担当</span>
+          <div className="overflow-x-auto rounded border border-slate-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                  <th className="px-3 py-1.5">氏名</th>
+                  <th className="px-3 py-1.5">役割</th>
+                  <th className="px-3 py-1.5">PJ席決担当</th>
+                  <th className="px-3 py-1.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {form.members.map((m) => {
+                  const canBeProxy = m.project_title === 'PM' || m.project_title === 'PL'
+                  return (
+                    <tr key={m.user_id} className="border-b border-slate-100">
+                      <td className="px-3 py-1.5">{m.name}</td>
+                      <td className="px-3 py-1.5">
+                        <select
+                          value={m.project_title ?? ''}
+                          onChange={(e) => setTitle(m.user_id, (e.target.value || null) as ProjectTitle)}
+                          className="h-8 rounded border border-slate-300 px-2"
+                        >
+                          <option value="">なし</option>
+                          <option value="PM">PM</option>
+                          <option value="PL">PL</option>
+                          <option value="SL">SL</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="radio"
+                          name="proxy-user"
+                          disabled={!canBeProxy}
+                          checked={form.proxyUserId === m.user_id}
+                          onChange={() => setForm({ ...form, proxyUserId: m.user_id })}
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <button type="button" onClick={() => removeMember(m.user_id)} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">削除</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {form.members.length === 0 && (
+                  <tr><td colSpan={4} className="px-3 py-3 text-center text-xs text-slate-400">メンバーがいません</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="relative mt-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="氏名で検索してメンバーを追加"
+              className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow">
+                {searchResults.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => addMember(u)}
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                  >
+                    {u.last_name} {u.first_name} <span className="text-xs text-slate-400">{u.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+      </div>
+    </Modal>
   )
 }
 

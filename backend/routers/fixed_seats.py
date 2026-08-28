@@ -77,7 +77,11 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
     今後の通常予約（T-08）は割当と矛盾するため取り消す。対象者が既に別の固定座席を持つ場合は
     そちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」もこのAPIで表現する）。
     valid_untilを指定した場合、その日を過ぎるとrelease_expired_fixed_seats()により自動的に
-    フリー座席へ戻る（2026-08-28追加）。"""
+    フリー座席へ戻る（2026-08-28追加）。RULE-07（固定座席利用者はフリー座席を予約不可）は新規予約側
+    （A-09・A-18・A-47）では検証済みだったが、既にフリー座席・プロジェクト座席の予約（周期予約含む）
+    を持つ利用者へ後から固定座席を指定した場合の逆方向が抜けており、両方の座席を保持できてしまう
+    不具合があったため、対象者の他の今後の予約（新しい固定座席自体を除く）もあわせて取り消す
+    （2026-08-28修正）。"""
     pool = get_pool()
     if body.valid_until is not None and body.valid_until <= Date.today():
         raise HTTPException(400, detail="有効期限は明日以降の日付を指定してください")
@@ -109,6 +113,11 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
                 """UPDATE reservations SET status = 'cancelled', updated_at = now()
                    WHERE seat_id = $1 AND status = 'active' AND date >= CURRENT_DATE""",
                 body.seat_id,
+            )
+            await conn.execute(
+                """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                   WHERE user_id = $1 AND seat_id != $2 AND status = 'active' AND date >= CURRENT_DATE""",
+                body.user_id, body.seat_id,
             )
             await conn.execute(
                 "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_until) VALUES ($1, $2, $3, $4)",
