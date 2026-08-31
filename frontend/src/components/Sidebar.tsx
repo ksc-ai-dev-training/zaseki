@@ -11,6 +11,7 @@ const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean }[] = [
   { to: '/project-seats', label: 'プロジェクト座席' },
   { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', adminOnly: true },
   { to: '/admin', label: '管理メニュー', adminOnly: true },
+  { to: '/profile', label: 'マイプロフィール' },
 ]
 
 const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '一般' }
@@ -47,9 +48,13 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
 
       <div className="border-t border-slate-200 p-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-            {me.last_name.slice(0, 1)}
-          </div>
+          {me.avatar_image ? (
+            <img src={me.avatar_image} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+              {me.last_name.slice(0, 1)}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
               {me.last_name} {me.first_name}

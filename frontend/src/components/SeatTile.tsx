@@ -21,12 +21,34 @@ interface SeatTileProps {
   /** S-09「座席の島の割当モード」で選択済みの座席id一覧（見た目のハイライトのみに使う。
    * クリック自体は通常の空き座席クリックと同じonReserve経由で、Availability.tsx側で分岐する） */
   selectedSeatIds?: Set<number>
+  /** S-10「座席状況の履歴照会」。参照専用表示とし、状態によらずクリック不可のdivで表示する（2026-08-31追加） */
+  readOnly?: boolean
+}
+
+// マイプロフィール（S-12）のアイコン・誕生日バッジ（FR-08-3・4）。使用中の座席タイルにのみ表示する
+function OccupantExtras({ seat }: { seat: Seat }) {
+  return (
+    <>
+      {seat.avatar_image && <img src={seat.avatar_image} alt="" className="seat-avatar" />}
+      {seat.is_birthday && <span className="seat-birthday-badge" title="本日誕生日です">🎂</span>}
+    </>
+  )
 }
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
-export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds }: SeatTileProps) {
+export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, readOnly }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
+  }
+
+  if (readOnly) {
+    return (
+      <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
+        <OccupantExtras seat={seat} />
+        {seat.seat_no}
+        {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+      </div>
+    )
   }
 
   if (fixedSeatAssignMode) {
@@ -47,6 +69,7 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
     }
     return (
       <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style}>
+        <OccupantExtras seat={seat} />
         {seat.seat_no}
         {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
       </div>
@@ -72,6 +95,7 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
   if (seat.status === 'mine') {
     return (
       <button type="button" className="seat-tile status-mine" style={style} onClick={() => onCancel(seat)}>
+        <OccupantExtras seat={seat} />
         {seat.seat_no}
         {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
       </button>
@@ -79,6 +103,7 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
   }
   return (
     <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
+      <OccupantExtras seat={seat} />
       {seat.seat_no}
       {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
     </div>

@@ -4,7 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useProxyCandidates } from '../hooks/useProxyCandidates'
 import { useProxySearch, type ProxySeatTypeFilter } from '../hooks/useProxySearch'
 import Modal from '../components/Modal'
-import type { ProxyBookingFor, ProxyRow } from '../types'
+import type { ProxyBookingFor, ProxyRow, SeatType } from '../types'
 
 const SEAT_TYPE_OPTIONS: { key: ProxySeatTypeFilter; label: string }[] = [
   { key: 'all', label: 'すべて' },
@@ -12,6 +12,12 @@ const SEAT_TYPE_OPTIONS: { key: ProxySeatTypeFilter; label: string }[] = [
   { key: 'fixed', label: '固定座席' },
 ]
 const SEAT_TYPE_JA: Record<'free' | 'fixed', string> = { free: 'フリー座席', fixed: '固定座席' }
+const SEAT_STATUS_JA: Record<SeatType, string> = { free: 'フリー', fixed: '固定', project: 'PJ' }
+const SEAT_STATUS_BADGE_CLASS: Record<SeatType, string> = {
+  free: 'bg-slate-100 text-slate-600',
+  fixed: 'bg-blue-50 text-blue-700',
+  project: 'bg-amber-50 text-amber-700',
+}
 
 function formatDateJa(dateStr: string): string {
   const weekdayJa = ['日', '月', '火', '水', '木', '金', '土']
@@ -92,7 +98,11 @@ export default function ProxyBooking() {
                     <tr key={c.user_id} className="border-b border-slate-100">
                       <td className="py-2 pr-3">{c.user_name}</td>
                       <td className="py-2 pr-3">{c.employment_type}</td>
-                      <td className="py-2 pr-3 text-xs text-slate-500">{c.current_status}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`rounded px-2 py-0.5 text-xs ${SEAT_STATUS_BADGE_CLASS[c.current_status]}`}>
+                          {SEAT_STATUS_JA[c.current_status]}
+                        </span>
+                      </td>
                       <td className="py-2">
                         <button
                           type="button"

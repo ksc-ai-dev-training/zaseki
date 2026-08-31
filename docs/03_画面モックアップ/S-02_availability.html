@@ -36,6 +36,10 @@
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
         管理メニュー
       </a>
+      <a class="nav-item" href="S-12_my-profile.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+        マイプロフィール
+      </a>
     </nav>
     <div class="sidebar-user">
       <div class="sidebar-user-row">
@@ -108,7 +112,7 @@
             <button class="seat-tile status-free" type="button" style="grid-column:9;grid-row:2" onclick="openSeatModal('B5','NORTH')">B5</button>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:3" onclick="openSeatModal('B2','NORTH')">B2</button>
             <button class="seat-tile status-free" type="button" style="grid-column:9;grid-row:3" onclick="openSeatModal('B6','NORTH')">B6</button>
-            <div class="seat-tile status-occupied" title="使用中" style="grid-column:8;grid-row:4">B3<span class="seat-tag">松本</span></div>
+            <div class="seat-tile status-occupied" title="使用中（本日誕生日）" style="grid-column:8;grid-row:4"><span class="seat-birthday-badge">🎂</span>B3<span class="seat-tag">松本</span></div>
             <div class="seat-tile status-project" title="プロジェクト座席（佐藤恵子・新人研修サポートプロジェクト）" style="grid-column:9;grid-row:4">B7<span class="seat-tag">新人研修</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:5" onclick="openSeatModal('B4','NORTH')">B4</button>
             <div class="seat-tile status-occupied" title="使用中" style="grid-column:9;grid-row:5">B8<span class="seat-tag">小林</span></div>
@@ -334,6 +338,7 @@
         <span class="legend-item"><span class="legend-swatch" style="background:#dcfce7;border-color:#4ade80"></span>プロジェクト座席（個人確定済み。プロジェクトの略称を表示）</span>
         <span class="legend-item"><span class="legend-swatch" style="background:#fef9c3;border:1.5px dashed #eab308"></span>未確定（プロジェクト座席、個人未確定。同じくプロジェクトの略称を表示。FR-04-3）</span>
         <span class="legend-item"><span class="legend-swatch" style="background:var(--bg-muted);border-color:var(--border)"></span>柱・ロッカー・部屋（予約対象外）</span>
+        <span class="legend-item">🎂 本日誕生日の利用者が使用中の座席（マイプロフィール・S-12で登録した生年月日が本日と一致、FR-08-4）</span>
       </div>
 
       </div>

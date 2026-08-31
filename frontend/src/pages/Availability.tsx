@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
@@ -10,7 +10,7 @@ import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
-import type { AssignFixedSeatFor, ProxyBookingFor, RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday } from '../types'
+import type { AssignFixedSeatFor, MyReservation, ProxyBookingFor, RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
 const RECURRING_WEEKDAYS: { key: Weekday; label: string }[] = [
@@ -87,6 +87,7 @@ export default function Availability() {
   // S-09から「座席の島を割り当てる」で遷移した場合、location.stateに対象計画が積まれる（座席の島の割当モード）
   const seatBlockFor = (location.state as { seatBlockFor?: SeatBlockFor } | null)?.seatBlockFor
 
+  const topRef = useRef<HTMLDivElement>(null)
   const [date, setDate] = useState(todayStr())
   const [viewMode, setViewMode] = useState<'floormap' | 'period'>('floormap')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('all')
@@ -319,6 +320,17 @@ export default function Availability() {
     }
   }
 
+  // 「変更」: 専用の変更APIは持たず、対象の予約日・エリアのフロアマップへ移動して
+  // 取消・別座席の予約をその場で行えるようにする（基本設計書2.2節S-02「変更（フロアマップへの
+  // アンカーリンク）」）。周期予約の1日分でも、A-11による取消はその日だけを取り消す挙動になるため
+  // 同じ導線で扱える。
+  const changeFromList = (r: MyReservation) => {
+    setViewMode('floormap')
+    setAreaFilter(r.area.toLowerCase() as AreaFilter)
+    setDate(r.date)
+    topRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   const seatByNo: Record<string, Seat> = {}
   const seatArea: Record<string, string> = {}
   availability?.areas.forEach((a) => {
@@ -441,41 +453,45 @@ export default function Availability() {
         <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
-      <div className="p-6">
+      <div className="p-6" ref={topRef}>
 
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="flex items-center justify-between gap-1 sm:justify-start">
-          <button
-            type="button"
-            onClick={() => setDate((d) => shiftDateStr(d, -1))}
-            aria-label="前日"
-            className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
-          >
-            ‹
-          </button>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm sm:flex-none"
-          />
-          <button
-            type="button"
-            onClick={() => setDate((d) => shiftDateStr(d, 1))}
-            aria-label="翌日"
-            className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
-          >
-            ›
-          </button>
-          <button
-            type="button"
-            onClick={() => setDate(todayStr())}
-            className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50"
-          >
-            今日
-          </button>
-        </div>
-        <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
+        {viewMode === 'floormap' && (
+          <>
+            <div className="flex items-center justify-between gap-1 sm:justify-start">
+              <button
+                type="button"
+                onClick={() => setDate((d) => shiftDateStr(d, -1))}
+                aria-label="前日"
+                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
+              >
+                ‹
+              </button>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm sm:flex-none"
+              />
+              <button
+                type="button"
+                onClick={() => setDate((d) => shiftDateStr(d, 1))}
+                aria-label="翌日"
+                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={() => setDate(todayStr())}
+                className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50"
+              >
+                今日
+              </button>
+            </div>
+            <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
+          </>
+        )}
         <div className="flex gap-1 sm:ml-auto">
           <button
             type="button"
@@ -782,13 +798,22 @@ export default function Availability() {
                   <td className="py-2 pr-3">{r.registrant}</td>
                   <td className="py-2">
                     {reservationTab === 'upcoming' ? (
-                      <button
-                        type="button"
-                        onClick={() => cancelFromList(r.id)}
-                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                      >
-                        取消
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => changeFromList(r)}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        >
+                          変更
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => cancelFromList(r.id)}
+                          className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          取消
+                        </button>
+                      </div>
                     ) : (
                       <span className={`rounded px-2 py-0.5 text-xs ${r.state === 'cancelled' ? 'bg-slate-100 text-slate-500' : 'bg-green-50 text-green-700'}`}>
                         {r.state === 'cancelled' ? '取消済み' : '利用済み'}

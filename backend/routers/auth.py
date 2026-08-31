@@ -150,6 +150,9 @@ async def logout(response: Response, user: CurrentUser = Depends(require_auth)):
 @router.get("/me")
 async def me(user: CurrentUser = Depends(require_auth)):
     # A-05: ログイン中ユーザー情報。所属プロジェクト等（T-05/T-06）は該当画面の実装時に追加する
+    # avatar_imageはrequire_auth()の共通クエリには含めず（全API共通の依存関係のため、毎回大きな
+    # Base64値を読むのを避ける）、このAPI固有の追加クエリで取得する（S-12、2026-08-31追加）
+    avatar_image = await get_pool().fetchval("SELECT avatar_image FROM users WHERE id = $1", user.id)
     return {
         "id": user.id,
         "email": user.email,
@@ -159,4 +162,5 @@ async def me(user: CurrentUser = Depends(require_auth)):
         "area_manager_role": user.area_manager_role,
         "employment_type": user.employment_type,
         "employment_status": user.employment_status,
+        "avatar_image": avatar_image,
     }

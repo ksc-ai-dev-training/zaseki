@@ -59,9 +59,19 @@ CREATE TABLE IF NOT EXISTS users (
     employment_status  VARCHAR(10) NOT NULL DEFAULT 'active'
                        CHECK (employment_status IN ('active', 'leave', 'retired')),
     deleted_at         TIMESTAMPTZ,
+    -- マイプロフィール（S-12、FR-08-1〜2、2026-08-31追加）。いずれも任意項目で、本人のみが
+    -- 自分の行を更新できる（A-57）。avatar_imageは外部ストレージを使わず、アップロードされた
+    -- 画像をBase64エンコードしたdata URLとしてそのまま保持する簡易実装。誕生日は月日のみ保存し
+    -- 年は保存しない（誕生日判定に年は不要、他利用者にも見える情報のためプライバシーに配慮）。
+    avatar_image       TEXT,
+    birth_month        SMALLINT CHECK (birth_month BETWEEN 1 AND 12),
+    birth_day          SMALLINT CHECK (birth_day BETWEEN 1 AND 31),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_image TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_month SMALLINT CHECK (birth_month BETWEEN 1 AND 12);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_day SMALLINT CHECK (birth_day BETWEEN 1 AND 31);
 
 -- T-02 areas
 CREATE TABLE IF NOT EXISTS areas (
@@ -312,6 +322,21 @@ async def project_blocked_seats(target_date: Date) -> dict[int, str]:
             for seat_id in json.loads(r["allocated_seats"]):
                 result[seat_id] = r["name"]
     return result
+
+
+async def users_with_current_project_seat() -> set[int]:
+    """本日時点でプロジェクト座席（座席の島の割当期間中の座席）に実際に予約を持つ利用者のuser_id集合。
+    S-05・S-11の対象者検索（A-52・A-54）が「座席利用状況」をフリー／固定／PJの3区分で表示するために
+    使う（2026-08-28追加。従来はプロジェクト座席の利用状況を区別せず一律の文言を返していたが、
+    T-05〜T-07の実装により区別できるようになったため）。"""
+    today = Date.today()
+    blocked = await project_blocked_seats(today)
+    if not blocked:
+        return set()
+    rows = await get_pool().fetch(
+        "SELECT DISTINCT user_id, seat_id FROM reservations WHERE status = 'active' AND date = $1", today
+    )
+    return {r["user_id"] for r in rows if r["seat_id"] in blocked}
 
 
 _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]

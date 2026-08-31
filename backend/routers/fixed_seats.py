@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool, release_expired_fixed_seats
+from database import get_pool, release_expired_fixed_seats, users_with_current_project_seat
 
 router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assignments"])
 
@@ -40,7 +40,10 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
     """A-52: 新しく固定座席を指定する対象者検索（固定座席を持たない利用者、氏名の部分一致）。
     2026-08-27追加。詳細設計書3.5節にはA-19・A-20・A-21のみ定義されていたが、4.4節が明記する
     「一覧には固定座席を持たない利用者のみを表示する」検索の裏付けとなるAPIが欠けていたため新設した。
-    プロジェクト座席の利用状況（T-05〜T-07）は未実装のため、現時点では区別せず一律の文言を返す。"""
+    一覧は固定座席を持たない利用者のみなので座席利用状況は必ず'free'／'project'のいずれか
+    （2026-08-28、current_statusを'free'|'fixed'|'project'の3区分〔SeatTypeと同じ値〕へ変更。
+    従来はプロジェクト座席の利用状況を区別せず一律の文言を返していたが、T-05〜T-07の実装により
+    本日時点で実際にプロジェクト座席を利用中かどうかを区別できるようになったため）。"""
     rows = await get_pool().fetch(
         """SELECT u.id, u.last_name, u.first_name
            FROM users u
@@ -50,12 +53,13 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
            ORDER BY u.last_name, u.first_name""",
         q,
     )
+    pj_user_ids = await users_with_current_project_seat()
     return {
         "items": [
             {
                 "user_id": r["id"],
                 "user_name": f"{r['last_name']} {r['first_name']}",
-                "current_status": "固定座席・プロジェクト座席の割当なし（フリー座席を利用）",
+                "current_status": "project" if r["id"] in pj_user_ids else "free",
             }
             for r in rows
         ]

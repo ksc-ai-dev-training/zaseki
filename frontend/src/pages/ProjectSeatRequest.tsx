@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { apiFetch, ApiError } from '../lib/api'
+import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
 import type {
@@ -194,12 +195,14 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
   const [requestedSeats, setRequestedSeats] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
 
   const submit = async () => {
     if (choice1.size !== 2) { setError('第一希望は曜日を2つ選択してください'); return }
     if (choice2.size !== 2) { setError('第二希望は曜日を2つ選択してください'); return }
     setSubmitting(true)
     setError(null)
+    setSubmitted(false)
     try {
       await apiFetch(`/api/project-quarter-plans/${plan.id}/response`, {
         method: 'PUT',
@@ -209,6 +212,7 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
           requested_seats: requestedSeats ? Number(requestedSeats) : null,
         }),
       })
+      setSubmitted(true)
       onSubmitted()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '回答に失敗しました')
@@ -246,6 +250,9 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
           />
         </label>
         {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {submitted && !error && (
+          <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">回答をありがとうございます。送信しました。</p>
+        )}
         <div className="text-right">
           <button type="button" disabled={submitting} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
             この内容で回答する
@@ -257,6 +264,7 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
 }
 
 function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChanged: () => void }) {
+  const { me } = useMe()
   const [busyId, setBusyId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -294,15 +302,19 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
                 <td className="py-2 pr-3">{m.name}</td>
                 <td className="py-2 pr-3 text-xs text-slate-500">{m.project_title ?? '一般メンバー'}</td>
                 <td className="py-2">
-                  <label className="inline-flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={m.can_assign_seats}
-                      disabled={busyId === m.member_id}
-                      onChange={(e) => toggle(m.member_id, e.target.checked)}
-                    />
-                    席決めを任せる
-                  </label>
+                  {m.user_id === me?.id ? (
+                    <span className="text-xs text-slate-400">－</span>
+                  ) : (
+                    <label className="inline-flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={m.can_assign_seats}
+                        disabled={busyId === m.member_id}
+                        onChange={(e) => toggle(m.member_id, e.target.checked)}
+                      />
+                      席決めを任せる
+                    </label>
+                  )}
                 </td>
               </tr>
             ))}

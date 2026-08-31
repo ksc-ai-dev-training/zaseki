@@ -15,6 +15,16 @@ export interface Me {
   area_manager_role: AreaManagerRole
   employment_type: EmploymentType
   employment_status: EmploymentStatus
+  /** マイプロフィール（S-12）で登録したアイコン画像（data URL）。未登録はnull（2026-08-31追加） */
+  avatar_image: string | null
+}
+
+// A-56・A-57 マイプロフィール（S-12）。要件定義書4.8節・FR-08-1〜2
+export interface MyProfile {
+  avatar_image: string | null
+  /** 生年月日は月・日のみ（年は保存しない、FR-08-2）。未登録はいずれもnull */
+  birth_month: number | null
+  birth_day: number | null
 }
 
 export interface DevUser {
@@ -37,6 +47,10 @@ export interface Seat {
   status: SeatStatus
   display_name: string | null
   title: string | null
+  /** マイプロフィール（S-12）で登録したアイコン画像（data URL）。未登録・空き座席等はnull（FR-08-3、2026-08-31追加） */
+  avatar_image: string | null
+  /** 表示中の日付（date引数）が誕生日（月日一致）の利用者が使用中の座席のみtrue（FR-08-4、2026-08-31追加） */
+  is_birthday: boolean
   /** status='mine'のときのみ設定（A-11での取消に使う、仕様書のレスポンス例に対する拡張） */
   reservation_id: number | null
   /** S-02「座席配置モード」で配置した座席のみ設定される、エリアパネルに対する%座標。未設定はnull */
@@ -82,7 +96,7 @@ export interface FixedSeatAssignment {
 export interface FixedSeatCandidate {
   user_id: number
   user_name: string
-  current_status: string
+  current_status: SeatType
 }
 
 // S-02をS-05から「固定座席指定モード」で開く際にreact-routerのlocation.stateへ積む値
@@ -96,7 +110,7 @@ export interface ProxyCandidate {
   user_id: number
   user_name: string
   employment_type: string
-  current_status: string
+  current_status: SeatType
 }
 
 // A-46 GET /reservations/search（S-11 予約・割当単位の一覧）
@@ -243,6 +257,7 @@ export interface QuarterPlanItem {
   period_start: string
   period_end: string
   required_seats: number
+  non_fixed_member_count: number
   status: QuarterPlanStatus
   weekdays_finalized: Weekday[] | null
   allocated_seat_ids: number[] | null

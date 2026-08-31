@@ -11,11 +11,11 @@ import ProjectSeatRequest from './pages/ProjectSeatRequest'
 import ProxyBooking from './pages/ProxyBooking'
 import RoleManagement from './pages/RoleManagement'
 import SeatMaster from './pages/SeatMaster'
-import ComingSoon from './pages/ComingSoon'
+import SeatHistory from './pages/SeatHistory'
+import MyProfile from './pages/MyProfile'
 import Layout from './components/Layout'
 
-// ルーティング定義・認証ガード。画面は1つずつ実装していく方針のため、まだ実装していない
-// 画面へのリンクはComingSoonへ遷移する（後続の画面を実装するたびに置き換える）
+// ルーティング定義・認証ガード。S-01〜S-11、全11画面の実装が完了した（2026-08-31）
 export default function App() {
   const { me, isLoading, mutate } = useMe()
 
@@ -46,6 +46,7 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route element={<Layout me={me} onLogout={logout} />}>
         <Route path="/" element={<Availability />} />
+        <Route path="/profile" element={<MyProfile />} />
         <Route path="/project-seats" element={<ProjectSeatRequest />} />
         <Route path="/project-seats-area" element={requireAdmin(<ProjectSeatAllocation />)} />
         <Route path="/admin" element={requireAdmin(<AdminMenu />)} />
@@ -53,7 +54,7 @@ export default function App() {
         <Route path="/proxy-booking" element={requireAdmin(<ProxyBooking />)} />
         <Route path="/seat-master" element={requireAdmin(<SeatMaster />)} />
         <Route path="/roles" element={requireAdmin(<RoleManagement />)} />
-        <Route path="/history" element={requireAdmin(<ComingSoon id="S-10" name="座席状況の履歴照会" />)} />
+        <Route path="/history" element={requireAdmin(<SeatHistory />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

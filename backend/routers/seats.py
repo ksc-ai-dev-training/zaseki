@@ -1,13 +1,13 @@
-# A-06・A-07 空き状況・予約（S-02）。詳細設計書3.3節
+# A-06・A-07 空き状況・予約（S-02）、A-45 座席状況の履歴照会（S-10）。詳細設計書3.3節・3.10節
 import re
 from collections import Counter
 from datetime import date as Date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from auth_helpers import CurrentUser, require_auth
-from database import free_seat_bookable_period, get_pool, project_blocked_seats, release_expired_fixed_seats
+from auth_helpers import CurrentUser, require_auth, require_roles
+from database import free_seat_bookable_period, get_pool, get_setting, project_blocked_seats, release_expired_fixed_seats
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -26,13 +26,41 @@ def _seat_sort_key(seat_no: str) -> tuple[str, int]:
     return (m.group(1), int(m.group(2)))
 
 
+def _is_birthday(birth_month: int | None, birth_day: int | None, target: Date) -> bool:
+    """FR-08-4: 誕生日バッジの判定。実行時点の実際の「今日」ではなく、表示中の日付（S-02の
+    日付選択・S-10の照会日付）の月日と一致するかで判定する（2026-08-31追加。過去日・未来日を
+    表示しているときに、その日を基準に誕生日を確認できるようにするため）。"""
+    return birth_month == target.month and birth_day == target.day
+
+
 @router.get("/availability")
 async def get_availability(
     date: Date,
     area: Literal["all", "north", "east", "west"] = "all",
     user: CurrentUser = Depends(require_auth),
 ):
-    """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。
+    """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。実体は_build_availability参照。"""
+    return await _build_availability(date, area, user)
+
+
+@router.get("/history")
+async def get_seat_history(
+    date: Date,
+    area: Literal["all", "north", "east", "west"] = "all",
+    user: CurrentUser = Depends(require_roles("admin")),
+):
+    """A-45: 座席状況の履歴照会（S-10、FR-04-5）。レスポンス形式はA-06と同じ（_build_availability
+    を共用する）。指定日はD12（app_settings.seat_history_lookback_days、既定31日）の範囲、
+    かつ当日以前のみ照会できる（2026-08-31追加）。"""
+    lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
+    today = Date.today()
+    if date > today or date < today - timedelta(days=lookback_days):
+        raise HTTPException(400, detail="指定できる日付は直近1か月以内です")
+    return await _build_availability(date, area, user)
+
+
+async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
+    """A-06・A-45共通のフロアマップ状況組み立て処理。
 
     'fixed'座席はT-04（S-05）の恒久割当で判定し、日次のreservationは参照しない（T-04には
     日次の行が存在しないため）。プロジェクト座席はT-07（S-09）の座席の島の割当（allocated_seats）
@@ -49,7 +77,11 @@ async def get_availability(
     rows = await pool.fetch(
         """SELECT s.id, s.seat_no, s.seat_type, s.pos_x, s.pos_y, a.name AS area_name,
                   r.id AS reservation_id, r.user_id AS reserved_user_id, ru.last_name, ru.first_name,
-                  fsa.user_id AS fixed_user_id, fu.last_name AS fixed_last_name
+                  ru.avatar_image AS reserved_avatar_image, ru.birth_month AS reserved_birth_month,
+                  ru.birth_day AS reserved_birth_day,
+                  fsa.user_id AS fixed_user_id, fu.last_name AS fixed_last_name,
+                  fu.avatar_image AS fixed_avatar_image, fu.birth_month AS fixed_birth_month,
+                  fu.birth_day AS fixed_birth_day
            FROM seats s
            JOIN areas a ON a.id = s.area_id
            LEFT JOIN reservations r
@@ -77,32 +109,45 @@ async def get_availability(
         block_label = _block_label(r["seat_no"])
         areas.setdefault(area_name, {}).setdefault(block_label, [])
 
+        avatar_image = None
+        is_birthday = False
+
         if r["seat_type"] == "fixed":
             if r["fixed_user_id"] is None:
                 status, display_name = "free", None
             else:
                 status, display_name = "occupied_fixed", r["fixed_last_name"]
+                avatar_image = r["fixed_avatar_image"]
+                is_birthday = _is_birthday(r["fixed_birth_month"], r["fixed_birth_day"], date)
         elif r["id"] in project_name_by_seat_id:
             if r["reserved_user_id"] is None:
                 status, display_name = "project_pending", project_name_by_seat_id[r["id"]]
             elif r["reserved_user_id"] == user.id:
                 status, display_name = "mine", f"{r['last_name']}（自分）"
+                avatar_image = r["reserved_avatar_image"]
+                is_birthday = _is_birthday(r["reserved_birth_month"], r["reserved_birth_day"], date)
             else:
                 status = "project_confirmed"
                 display_name = (
                     r["last_name"] if last_name_counts[r["last_name"]] <= 1
                     else f"{r['last_name']}（{r['first_name'][:1]}）"
                 )
+                avatar_image = r["reserved_avatar_image"]
+                is_birthday = _is_birthday(r["reserved_birth_month"], r["reserved_birth_day"], date)
         elif r["reserved_user_id"] is None:
             status, display_name = "free", None
         elif r["reserved_user_id"] == user.id:
             status, display_name = "mine", f"{r['last_name']}（自分）"
+            avatar_image = r["reserved_avatar_image"]
+            is_birthday = _is_birthday(r["reserved_birth_month"], r["reserved_birth_day"], date)
         else:
             status = "occupied"
             display_name = (
                 r["last_name"] if last_name_counts[r["last_name"]] <= 1
                 else f"{r['last_name']}（{r['first_name'][:1]}）"
             )
+            avatar_image = r["reserved_avatar_image"]
+            is_birthday = _is_birthday(r["reserved_birth_month"], r["reserved_birth_day"], date)
 
         areas[area_name][block_label].append({
             # 仕様書のレスポンス例にはないが、予約登録（A-09）のBody.seat_idに必要な拡張フィールド
@@ -111,6 +156,11 @@ async def get_availability(
             "seat_type": r["seat_type"],
             "status": status,
             "display_name": display_name,
+            # マイプロフィール（S-12）で登録したアイコン画像（data URL）。未登録・空き座席等はnull
+            # （FR-08-3、2026-08-31追加）
+            "avatar_image": avatar_image,
+            # 表示中の日付が誕生日（月日一致）の利用者が使用中の座席のみtrue（FR-08-4、2026-08-31追加）
+            "is_birthday": is_birthday,
             "title": None,
             # 仕様書のレスポンス例にはないが、S-02「座席配置モード」で配置した座席のみ設定される
             # フロアマップ上の自由配置座標（エリアパネルに対する%）。未設定ならnull

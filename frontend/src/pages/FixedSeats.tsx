@@ -4,7 +4,14 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useFixedSeatCandidates } from '../hooks/useFixedSeatCandidates'
 import Modal from '../components/Modal'
-import type { AssignFixedSeatFor, FixedSeatAssignment } from '../types'
+import type { AssignFixedSeatFor, FixedSeatAssignment, SeatType } from '../types'
+
+const SEAT_STATUS_JA: Record<SeatType, string> = { free: 'フリー', fixed: '固定', project: 'PJ' }
+const SEAT_STATUS_BADGE_CLASS: Record<SeatType, string> = {
+  free: 'bg-slate-100 text-slate-600',
+  fixed: 'bg-blue-50 text-blue-700',
+  project: 'bg-amber-50 text-amber-700',
+}
 
 // S-05 固定座席の指定。実際の座席選択はここでは行わず、S-02のフロアマップへ
 // 「固定座席指定モード」で遷移して行う（4.4節）
@@ -68,7 +75,11 @@ export default function FixedSeats() {
                   {candidates.map((c) => (
                     <tr key={c.user_id} className="border-b border-slate-100">
                       <td className="py-2 pr-3">{c.user_name}</td>
-                      <td className="py-2 pr-3 text-xs text-slate-500">{c.current_status}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`rounded px-2 py-0.5 text-xs ${SEAT_STATUS_BADGE_CLASS[c.current_status]}`}>
+                          {SEAT_STATUS_JA[c.current_status]}
+                        </span>
+                      </td>
                       <td className="py-2">
                         <button
                           type="button"

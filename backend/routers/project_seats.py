@@ -26,15 +26,24 @@ async def _ensure_next_quarter_plans(pool) -> None:
     """次の四半期の計画データを、対象プロジェクトごとに自動的に起票する（FR-03-1、2026-08-28実装）。
     従来はエリア責任者・管理部が「四半期計画を開始する」ボタンを押す手動操作だったが、全プロジェクトが
     毎四半期必ず1件必要とするものであり手動操作を要する理由がないとの要望を受け、A-27・A-38の
-    参照時に不足分を自動起票する方式に変更した。ON CONFLICT DO NOTHINGのため複数回呼んでも副作用はない。"""
+    参照時に不足分を自動起票する方式に変更した。ON CONFLICT DO NOTHINGのため複数回呼んでも副作用はない。
+
+    required_seatsの初期値は、固定座席（T-04）を既に持つメンバーを除いた人数とする（2026-08-28再訂正、
+    「固定席の人のみのプロジェクトはプロジェクト席を用意する必要がない」との要望を受けた。固定座席保有者は
+    RULE-07によりそもそもプロジェクト座席を確保できないため、必要数に含めると余分な座席を要求してしまう。
+    メンバーが1人もいないプロジェクトは判定材料がないため、従来どおり1人扱いとする）。"""
     base_months = await _base_months()
     next_start = _next_quarter_start(Date.today(), base_months)
     next_end = _quarter_end(next_start, base_months)
     await pool.execute(
         """INSERT INTO project_quarter_plans (project_id, period_start, period_end, required_seats)
-           SELECT p.id, $1, $2, GREATEST(COUNT(pm.id), 1)
+           SELECT p.id, $1, $2,
+                  CASE WHEN COUNT(pm.id) = 0 THEN 1
+                       ELSE COUNT(pm.id) FILTER (WHERE fsa.user_id IS NULL)
+                  END
            FROM projects p
            LEFT JOIN project_members pm ON pm.project_id = p.id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
            GROUP BY p.id
            ON CONFLICT (project_id, period_start) DO NOTHING""",
         next_start, next_end,
@@ -246,12 +255,14 @@ async def list_quarter_plans(
                   pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats, pqp.status,
                   string_agg(DISTINCT (u.last_name || ' ' || u.first_name), '、')
                       FILTER (WHERE pm.project_title IN ('PM', 'PL')) AS pm_pl_names,
+                  COUNT(DISTINCT pm.id) FILTER (WHERE fsa.user_id IS NULL) AS non_fixed_member_count,
                   wr.choice1_weekdays, wr.choice2_weekdays, wr.note,
                   (wr.id IS NOT NULL) AS has_response
            FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id
            LEFT JOIN project_members pm ON pm.project_id = pqp.project_id
            LEFT JOIN users u ON u.id = pm.user_id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
            LEFT JOIN project_weekday_responses wr ON wr.plan_id = pqp.id
            WHERE ($1 = '' OR pqp.period_start = $1::date)
            GROUP BY pqp.id, p.name, wr.choice1_weekdays, wr.choice2_weekdays, wr.note, wr.id
@@ -279,6 +290,7 @@ async def list_quarter_plans(
             "pm_pl_names": r["pm_pl_names"] or "未設定",
             "period_start": r["period_start"].isoformat(), "period_end": r["period_end"].isoformat(),
             "required_seats": r["required_seats"], "status": r["status"],
+            "non_fixed_member_count": r["non_fixed_member_count"],
             "weekdays_finalized": json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else None,
             "allocated_seat_ids": allocated_seat_ids, "allocated_seat_label": allocated_label,
             "has_response": r["has_response"],
@@ -416,17 +428,31 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     編集できるようにしたい」との要望を受けた）。編集時は、旧・新いずれの割当座席についても
     その期間中の予約（A-18で生成済みのメンバー個人の周期予約を含む）を取り消す。座席の島が
     変わればメンバーごとの具体的な座席（A-18）も作り直す必要があるため、PJ席決担当が編集後に
-    再度確保し直す想定である。"""
+    再度確保し直す想定である。プロジェクトの現在のメンバーが全員固定座席（T-04）を保有している
+    場合は、座席の島自体を割り当てられない（2026-08-31追加。「固定席の人はプロジェクト席を
+    作成できないようにしてほしい」との要望を受けた。required_seatsは計画の起票時点のスナップショット
+    のため、起票後にメンバー構成・固定座席の状況が変わっても遡って更新されない〔2.9節T-07参照〕。
+    このため、required_seatsが古い値のまま残っている計画に対しては、この時点の実際のメンバー構成を
+    都度再確認しないと、誰も使えない座席の島を作成できてしまう不具合があった）。"""
     if not body.seat_ids:
         raise HTTPException(400, detail="座席を1つ以上選択してください")
     pool = get_pool()
     plan = await pool.fetchrow(
-        "SELECT id, status, period_start, period_end, allocated_seats FROM project_quarter_plans WHERE id = $1", id
+        "SELECT id, project_id, status, period_start, period_end, allocated_seats FROM project_quarter_plans WHERE id = $1", id
     )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] not in ("weekdays_finalized", "seats_allocated"):
         raise HTTPException(400, detail="出社曜日の確定後でなければ座席の島を割り当てられません")
+
+    non_fixed_member_count = await pool.fetchval(
+        """SELECT COUNT(*) FROM project_members pm
+           WHERE pm.project_id = $1
+             AND NOT EXISTS (SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id)""",
+        plan["project_id"],
+    )
+    if non_fixed_member_count == 0:
+        raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席を保有しているため、プロジェクト座席は不要です")
 
     seats = await pool.fetch(
         "SELECT id, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", body.seat_ids

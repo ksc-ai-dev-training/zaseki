@@ -1214,6 +1214,7 @@ details.search-panel > summary .summary-hint {
 .seat-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .seat-tile {
+  position: relative;
   width: 58px;
   height: 54px;
   display: flex;
@@ -1229,6 +1230,9 @@ details.search-panel > summary .summary-hint {
   cursor: default;
 }
 .seat-tile .seat-tag { font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.85; }
+/* マイプロフィール（S-12）のアイコン・誕生日バッジ（FR-08-3・4、2026-08-31追加） */
+.seat-tile .seat-avatar { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.15); }
+.seat-tile .seat-birthday-badge { position: absolute; top: -7px; right: -7px; font-size: 12px; line-height: 1; }
 button.seat-tile { cursor: pointer; }
 button.seat-tile:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 

@@ -23,6 +23,15 @@ const STATUS_BADGE_CLASS: Record<QuarterPlanStatus, string> = {
   seats_allocated: 'bg-green-50 text-green-700',
 }
 
+// メンバー全員が固定座席を保有するプロジェクトはrequired_seats=0となり、プロジェクト座席自体が
+// 不要（2026-08-28追加。「固定席の人のみのプロジェクトはプロジェクト席を用意する必要がない」との
+// 要望を受けた）。status='seats_confirmed'のまま操作不要である旨を専用の表示に切り替える。
+// non_fixed_member_countは都度算出する現在の値のため、required_seats（計画起票時点のスナップショット、
+// 2.9節T-07参照）が古いまま残っている計画でも正しく判定できる（2026-08-31追加）。
+const noSeatNeeded = (p: QuarterPlanItem) => p.status === 'seats_confirmed' && p.non_fixed_member_count === 0
+const statusLabel = (p: QuarterPlanItem) => (noSeatNeeded(p) ? '座席不要（全員固定座席）' : STATUS_LABEL[p.status](p))
+const statusBadgeClass = (p: QuarterPlanItem) => (noSeatNeeded(p) ? 'bg-slate-100 text-slate-400' : STATUS_BADGE_CLASS[p.status])
+
 function formatQuarterLabel(periodStart: string): string {
   const [y, m] = periodStart.split('-')
   const startMonth = Number(m)
@@ -37,6 +46,7 @@ export default function ProjectSeatAllocation() {
   const { items: allPlans, refresh: refreshAllPlans } = useQuarterPlans('')
 
   const [selectedQuarter, setSelectedQuarter] = useState('')
+  const [hasAutoSelectedQuarter, setHasAutoSelectedQuarter] = useState(false)
   const { items: plans, refresh: refreshPlans } = useQuarterPlans(selectedQuarter)
 
   const [actionError, setActionError] = useState<string | null>(null)
@@ -55,6 +65,18 @@ export default function ProjectSeatAllocation() {
     const starts = [...new Set(allPlans.map((p) => p.period_start))].sort()
     return starts
   }, [allPlans])
+
+  // 初期表示は「すべて」ではなく、次の期間（quarterTabsのうち最も新しいperiod_start。
+  // _ensure_next_quarter_plans()により常に次の四半期分が起票されているため、最新の
+  // period_startが自動的に「次の期間」になる）を選択した状態にする（2026-08-28追加。
+  // 「S-09の最初の画面はすべてではなく次の期間のを表示してほしい」との要望を受けた。
+  // 以降はユーザーが「すべて」を含め自由にタブを切り替えられるよう、初回のみ行う。
+  useEffect(() => {
+    if (!hasAutoSelectedQuarter && quarterTabs.length > 0) {
+      setSelectedQuarter(quarterTabs[quarterTabs.length - 1])
+      setHasAutoSelectedQuarter(true)
+    }
+  }, [quarterTabs, hasAutoSelectedQuarter])
 
   const openHeadcount = (p: QuarterPlanItem) => {
     setActionError(null)
@@ -173,11 +195,11 @@ export default function ProjectSeatAllocation() {
                   <td className="px-4 py-2 text-xs text-slate-500">{p.period_start} 〜 {p.period_end}</td>
                   <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
                   <td className="px-4 py-2">
-                    <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS[p.status]}`}>{STATUS_LABEL[p.status](p)}</span>
+                    <span className={`rounded px-2 py-0.5 text-xs ${statusBadgeClass(p)}`}>{statusLabel(p)}</span>
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2">
-                      {p.status === 'seats_confirmed' && (
+                      {p.status === 'seats_confirmed' && !noSeatNeeded(p) && (
                         <button type="button" onClick={() => openSurvey(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">アンケートを送る</button>
                       )}
                       {p.status === 'survey_open' && (

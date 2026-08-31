@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.33（ドラフト・作成中）</span>
+      <span>版数: 0.37（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -259,6 +259,10 @@ footer.doc-footer {
       <tr><td>0.31</td><td>2026-08-28</td><td>「固定席の人はPJ席を用意する意味がないので最初からPJ席の予約ができないようにしてほしい」との要望を受けた。固定座席保有者が実際にプロジェクト座席の予約を試みた場合はRULE-07（<code>generate_recurring_reservations()</code>）により既に拒否されていたが、S-04の座席確保画面ではその固定座席保有者もあたかも確保可能な対象であるかのように選択肢に表示されており、確保操作をして初めて拒否されるUXになっていた。A-14（<code>GET /project-quarter-plans/{id}</code>）のメンバー一覧の各行に<code>has_fixed_seat</code>（T-04の存在有無）を追加し、S-04の座席確保フォームは<code>has_fixed_seat=true</code>のメンバーを座席選択の対象自体から外し「対象外（固定座席保有者）」と表示するようにした。あわせてA-18（<code>POST /project-quarter-plans/{id}/seat-assignments</code>）にも、対象メンバーが固定座席保有者であれば<code>generate_recurring_reservations()</code>を呼ぶ前の時点で除外する早期チェックを追加した（従来は日単位の検証に委ねていたため、拒否される呼び出しでもT-09（recurring_rules）の行だけは作成されてしまっていた。画面側の選択肢除外を回避してAPIを直接呼ばれた場合の保険であると同時に、この無駄な行の作成も防ぐ）。3.4節（A-14・A-18）を修正。</td></tr>
       <tr><td>0.32</td><td>2026-08-28</td><td>「権限・役割管理にあるプロジェクト・PM管理で削除できる機能も欲しい」との要望を受けた。プロジェクトの新規作成（A-28）・編集（A-29）は既にあったが削除がなく、CRUDとして不完全だった。A-55（<code>DELETE /projects/{id}</code>）を新設した。プロジェクト自体を削除する以上、project_members（T-06）・project_quarter_plans（T-07、FK経由でproject_weekday_responses〔T-11〕も連動）はプロジェクトという入れ物がなければ存在意義を持たないためあわせて削除する（A-29のメンバー削除〔スコープ外〕とは異なり、対象を選べる余地がない削除のためスコープ外にはしない）。座席の島の割当（allocated_seats）はproject_quarter_plansの一部として削除されるため、<code>project_blocked_seats()</code>（JOIN projectsで判定）は削除後は自動的にヒットしなくなり、対象座席のプロジェクト専有は解消される。一方、メンバーが個別に確保済みの座席予約（A-18生成分のreservations・recurring_rules）はproject_idを持たない独立データのため削除しない（本人が実際にその座席を使っている実態を、プロジェクトという管理上の入れ物の削除で消さないため）。3.8節（A-55新設）を修正。</td></tr>
       <tr><td>0.33</td><td>2026-08-28</td><td>「フリー座席の予約も周期予約できるようにしてください」との要望を受けた。周期予約のAPI（A-10）自体は0.24で実装済みだったが、A-18（プロジェクト座席のメンバー確保）専用の呼び出し口しかなく、一般利用者がS-02から自分自身のフリー座席を周期予約する導線が未実装のまま残っていた（バックエンドの変更は不要、フロントエンドのみの対応）。S-02の予約確認モーダルに「繰り返し予約にする」チェックボックスを追加し、同一モーダル内で繰り返しパターン・曜日・終了日を入力してA-10を呼び出せるようにした（開始日は最初にタップした日付に固定、別入力欄は持たない）。登録後は同じモーダル内が結果表示（登録できた日・除外された日と理由の一覧）に切り替わる。代理予約モード（S-11経由）ではこのチェックボックスを表示しない（A-47は単発のみ対応のため、3.11節のスコープのまま）。4.2節を修正。</td></tr>
+      <tr><td>0.34</td><td>2026-08-28</td><td>「座席利用状況という項目をフリー、固定、PJにしてほしい」との要望を受けた。S-05（A-52）・S-11（A-54）の対象者検索一覧にある「現在の座席利用状況」列は、これまで「固定座席（A5）を利用中」「固定座席・プロジェクト座席の割当なし（フリー座席を利用）」のような長い説明文を返しており、かつプロジェクト座席の利用状況は区別せず一律の文言だった（T-05〜T-07が未実装だった頃の暫定対応が、実装後もそのまま残っていた）。新設した<code>database.users_with_current_project_seat()</code>（本日時点でプロジェクト座席の島の割当期間中の座席に実際に予約を持つ利用者のuser_id集合。<code>project_blocked_seats()</code>と当日の予約を突き合わせて判定）を使い、両APIの<code>current_status</code>を<code>'free'|'fixed'|'project'</code>（T-03.seat_typeと同じ値）の3区分に変更した。画面側はこれをフリー／固定／PJの短いバッジ表示に変更した（「PJ」は既存の「PJ席決担当」等と表記を揃えた略称）。3.5節（A-52）・3.11節（A-54）を修正。</td></tr>
+      <tr><td>0.35</td><td>2026-08-28</td><td>「固定席の人のみのプロジェクトはプロジェクト席を用意する必要がない設定にしてほしい。また固定席＋プロジェクトメンバーのプロジェクトのプロジェクト席を決めるとき固定席の人は席は決まっているので決める必要はないが、ほかのメンバーは決める必要がある」との要望を受けた。後半（メンバー個別の座席確保時に固定座席保有者を除外する）は0.31で対応済みだったが、前半の必要座席数（<code>required_seats</code>）自体はT-06人数をそのまま数えており、固定座席保有者のみで構成されるプロジェクトでも1人以上の座席を要求してしまっていた。<code>_ensure_next_quarter_plans()</code>の<code>required_seats</code>算出を、固定座席（T-04）を持たないメンバーの人数に修正した（メンバー0人のみ従来どおり1人扱い）。全員が固定座席を持つプロジェクトは<code>required_seats=0</code>で起票され、S-09は「座席不要（全員固定座席）」と表示してアンケート送信操作を求めない。2.9節（T-07）・3.9節（末尾コールアウト追加）・4.7節を修正。</td></tr>
+      <tr><td>0.36</td><td>2026-08-31</td><td>「固定席の人はプロジェクト席を作成できないようにしてほしい。現状同じ人が固定席とプロジェクト席別の位置に配置することができる」との報告を受けた。調査の結果、メンバー個別の座席確保（A-18）は既に固定座席保有者を都度除外しており実際の二重確保は再現しなかったが、0.35で対応したrequired_seatsの訂正は計画の起票時点のスナップショットにのみ作用するため、起票後にメンバー構成・固定座席の指定状況が変わったプロジェクト（実際に、非固定座席保有者を含んでいたため起票されたrequired_seats>0の計画が、その後全員固定座席保有者になった事例が見つかった）では、古いrequired_seatsの値のまま座席の島の割当（A-44）まで進めてしまい、誰も使えない座席を確保できてしまう不具合があった。A-44に、呼び出し時点のproject_members・fixed_seat_assignmentsを都度突き合わせて全員固定座席保有者かどうかを判定するチェックを追加し、該当する場合は座席の島の割当（新規・編集とも）を400で拒否するようにした。A-38のレスポンスに<code>non_fixed_member_count</code>（都度算出）を追加し、S-09の「座席不要」表示もこの値を参照するよう改めた（required_seats列自体は起票時点の記録として残す）。3.9節（A-38・A-44、末尾コールアウト追加）を修正。</td></tr>
+      <tr><td>0.37</td><td>2026-08-31</td><td>要件定義書0.80（4.8節、FR-08-1〜4）・基本設計書1.88を反映。「ユーザのプロフィールとしてSlackのように任意でアイコンを登録できるようにして、座席一覧・マップで名前だけでなくアイコンを表示するようにしてほしい」「任意で生年月日を登録できるようにして、誕生日の場合はそれとわかるようにする」との要望を受けた。T-01 usersにavatar_image（data URL、外部ストレージなし）・birth_month／birth_day（月日のみ、年は保存しない）を追加（2.3節）。新設したS-12「マイプロフィール」向けにA-56（GET）・A-57（PUT）を新設（3.12節）。A-06・A-45が共用する<code>_build_availability()</code>を拡張し、使用者が表示される座席に<code>avatar_image</code>・<code>is_birthday</code>を含めるようにした（3.3節。誕生日判定は実行時点の「今日」ではなく表示中のdate引数を基準とする）。A-05（GET /auth/me）にサイドバー表示用の<code>avatar_image</code>を追加（<code>require_auth()</code>の共通クエリは変更せず、本APIのハンドラ内で個別取得）。4.10節（S-12の入力チェック）・5.5.11節（A-56・A-57はP-ANY）・6.5節（画像形式・サイズ・生年月日の入力エラー）を新設。旧3.12節「バッチ処理」を3.13節へ繰り下げた。</td></tr>
     </tbody>
   </table>
   </details>
@@ -307,6 +311,7 @@ footer.doc-footer {
       <tr><td>REQ-F-06</td><td>座席・エリアの構成を管理者が変更できること</td><td>FR-06-1, FR-06-2（4.6節）</td><td>S-07</td></tr>
       <tr><td>REQ-N-01〜04</td><td>非機能要求（認証・認可・性能・技術構成等）</td><td>NFR-01〜NFR-07（8章。個別の1対1対応は明記していない。NFR-07は要求仕様書に明記のない追加提案）</td><td>全画面共通</td></tr>
       <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>役割マスタ管理</td><td>FR-07-1, FR-07-2（4.7節）</td><td>S-08</td></tr>
+      <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>利用者プロフィール（アイコン・生年月日）</td><td>FR-08-1〜FR-08-4（4.8節、2026-08-31追加）</td><td>S-12（登録・編集）、S-02・S-10（表示）</td></tr>
     </tbody>
   </table>
   <p class="callout">画面（S-xx）↔テーブル（T-xx）↔API（A-xx）の対応は、2章・3章それぞれの節見出しに画面IDを付す形（例:「3.3 空き状況・予約（S-02）」）で表現している。個々のAPIがどのFRに対応するかは3章の各行に記載している。</p>
@@ -561,9 +566,12 @@ footer.doc-footer {
       <tr><td><code>area_manager_role</code></td><td>VARCHAR(10)</td><td>可</td><td>NULL</td><td>CHECK</td><td><code>'manager' / 'deputy' / NULL</code>。エリア責任者／副責任者。role='admin'の利用者のみ設定可（アプリケーション層で検証）。特定のエリアに紐づかず、設定された利用者はエリアを問わず全プロジェクトのプロジェクト座席計画（FR-03-2〜6）を担当できる。人数の上限はなく、複数の利用者が同時に同じ値を持てる（2026-08-27追加。従来はT-02 areas.manager_user_id／deputy_user_idというエリアごとのFKで表現していたが、「エリア責任者自体は置くが各エリアへの配置はなくしてほしい」との要望を受け、本列に変更した）。</td></tr>
       <tr><td><code>employment_status</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'active'</code></td><td>CHECK</td><td><code>'active' / 'leave' / 'retired'</code>（在籍中／休職中／退職済み）。管理部がS-08から設定（D16）。</td></tr>
       <tr><td><code>deleted_at</code></td><td>TIMESTAMPTZ</td><td>可</td><td>NULL</td><td></td><td>論理削除日時。employment_statusを'retired'に変更した時点でAPIが設定する（RULE-06）。設定されている利用者はログイン・予約不可。</td></tr>
+      <tr><td><code>avatar_image</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>マイプロフィール（S-12、FR-08-1）でアップロードした画像。data URL（<code>data:image/png;base64,...</code>等）としてそのまま保存する簡易実装で、外部ストレージ（S3等）は使わない。300KBを超える画像はAPI（A-57）が拒否する（6.5節）。本人のみが自分の行のこの列を更新できる。未設定（NULL）の場合、フロントエンドは氏名の頭文字によるアバターで代替表示する（2026-08-31追加）。</td></tr>
+      <tr><td><code>birth_month</code></td><td>SMALLINT</td><td>可</td><td>NULL</td><td>CHECK</td><td>誕生月（1〜12）。マイプロフィール（S-12、FR-08-2）で本人が登録する。年は保存しない。<code>birth_day</code>と必ずセットで設定・解除する（片方だけの設定はAPIが拒否、6.5節）。他利用者からも見える情報のため、プライバシーに配慮し月日のみとした（2026-08-31追加）。</td></tr>
+      <tr><td><code>birth_day</code></td><td>SMALLINT</td><td>可</td><td>NULL</td><td>CHECK</td><td>誕生日（1〜31）。うるう年を基準に月ごとの上限日数を判定し2/29を許容する（年を保存しないため）。誕生日バッジ（FR-08-4、A-06・A-45）は、表示中の日付とこの列・<code>birth_month</code>の一致で判定する（2026-08-31追加）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成・更新日時とも持つ（<code>updated_at</code>は氏名訂正・役割変更・在籍状況変更のたびにAPIが更新）。</p>
+  <p class="callout">作成・更新日時: 作成・更新日時とも持つ（<code>updated_at</code>は氏名訂正・役割変更・在籍状況変更・マイプロフィール更新のたびにAPIが更新）。</p>
 
   <h3>2.4 T-02 areas（エリア）</h3>
   <table>
@@ -630,7 +638,7 @@ footer.doc-footer {
       <tr><td><code>project_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→projects, UNIQUE(project_id, period_start)</td><td></td></tr>
       <tr><td><code>period_start</code></td><td>DATE</td><td>不可</td><td>—</td><td>UNIQUE(project_id, period_start)</td><td>四半期の開始日（1/1・4/1・7/1・10/1のいずれか）。</td></tr>
       <tr><td><code>period_end</code></td><td>DATE</td><td>不可</td><td>—</td><td></td><td>四半期の終了日。</td></tr>
-      <tr><td><code>required_seats</code></td><td>INTEGER</td><td>不可</td><td>—</td><td></td><td>必要座席数。行作成時点でT-06の人数を既定値として自動算出。S-04でPM(PL)が変更希望を入力すると自動更新（T-11.requested_seats経由）。</td></tr>
+      <tr><td><code>required_seats</code></td><td>INTEGER</td><td>不可</td><td>—</td><td></td><td>必要座席数。行作成時点で、T-06のメンバーのうち固定座席（T-04）を持たない人数を既定値として自動算出する（2026-08-28訂正。固定座席保有者はRULE-07によりそもそもプロジェクト座席を確保できないため、必要数から除外する。メンバー0人の場合のみ1人扱い）。S-04でPM(PL)が変更希望を入力すると自動更新（T-11.requested_seats経由）。</td></tr>
       <tr><td><code>weekdays_finalized</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>確定した出社曜日の配列（例: <code>["tue","thu"]</code>）。曜日調整前はNULL。</td></tr>
       <tr><td><code>allocated_seats</code></td><td>JSONB</td><td>可</td><td>NULL</td><td></td><td>割り当てられた座席の島（座席IDの配列）。座席の島の割当前はNULL。</td></tr>
       <tr><td><code>status</code></td><td>VARCHAR(20)</td><td>不可</td><td><code>'seats_confirmed'</code></td><td>CHECK</td><td><code>'seats_confirmed'</code>（アンケート未送信）/ <code>'survey_open'</code>（曜日アンケート中）/ <code>'weekdays_finalized'</code>（曜日確定済み）/ <code>'seats_allocated'</code>（座席割当済み）。</td></tr>
@@ -776,7 +784,7 @@ footer.doc-footer {
       <tr><td><code>A-02</code></td><td><span class="method get">GET</span><code>/auth/callback</code></td><td>GoogleからのリダイレクトでIDトークンを受け取り検証。許可ドメイン確認、T-01検索（未登録なら自動登録）、<code>deleted_at</code>確認（RULE-06）、セッションJWT発行。</td><td>未ログインでも可</td><td>拒否時の挙動は6章参照。</td></tr>
       <tr><td><code>A-03</code></td><td><span class="method post">POST</span><code>/auth/dev-login</code></td><td>開発用ログイン（メールアドレス指定のみ）。</td><td>未ログインでも可</td><td><code>APP_ENV=production</code>では無効化（基本設計書4.2節）。</td></tr>
       <tr><td><code>A-04</code></td><td><span class="method post">POST</span><code>/auth/logout</code></td><td>セッションCookieを破棄する。</td><td>本人</td><td></td></tr>
-      <tr><td><code>A-05</code></td><td><span class="method get">GET</span><code>/auth/me</code></td><td>ログイン中の利用者情報を返す（氏名、role、employment_type、employment_status、area_manager_role、所属プロジェクトとproject_title、PJ席決担当担当プロジェクト等）。フロントエンドの画面制御（ボタン・メニューの表示可否）に使う。</td><td>本人</td><td></td></tr>
+      <tr><td><code>A-05</code></td><td><span class="method get">GET</span><code>/auth/me</code></td><td>ログイン中の利用者情報を返す（氏名、role、employment_type、employment_status、area_manager_role、所属プロジェクトとproject_title、PJ席決担当担当プロジェクト等）。フロントエンドの画面制御（ボタン・メニューの表示可否）に使う。</td><td>本人</td><td><code>avatar_image</code>（マイプロフィール、S-12）をサイドバー表示用に含める。<code>require_auth()</code>の共通クエリ（全API共通の依存関係）には含めず、本APIのハンドラ内で個別に取得する（2026-08-31追加。全APIで毎回大きなBase64値を読むのを避けるため）。</td></tr>
     </tbody>
   </table>
 
@@ -784,7 +792,7 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><code>A-06</code></td><td><span class="method get">GET</span><code>/seats/availability?date=&area=</code></td><td>指定日・エリア（<code>all/north/east/west</code>）の座席状況一覧（FR-04-1〜3）。</td><td>本人</td><td>レスポンス例は後述。応答生成前に<code>release_expired_fixed_seats()</code>を呼び、期限切れの固定座席割当（T-04.valid_until）を反映させる（2026-08-28追加）。座席の島に割り当てられた座席（T-07.allocated_seats）は、指定した<code>date</code>がその計画のperiod_start〜period_endに含まれる場合のみ'project_pending'として返す（<code>database.project_blocked_seats()</code>、2026-08-28再訂正。プロジェクト座席の専有は座席自体の恒久的な区分変更ではなく四半期の期間中のみのため、対象期間外は通常のフリー座席として扱う。3.9節参照）。</td></tr>
+      <tr><td><code>A-06</code></td><td><span class="method get">GET</span><code>/seats/availability?date=&area=</code></td><td>指定日・エリア（<code>all/north/east/west</code>）の座席状況一覧（FR-04-1〜3）。</td><td>本人</td><td>レスポンス例は後述。応答生成前に<code>release_expired_fixed_seats()</code>を呼び、期限切れの固定座席割当（T-04.valid_until）を反映させる（2026-08-28追加）。座席の島に割り当てられた座席（T-07.allocated_seats）は、指定した<code>date</code>がその計画のperiod_start〜period_endに含まれる場合のみ'project_pending'として返す（<code>database.project_blocked_seats()</code>、2026-08-28再訂正。プロジェクト座席の専有は座席自体の恒久的な区分変更ではなく四半期の期間中のみのため、対象期間外は通常のフリー座席として扱う。3.9節参照）。使用者が表示される<code>status</code>（<code>mine/occupied/occupied_fixed/project_confirmed</code>）の座席には、その利用者のマイプロフィール（S-12、T-01.avatar_image）を<code>avatar_image</code>として、指定した<code>date</code>がT-01.birth_month/birth_dayと一致するかを<code>is_birthday</code>として含める（FR-08-3・4、2026-08-31追加。<code>_build_availability()</code>としてA-45〔3.10節〕と共通化した処理内で算出する。「本日」ではなく<code>date</code>引数を基準に判定するため、過去日・未来日を表示している場合はその日を基準に誕生日を確認できる）。</td></tr>
       <tr><td><code>A-07</code></td><td><span class="method get">GET</span><code>/seats/availability/period?start=&end=&area=</code></td><td>期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。</td><td>本人</td><td><code>start</code>〜<code>end</code>はRULE-05の予約可能期間内。</td></tr>
       <tr><td><code>A-08</code></td><td><span class="method get">GET</span><code>/reservations/mine?scope=upcoming|past</code></td><td>自分の予約一覧（FR-01-4）。</td><td>本人</td><td>各行の<code>type</code>は<code>recurring_rule_id</code>の有無で<code>'single'</code>／<code>'recurring'</code>を判定する（2026-08-28、A-10実装に伴い修正。従来は常に<code>'single'</code>を返していた）。</td></tr>
       <tr><td><code>A-09</code></td><td><span class="method post">POST</span><code>/reservations</code></td><td>単発予約の登録（FR-01-1）。</td><td>本人（role='admin'はFR-01-7によりRULE-05等をスキップ）</td><td>Body: <code>{seat_id, date}</code>。呼び出し者が固定座席（T-04）を持つ場合はRULE-07により拒否する（role='admin'でもスキップしない、2026-08-27追加）。このRULE-07判定の直前に<code>release_expired_fixed_seats()</code>を呼び、期限切れの割当を先に解除しておく（2026-08-28追加。期限切れの割当のために誤って予約を拒否しないため）。指定した<code>date</code>が座席の島の割当（T-07）のperiod_start〜period_end期間中の座席は<code>project_blocked_seats()</code>により予約を拒否する（2026-08-28追加、3.3節A-06参照）。</td></tr>
@@ -804,18 +812,18 @@ footer.doc-footer {
           "block_label": "Aブロック",
           "seats": [
             { "seat_no": "A1", "seat_type": "fixed", "status": "occupied_fixed",
-              "display_name": "田中", "title": null },
+              "display_name": "田中", "avatar_image": null, "is_birthday": false, "title": null },
             { "seat_no": "A2", "seat_type": "free", "status": "mine",
-              "display_name": "鈴木（自分）", "title": null },
+              "display_name": "鈴木（自分）", "avatar_image": "data:image/png;base64,...", "is_birthday": true, "title": null },
             { "seat_no": "A6", "seat_type": "free", "status": "project_confirmed",
-              "display_name": "伊藤", "title": null }
+              "display_name": "伊藤", "avatar_image": null, "is_birthday": false, "title": null }
           ]
         }
       ]
     }
   ]
 }</code></pre>
-  <p class="callout"><code>status</code>の取りうる値: <code>free</code>（空き）／<code>mine</code>（自分の予約）／<code>occupied</code>（使用中・フリー座席）／<code>occupied_fixed</code>（固定座席）／<code>project_confirmed</code>（プロジェクト座席・個人確定済み）／<code>project_pending</code>（未確定、FR-04-3）／<code>retired</code>（廃止、通常は一覧に含めない）。<code>display_name</code>は空き状況取得APIが応答生成のたびに動的算出する（基本設計書3.3節・3.2節T-01参照。姓のみ／姓＋名の頭文字の判定、プロジェクト略称の生成を含む）。座席にT-03.pos_x/pos_yが設定されている場合（S-02「座席配置モード」で追加した座席）、各座席オブジェクトに<code>pos_x</code>・<code>pos_y</code>を含める（未設定ならどちらもnull、2026-08-27追加）。<code>seat_type</code>フィールドは座席自体の恒久的な区分（<code>free</code>／<code>fixed</code>）のみを表し、座席の島の割当（プロジェクト座席）は<code>seat_type</code>を変更しない。そのため対象期間中の<code>status: "project_pending"</code>の座席でも<code>seat_type</code>は<code>"free"</code>のまま返る（2026-08-28再訂正、3.9節参照）。<code>project_confirmed</code>の<code>display_name</code>は、通常の<code>occupied</code>と同じ規則（姓のみ／姓＋名の頭文字）で算出したその利用者の姓であり、<code>project_pending</code>の<code>display_name</code>（プロジェクト名）とは異なる（2026-08-28、S-04・A-10実装に伴い追加。<code>title</code>フィールドは現時点でどの<code>status</code>でも常に<code>null</code>）。</p>
+  <p class="callout"><code>status</code>の取りうる値: <code>free</code>（空き）／<code>mine</code>（自分の予約）／<code>occupied</code>（使用中・フリー座席）／<code>occupied_fixed</code>（固定座席）／<code>project_confirmed</code>（プロジェクト座席・個人確定済み）／<code>project_pending</code>（未確定、FR-04-3）／<code>retired</code>（廃止、通常は一覧に含めない）。<code>display_name</code>は空き状況取得APIが応答生成のたびに動的算出する（基本設計書3.3節・3.2節T-01参照。姓のみ／姓＋名の頭文字の判定、プロジェクト略称の生成を含む）。座席にT-03.pos_x/pos_yが設定されている場合（S-02「座席配置モード」で追加した座席）、各座席オブジェクトに<code>pos_x</code>・<code>pos_y</code>を含める（未設定ならどちらもnull、2026-08-27追加）。<code>seat_type</code>フィールドは座席自体の恒久的な区分（<code>free</code>／<code>fixed</code>）のみを表し、座席の島の割当（プロジェクト座席）は<code>seat_type</code>を変更しない。そのため対象期間中の<code>status: "project_pending"</code>の座席でも<code>seat_type</code>は<code>"free"</code>のまま返る（2026-08-28再訂正、3.9節参照）。<code>project_confirmed</code>の<code>display_name</code>は、通常の<code>occupied</code>と同じ規則（姓のみ／姓＋名の頭文字）で算出したその利用者の姓であり、<code>project_pending</code>の<code>display_name</code>（プロジェクト名）とは異なる（2026-08-28、S-04・A-10実装に伴い追加。<code>title</code>フィールドは現時点でどの<code>status</code>でも常に<code>null</code>）。<code>avatar_image</code>・<code>is_birthday</code>は2026-08-31追加（FR-08-3・4）。使用者が表示されない<code>status</code>（<code>free/project_pending</code>）ではどちらも<code>null</code>／<code>false</code>になる。</p>
 
   <h3>3.4 プロジェクト座席・PM側（S-04）</h3>
   <table>
@@ -836,7 +844,7 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td><code>A-19</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments</code></td><td>固定座席の割当一覧。</td><td>role='admin'</td><td>各行に<code>valid_until</code>（有効期限、YYYY-MM-DD、無期限はnull）を含める（2026-08-28追加）。応答生成前に<code>release_expired_fixed_seats()</code>を呼び、期限切れの割当を反映させる。</td></tr>
-      <tr><td><code>A-52</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments/candidates?q=</code></td><td>新しく固定座席を指定する対象者検索（固定座席を持たない利用者、氏名の部分一致）。</td><td>role='admin'</td><td>2026-08-27追加。4.4節が明記する絞り込みの裏付けとなるAPIが3章に存在しなかったため新設（A-49・A-50と同様、末尾番号）。</td></tr>
+      <tr><td><code>A-52</code></td><td><span class="method get">GET</span><code>/fixed-seat-assignments/candidates?q=</code></td><td>新しく固定座席を指定する対象者検索（固定座席を持たない利用者、氏名の部分一致）。</td><td>role='admin'</td><td>2026-08-27追加。4.4節が明記する絞り込みの裏付けとなるAPIが3章に存在しなかったため新設（A-49・A-50と同様、末尾番号）。各行の<code>current_status</code>は<code>'free'|'fixed'|'project'</code>（T-03.seat_typeと同じ値。2026-08-28訂正、当初は固定座席を持たない利用者のみが対象のため一律の文言を返していたが、<code>database.users_with_current_project_seat()</code>〔本日時点でプロジェクト座席の島の割当期間中の座席に実際に予約を持つ利用者、3.9節<code>project_blocked_seats()</code>を利用〕により、本日時点でプロジェクト座席を利用中かどうかを区別できるようにした。本APIの対象は固定座席を持たない利用者のみのため<code>'fixed'</code>は実際には返らない）。</td></tr>
       <tr><td><code>A-20</code></td><td><span class="method post">POST</span><code>/fixed-seat-assignments</code></td><td>座席を利用者の固定座席として割り当てる。</td><td>role='admin'</td><td>Body: <code>{seat_id, user_id, valid_until?}</code>。座席タイプは問わず、当日以降の有効な予約が残っていないこと（あれば取消）を条件に、任意の座席を指定できる（2026-08-27再訂正。以前はseat_type='fixed'かつ未割当のものに限定していたが、「すべての席から選べるようにしてほしい」との要望を受け撤廃）。割当と同時にseat_id側のseat_typeを'fixed'に変更し、その座席の今後の有効な予約（T-08）を取り消す。対象者が既に別の固定座席を持つ場合はそちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」も本APIで表現する）。解除した元の座席はseat_typeを'free'に戻す（2026-08-27追加。戻さないと元の座席が誰にも使えない'fixed'のまま残ってしまう不具合があったため）。<code>valid_until</code>（任意、YYYY-MM-DD）を指定すると、その日を過ぎた時点で自動的に解除されフリー座席に戻る。未指定（null）は従来どおり無期限（FR-01-5、2026-08-28追加）。<code>valid_until</code>は明日以降の日付でなければならない（当日・過去日は400）。対象者が既に持っているフリー座席・プロジェクト座席の今後の有効な予約（新しく固定座席となるseat_id自体を除く）もあわせて取り消す（2026-08-28修正。RULE-07は新規予約側（A-09・A-18・A-47）では検証済みだったが、既存の予約を持つ利用者へ後から固定座席を指定する逆方向のケースが抜けており、固定座席とフリー座席・プロジェクト座席を同時に保持できてしまう不具合があった）。</td></tr>
       <tr><td><code>A-21</code></td><td><span class="method delete">DELETE</span><code>/fixed-seat-assignments/{seat_id}</code></td><td>固定座席の割当を解除（物理DELETE、基本設計書3.2節T-04）。</td><td>role='admin'</td><td>解除後はseat_typeを'free'に戻す（2026-08-27追加、任意の座席を指定できるようになったことに伴う対応）。</td></tr>
     </tbody>
@@ -888,13 +896,13 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?quarter=</code></td><td>四半期での一覧。</td><td>role='admin'（2026-08-27再訂正。「管理部側でもS-09にアクセスできてよい」との要望を受け、area_manager_role IS NOT NULLを要求する条件を撤廃。area_manager_role保持者は必ずrole='admin'でもあるため、実質的にrole='admin'のみの条件に単純化された）</td><td>「未割当」という状態は存在しない（A-39参照）。全ての呼び出し元が同じ全件を取得する。<code>area</code>クエリパラメータは2026-08-27にT-07からarea_idが削除された際の記載漏れだったため、2026-08-28に削除した。<code>quarter</code>（<code>period_start</code>、YYYY-MM-DD、任意）で絞り込む。各行にPM(PL)氏名・出社曜日アンケート回答（choice1/choice2_weekdays、note、has_response）・座席割当ラベル（allocated_seat_label、例:「D1〜D4」）を含める（2026-08-28追加、画面の一覧・調整表の両方に必要なため）。A-27と同様、呼び出し時に次の四半期の計画データの自動作成を行う（2026-08-28再々追加、3.9節末尾のコールアウト参照）。</td></tr>
+      <tr><td><code>A-38</code></td><td><span class="method get">GET</span><code>/project-quarter-plans?quarter=</code></td><td>四半期での一覧。</td><td>role='admin'（2026-08-27再訂正。「管理部側でもS-09にアクセスできてよい」との要望を受け、area_manager_role IS NOT NULLを要求する条件を撤廃。area_manager_role保持者は必ずrole='admin'でもあるため、実質的にrole='admin'のみの条件に単純化された）</td><td>「未割当」という状態は存在しない（A-39参照）。全ての呼び出し元が同じ全件を取得する。<code>area</code>クエリパラメータは2026-08-27にT-07からarea_idが削除された際の記載漏れだったため、2026-08-28に削除した。<code>quarter</code>（<code>period_start</code>、YYYY-MM-DD、任意）で絞り込む。各行にPM(PL)氏名・出社曜日アンケート回答（choice1/choice2_weekdays、note、has_response）・座席割当ラベル（allocated_seat_label、例:「D1〜D4」）を含める（2026-08-28追加、画面の一覧・調整表の両方に必要なため）。A-27と同様、呼び出し時に次の四半期の計画データの自動作成を行う（2026-08-28再々追加、3.9節末尾のコールアウト参照）。各行に<code>non_fixed_member_count</code>（現時点でプロジェクトメンバーのうち固定座席を持たない人数、都度算出）を含める（2026-08-31追加。<code>required_seats</code>は計画起票時点のスナップショットのため、起票後にメンバー構成・固定座席の状況が変わっても値が古いまま残る。S-09の一覧は「座席不要」の判定にこの都度算出の値を使う、3.9節末尾のコールアウト参照）。</td></tr>
       <tr><td><code>A-39</code></td><td colspan="4"><em>2026-08-28再々訂正: 廃止。</em>「四半期計画を開始するというボタンをなくして自動的に開始するようにしたい」との要望を受け、対象プロジェクトの四半期計画を手動で新規作成するAPI（<code>POST /projects/{id}/quarter-plans</code>、<code>status='seats_confirmed'</code>で作成）を廃止した。同等のデータ作成は、A-27・A-38の呼び出し時にサーバー側で自動的に行われる（3.9節末尾のコールアウト参照）。ID自体は欠番として保持する。</td></tr>
       <tr><td><code>A-40</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/required-seats</code></td><td>必要座席数の例外的な手動上書き。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{required_seats}</code>。<code>status='seats_allocated'</code>後は変更不可。</td></tr>
       <tr><td><code>A-41</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey</code></td><td>出社曜日アンケートを送信（FR-03-3）。<code>status→'survey_open'</code>。プロジェクト座席共通の1つのSlackチャンネルへ通知（FR-03-9①）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Slack通知は<code>backend/slack.py</code>の<code>send_slack_notification()</code>が送信する（2026-08-28実装。T-16.project_seat_slack_webhook_url未設定時は送信しない。送信失敗〔Slack側障害・不正なURL等〕はログ出力のみで本操作自体は成功扱いとする。Incoming Webhookへの<code>{"text": "..."}</code>のPOST、5秒タイムアウト）。</td></tr>
       <tr><td><code>A-42</code></td><td><span class="method post">POST</span><code>/project-quarter-plans/{id}/survey-reminder</code></td><td>未回答のプロジェクトへのリマインドを手動送信（FR-03-9②、自動送信はしない）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>A-41と同様のSlack通知を送信する（2026-08-28実装）。</td></tr>
       <tr><td><code>A-43</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/finalize-weekdays</code></td><td>指定した複数の計画の出社曜日を一括確定（FR-03-5）。<code>status→'weekdays_finalized'</code>。プロジェクト座席共通の1つのSlackチャンネルへ通知（FR-03-9③）。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した。複数エリアの計画を1回の呼び出しにまとめて含めてもよい）</td><td>Body: <code>{plans: [{plan_id, weekdays_finalized}]}</code>。2026-08-27訂正、area_idは各plan_id側で自明のため削除。1回の呼び出しに含めた全計画の確定結果（プロジェクト名・確定曜日）をまとめた1通のSlack通知を送信する（2026-08-28実装、トランザクションのコミット後に送信）。</td></tr>
-      <tr><td><code>A-44</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{seat_ids: [...]}</code>。期間（period_start〜period_end）が重複する他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節。2026-08-28再訂正、重複しない四半期であれば同じ座席を再度割り当てられる）。選択対象はseat_type='free'の座席のみとする（2026-08-28追加、固定座席を誤って巻き込まないため）。プロジェクト座席としての専有は当該計画のperiod_start〜period_end期間中に限られる仕様のため、割り当てた座席のseats.seat_typeは変更しない（2026-08-28再訂正。当初はseat_type='project'に変更する実装だったが、割当決定〜四半期開始前の間も通常のフリー座席として予約できなくなる不具合があったため撤回。3.3節A-06参照）。<code>status='weekdays_finalized'</code>に加え、<code>status='seats_allocated'</code>（割当済み）への再呼び出しも許可し、既存の割当を編集できる（2026-08-28再々訂正。「S-09で座席の割り当てを編集できるようにしたい」との要望を受けた。それ以外の状態からは呼び出せない）。取り消す予約の対象は、初回割当時は新しく選んだ座席（<code>body.seat_ids</code>）側のその期間中の通常予約（T-08）のみだったが、編集時は旧・新いずれの割当座席についても取り消すよう拡張した（旧割当からは外れたがメンバー個人の周期予約〔A-18生成分〕が残っている座席を掃除するため。期間外の予約は対象外）。座席の島が変わればメンバーごとの具体的な座席（A-18）も作り直す必要があるため、PJ席決担当が編集後に再度確保し直す想定である（自動的な再確保は行わない）。</td></tr>
+      <tr><td><code>A-44</code></td><td><span class="method put">PUT</span><code>/project-quarter-plans/{id}/seat-block</code></td><td>座席の島（範囲）を割り当てる（FR-03-6）。<code>status→'seats_allocated'</code>。</td><td>role='admin'（2026-08-27再訂正。エリア責任者・副責任者限定としていたが、同日中に管理部一般にも開放した）</td><td>Body: <code>{seat_ids: [...]}</code>。期間（period_start〜period_end）が重複する他プロジェクトへ割当済みの座席は選択不可（座席単位の判定、基本設計書3.3節。2026-08-28再訂正、重複しない四半期であれば同じ座席を再度割り当てられる）。選択対象はseat_type='free'の座席のみとする（2026-08-28追加、固定座席を誤って巻き込まないため）。プロジェクト座席としての専有は当該計画のperiod_start〜period_end期間中に限られる仕様のため、割り当てた座席のseats.seat_typeは変更しない（2026-08-28再訂正。当初はseat_type='project'に変更する実装だったが、割当決定〜四半期開始前の間も通常のフリー座席として予約できなくなる不具合があったため撤回。3.3節A-06参照）。<code>status='weekdays_finalized'</code>に加え、<code>status='seats_allocated'</code>（割当済み）への再呼び出しも許可し、既存の割当を編集できる（2026-08-28再々訂正。「S-09で座席の割り当てを編集できるようにしたい」との要望を受けた。それ以外の状態からは呼び出せない）。取り消す予約の対象は、初回割当時は新しく選んだ座席（<code>body.seat_ids</code>）側のその期間中の通常予約（T-08）のみだったが、編集時は旧・新いずれの割当座席についても取り消すよう拡張した（旧割当からは外れたがメンバー個人の周期予約〔A-18生成分〕が残っている座席を掃除するため。期間外の予約は対象外）。座席の島が変わればメンバーごとの具体的な座席（A-18）も作り直す必要があるため、PJ席決担当が編集後に再度確保し直す想定である（自動的な再確保は行わない）。呼び出し時点でプロジェクトの現在のメンバーが全員固定座席（T-04）を保有している場合は400で拒否する（2026-08-31追加。「固定席の人はプロジェクト席を作成できないようにしてほしい」との要望を受けた。<code>required_seats</code>は計画起票時点のスナップショットのため、起票後にメンバー構成・固定座席の状況が変わっても遡って更新されない。このため、起票時点では非固定座席保有者がいたためrequired_seats>0で起票されたプロジェクトが、その後メンバー変更や固定座席の指定によって実質的に全員固定座席保有者になっても、古いrequired_seatsの値だけを見ていると座席の島を割り当てられてしまう不具合があった。判定はrequired_seatsではなく、呼び出し時点のproject_members・fixed_seat_assignmentsを都度突き合わせて行う）。</td></tr>
     </tbody>
   </table>
   <p class="callout">
@@ -904,7 +912,13 @@ footer.doc-footer {
     <strong>2026-08-28、再訂正:</strong> 「プロジェクト座席は1/1・4/1・7/1・10/1を基準とし、それぞれ前月25日までに3か月分の座席を確保しておく（例: 基準日が7/1なら6/25までに7/1〜9/30分を確保）」との訂正を受け、座席の島の割当（A-44）が対象座席のseats.seat_typeを恒久的に'project'へ変更する実装（上記①の初版）を撤回した。この実装では、割当が決定した時点（四半期開始の前月）から実際にその四半期が始まるまでの間も、対象座席がプロジェクト専有として扱われ、フリー座席として予約できなくなってしまっていた。プロジェクト座席の専有はあくまで割り当てられた四半期の期間中のみという仕様のため、A-44はseats.seat_typeを変更せず、A-06・A-09・A-47（フリー座席の予約・代理予約）が都度その場でperiod_start〜period_endと照合してプロジェクト専有を判定する方式へ改めた。
   </p>
   <p class="callout">
-    <strong>2026-08-28、再々訂正（FR-03-1改訂・D21）:</strong> 「四半期計画を開始するというボタンをなくして自動的に開始するようにしたい」との要望を受け、四半期計画データの起票を手動操作（A-39、廃止）からシステムによる自動作成に変更した。<code>backend/routers/project_seats.py</code>の<code>_ensure_next_quarter_plans()</code>が、<code>quarter_base_months</code>（既定<code>[1,4,7,10]</code>）と本日日付から次の四半期の<code>period_start</code>・<code>period_end</code>を算出し、<code>project_quarter_plans (project_id, period_start, period_end, required_seats)</code>を全プロジェクト分まとめて<code>INSERT ... ON CONFLICT (project_id, period_start) DO NOTHING</code>で起票する（<code>required_seats</code>は起票時点のT-06人数、0人なら1人扱い）。A-27・A-38の呼び出し時に毎回この関数を実行することで、四半期の切り替わりを事前に監視するバッチ処理を新設せず、既存の一覧参照のタイミングに便乗する形で対応した（<code>ON CONFLICT DO NOTHING</code>のため同一四半期に対して複数回実行しても副作用はない）。これに伴い、次の四半期以降を前もって選んで開始する2026-08-28時点の拡張機能（S-09の対象四半期セレクト、最大2年先まで）は前提ごと不要になったため削除した。
+    <strong>2026-08-28、再々訂正（FR-03-1改訂・D21）:</strong> 「四半期計画を開始するというボタンをなくして自動的に開始するようにしたい」との要望を受け、四半期計画データの起票を手動操作（A-39、廃止）からシステムによる自動作成に変更した。<code>backend/routers/project_seats.py</code>の<code>_ensure_next_quarter_plans()</code>が、<code>quarter_base_months</code>（既定<code>[1,4,7,10]</code>）と本日日付から次の四半期の<code>period_start</code>・<code>period_end</code>を算出し、<code>project_quarter_plans (project_id, period_start, period_end, required_seats)</code>を全プロジェクト分まとめて<code>INSERT ... ON CONFLICT (project_id, period_start) DO NOTHING</code>で起票する（<code>required_seats</code>は起票時点のT-06人数のうち固定座席保有者を除いた人数、0人なら1人扱い。2026-08-28再訂正、後述）。A-27・A-38の呼び出し時に毎回この関数を実行することで、四半期の切り替わりを事前に監視するバッチ処理を新設せず、既存の一覧参照のタイミングに便乗する形で対応した（<code>ON CONFLICT DO NOTHING</code>のため同一四半期に対して複数回実行しても副作用はない）。これに伴い、次の四半期以降を前もって選んで開始する2026-08-28時点の拡張機能（S-09の対象四半期セレクト、最大2年先まで）は前提ごと不要になったため削除した。
+  </p>
+  <p class="callout">
+    <strong>2026-08-28、再々々訂正:</strong> 「固定席の人のみのプロジェクトはプロジェクト席を用意する必要がない設定にしてほしい。また固定席＋プロジェクトメンバーのプロジェクトのプロジェクト席を決めるとき固定席の人は席は決まっているので決める必要はないが、ほかのメンバーは決める必要がある」との要望を受けた。後半（メンバー個別の座席確保時に固定座席保有者を除外する）は0.31（A-14・A-18、3.4節）で対応済みだったが、前半の「必要座席数」自体が固定座席保有者を含めてT-06人数をそのまま数えていたため、固定座席保有者だけで構成されるプロジェクトでも1人以上の必要座席数が算出され、エリア責任者が不要な座席の島の割当作業を求められてしまっていた。<code>_ensure_next_quarter_plans()</code>の<code>required_seats</code>算出を、T-06メンバーのうち固定座席（T-04）を持たない人数に修正した（メンバーが1人もいないプロジェクトのみ、判定材料がないため従来どおり1人扱い）。この結果、メンバー全員が固定座席を持つプロジェクトは<code>required_seats=0</code>で起票され、S-09の一覧は「座席不要（全員固定座席）」と表示し、アンケート送信操作自体を求めない（4.7節）。固定座席と一般メンバーが混在するプロジェクトは、一般メンバーの人数分だけが必要座席数となり、通常どおりアンケート・曜日確定・座席の島の割当のフローに進む（その後のメンバーごとの座席確保では、引き続き固定座席保有者を対象外とする既存の挙動〔0.31〕がそのまま適用される）。
+  </p>
+  <p class="callout">
+    <strong>2026-08-31、再訂正:</strong> 上記のrequired_seats訂正（前段落）は計画の<strong>起票時点</strong>のスナップショットにのみ作用するため、起票後にプロジェクトのメンバー構成や固定座席の指定状況が変わった場合には対応できていなかった。実際に、起票時点では非固定座席保有者を含んでいたため<code>required_seats>0</code>で起票されたプロジェクトが、その後の運用（メンバー変更・固定座席の指定）で実質的に全員固定座席保有者になったにもかかわらず、古い<code>required_seats</code>の値のまま座席の島の割当（A-44）まで進めてしまい、誰も使えない座席を確保してしまう事例が実際に確認された（「固定席の人はプロジェクト席を作成できないようにしてほしい。現状同じ人が固定席とプロジェクト席別の位置に配置することができる」との報告）。調査の結果、メンバー個別の座席確保（A-18）は都度その時点の固定座席保有状況を判定しており実際の二重確保には至っていなかったが、座席の島自体（A-44）は<code>required_seats</code>を参照しないため、この不整合を検知できていなかった。A-44に、呼び出し時点のproject_members・fixed_seat_assignmentsを都度突き合わせて全員固定座席保有者かどうかを判定するチェックを追加し、該当する場合は座席の島の割当（新規・編集とも）を400で拒否するようにした。あわせてA-38のレスポンスに<code>non_fixed_member_count</code>（都度算出）を追加し、S-09の「座席不要」表示もこの値を参照するよう改めた（<code>required_seats</code>列自体は起票時点の記録として残す）。
   </p>
 
   <h3>3.10 座席状況の履歴照会（S-10）</h3>
@@ -919,14 +933,24 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><code>A-54</code></td><td><span class="method get">GET</span><code>/reservations/proxy-candidates?q=</code></td><td>代理予約する対象者検索（登録済みの全利用者が対象、氏名の部分一致）。</td><td>role='admin'</td><td>2026-08-28追加。4.11節が明記する「登録済みの全利用者が対象」の検索の裏付けとなるAPIが3章に存在しなかったため新設（A-49・A-50・A-52と同様、末尾番号）。A-52（S-05、固定座席を持たない利用者に限定）と異なり除外を行わない。固定座席（T-04）を持つ利用者は「固定座席（座席番号）を利用中」と表示し、それ以外はプロジェクト座席の利用状況を区別しない一律の文言を返す（プロジェクト座席の確保はS-04・S-09〔A-18〕という別の専用フローで行うため、S-11の代理予約対象としては扱わない、2026-08-28訂正。T-05〜T-07自体は0.22で実装済み）。</td></tr>
+      <tr><td><code>A-54</code></td><td><span class="method get">GET</span><code>/reservations/proxy-candidates?q=</code></td><td>代理予約する対象者検索（登録済みの全利用者が対象、氏名の部分一致）。</td><td>role='admin'</td><td>2026-08-28追加。4.11節が明記する「登録済みの全利用者が対象」の検索の裏付けとなるAPIが3章に存在しなかったため新設（A-49・A-50・A-52と同様、末尾番号）。A-52（S-05、固定座席を持たない利用者に限定）と異なり除外を行わない。各行の<code>current_status</code>はA-52と同じ<code>'free'|'fixed'|'project'</code>の3区分で返す（2026-08-28再訂正。「座席利用状況という項目をフリー、固定、PJにしてほしい」との要望を受けた。当初は固定座席のみ区別し、それ以外（フリー・プロジェクト座席）は一律の文言を返していたが、A-52と同じ<code>database.users_with_current_project_seat()</code>を使って本日時点のプロジェクト座席利用も区別するようにした。プロジェクト座席の確保自体は引き続きS-04・S-09〔A-18〕という別の専用フローで行い、S-11の代理予約対象としては扱わない）。</td></tr>
       <tr><td><code>A-46</code></td><td><span class="method get">GET</span><code>/reservations/search?user_name=&seat_type=&start=&end=</code></td><td>座席の予約・割当を代理で取消・解除する対象の検索（予約・割当単位の一覧、座席種別問わず）。</td><td>role='admin'</td><td><code>start</code>・<code>end</code>（YYYY-MM、表示期間）は2026-08-28追加。4.11節の絞り込み欄の裏付け。フリー座席（T-08、日付あり）にのみ適用し、固定座席（T-04、恒久的な割当で日付を持たない）は対象外。座席種別はフリー・固定のみ（プロジェクト座席はS-04・S-09という別の専用フローで扱うため対象外、2026-08-28訂正）。</td></tr>
       <tr><td><code>A-47</code></td><td><span class="method post">POST</span><code>/reservations/proxy</code></td><td>フリー座席の代理予約（新規はフリー座席のみ、FR-01-5）。</td><td>role='admin'</td><td>Body: <code>{user_id, seat_id, date}</code>。単発のみ対応し、周期予約相当のBody（A-10 <code>/reservations/recurring</code>と同形）は対象外（2026-08-28追加時点のスコープ。A-10自体は0.24で実装済みだが、A-47を周期対応させる要望は本フェーズでは発生しなかったため据え置き。S-04のPJ席決担当によるメンバーへの座席確保はA-47ではなくA-18〔3.4節〕が担う）。RULE-02・RULE-07・RULE-03は呼び出し者（管理部）ではなく対象者（<code>user_id</code>）の状態で判定する。A-09と同様、指定した<code>date</code>が座席の島の割当（T-07）の期間中の座席は予約を拒否する（2026-08-28追加、3.3節A-06参照）。</td></tr>
       <tr><td><code>A-48</code></td><td><span class="method delete">DELETE</span><code>/reservations/proxy/{id}</code></td><td>フリー座席の予約を代理で取消する（対象者を問わない）。</td><td>role='admin'</td><td><code>id</code>はreservations.id。固定座席の解除は本APIに統合せず、既存のA-21（<code>DELETE /fixed-seat-assignments/{seat_id}</code>）をそのまま使う（2026-08-28訂正。ロジックの重複を避けるため、S-11の一覧はkind='fixed'の行についてA-21を呼ぶ）。プロジェクト座席はS-04・S-09という別の専用フローで扱うため対象外（2026-08-28訂正）。</td></tr>
     </tbody>
   </table>
 
-  <h3>3.12 バッチ処理（参考、画面を持たない）</h3>
+  <h3>3.12 マイプロフィール（S-12）</h3>
+  <table>
+    <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td><code>A-56</code></td><td><span class="method get">GET</span><code>/users/me/profile</code></td><td>自分のプロフィール（アイコン・生年月日）を取得する（FR-08-1・2）。</td><td>本人</td><td>レスポンス: <code>{avatar_image, birth_month, birth_day}</code>。いずれも未設定はnull。</td></tr>
+      <tr><td><code>A-57</code></td><td><span class="method put">PUT</span><code>/users/me/profile</code></td><td>自分のプロフィール（アイコン・生年月日）を更新する（FR-08-1・2）。</td><td>本人</td><td>Body: <code>{avatar_image, birth_month, birth_day}</code>（いずれもnull可、null指定で未設定に戻す）。他人の行は更新できない（対象は常に呼び出し者自身、パス・Bodyにuser_idを取らない）。<code>avatar_image</code>はdata URL形式（JPEG/PNG/GIF/WebP）かつデコード後300KB以下であることを検証する（違反時の応答は6.5節）。<code>birth_month</code>・<code>birth_day</code>は両方null、または両方とも有効な範囲（月は1〜12、日はうるう年2028年基準の月内日数まで。2/29を許容）で指定する必要がある（片方だけの指定は400）。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">2026-08-31新設（要件定義書4.8節、FR-08-1〜4）。アイコン画像は外部ストレージ（S3等）を使わず、data URLとしてT-01.avatar_imageにそのまま保存する簡易実装（2.3節参照）。登録した内容はA-06・A-45（フロアマップの座席タイル）・A-05（サイドバーの自分のアバター）に反映される。</p>
+
+  <h3>3.13 バッチ処理（参考、画面を持たない）</h3>
   <p>以下はUI操作から呼び出すAPIではなく、サーバー内部で定期実行するバッチ処理。実装方式（cron／スケジューラ）は本書のスコープ外とし、ここでは処理内容のみ定義する。</p>
   <table>
     <thead><tr><th>処理</th><th>実行頻度</th><th>内容</th></tr></thead>
@@ -1017,6 +1041,7 @@ footer.doc-footer {
 
   <h3>4.7 S-09 プロジェクト座席（エリア担当）</h3>
   <p class="callout">四半期計画データの作成は入力欄を持つ画面操作ではない（2026-08-28再訂正、D21・FR-03-1改訂。従来は「四半期計画を開始する」〔A-39〕という手動のボタン操作で、対象四半期を選ぶselectも持っていたが、「開始するボタンをなくして自動的に開始するようにしたい」との要望を受け廃止した。次の四半期の計画データはA-27・A-38の呼び出し時にサーバー側で自動的に作成される、3.9節末尾のコールアウト参照）。これに伴い、次の四半期以降を前もって選んで開始する2026-08-28時点の拡張機能〔select、A-27の<code>quarter_base_months</code>から最大8四半期＝2年先まで選択肢を生成〕も前提ごと不要になったため削除した。</p>
+  <p class="callout">一覧の最初の表示（タブ）は「すべて」ではなく、対象四半期タブのうち最も新しいもの（＝次の期間、3.9節末尾のコールアウト参照）を自動選択した状態にする（2026-08-28追加。「S-09の最初の画面はすべてではなく次の期間のを表示してほしい」との要望を受けた。初回表示後は「すべて」を含め自由にタブを切り替えられる、クライアント側のみの対応）。メンバー全員が固定座席を持つプロジェクト（<code>required_seats=0</code>、3.9節末尾のコールアウト参照）は、状態欄に「座席不要（全員固定座席）」と表示し、「アンケートを送る」操作自体を求めない（2026-08-28追加）。</p>
   <table>
     <thead><tr><th>項目</th><th>種別</th><th>必須</th><th>入力チェック内容</th></tr></thead>
     <tbody>
@@ -1043,6 +1068,16 @@ footer.doc-footer {
     </tbody>
   </table>
   <p class="callout">新規の代理予約は、この画面には座席選択の入力欄を持たず、「この人を代理予約する」からS-02のフロアマップへ遷移して行う（新規はフリー座席のみ、FR-01-5）。取消・解除は一覧から対象を選ぶ操作のみで、入力欄は持たない。</p>
+
+  <h3>4.10 S-12 マイプロフィール</h3>
+  <table>
+    <thead><tr><th>項目</th><th>種別</th><th>必須</th><th>入力チェック内容</th></tr></thead>
+    <tbody>
+      <tr><td>アイコン画像</td><td>file（画像）</td><td>任意</td><td>JPEG・PNG・GIF・WebPのいずれか、かつ300KB以下。違反時はエラー（6章）。未選択のまま保存すると現在の設定（未設定を含む）を維持する。「画像を削除する」操作で明示的に未設定（null）に戻せる。</td></tr>
+      <tr><td>生年月日（月・日）</td><td>select × 2</td><td>任意</td><td>月は1〜12、日は月ごとの日数の範囲内（うるう年2028年基準、2/29を許容）。月・日は両方指定または両方未設定のいずれかとし、片方だけの指定はエラー（6章）。年は入力欄自体を設けない。</td></tr>
+    </tbody>
+  </table>
+  <p class="callout">2026-08-31新設（要件定義書4.8節）。他の画面と異なり、自分自身の情報のみを扱う（対象を選ぶ検索・一覧は持たない）。</p>
 
   <h2 id="sec5">5. 権限の判定</h2>
   <p>3章で各APIの「認可」欄に自然文で記載した条件を、実装可能な単位まで分解する。基本設計書4.2節（認証・認可の実現方式）の権限マトリクスをもとにする。</p>
@@ -1229,6 +1264,16 @@ footer.doc-footer {
     </tbody>
   </table>
 
+  <h4>5.5.11 マイプロフィール（S-12）</h4>
+  <p class="muted">2026-08-31追加。A-49・A-50・S-06と同様の理由（他画面より後に追加したため）で末尾に置く。</p>
+  <table>
+    <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td>A-56</td><td><code>P-ANY</code></td><td>対象は常に呼び出し者自身（パス・Bodyにuser_idを取らない）ため、対象データに依存する追加条件はない。</td></tr>
+      <tr><td>A-57</td><td><code>P-ANY</code></td><td>同上。</td></tr>
+    </tbody>
+  </table>
+
   <h2 id="sec6">6. エラー時の動き</h2>
   <p>基本設計書4.2.1節（拒否時の画面表示）の内容を土台に、APIが返すエラーレスポンスの形式とHTTPステータスコードの使い分けを定義する。</p>
 
@@ -1288,6 +1333,10 @@ footer.doc-footer {
       <tr><td>A-18</td><td>割り当てられた座席の島（allocated_seats）の範囲外の座席を指定</td><td>400</td><td>「割り当てられた座席の範囲外です」</td></tr>
       <tr><td>A-11, A-21, A-24, A-26等（IDで対象を指定するAPI全般）</td><td>存在しない、または対象外のIDを指定（例: 他人の予約ID）</td><td>404</td><td>「対象が見つかりません」</td></tr>
       <tr><td>A-20</td><td><code>valid_until</code>に当日以前の日付を指定</td><td>400</td><td>「有効期限は明日以降の日付を指定してください」</td></tr>
+      <tr><td>A-57</td><td><code>avatar_image</code>がJPEG・PNG・GIF・WebPのdata URL形式でない</td><td>400</td><td>「画像はJPEG・PNG・GIF・WebP形式でアップロードしてください」</td></tr>
+      <tr><td>A-57</td><td><code>avatar_image</code>のデコード後サイズが300KB超</td><td>400</td><td>「画像は300KB以下のファイルを選択してください」</td></tr>
+      <tr><td>A-57</td><td><code>birth_month</code>・<code>birth_day</code>の一方のみ指定</td><td>400</td><td>「生年月日は月・日をどちらも指定してください」</td></tr>
+      <tr><td>A-57</td><td><code>birth_day</code>が指定した月の日数の範囲外（うるう年2028年基準）</td><td>400</td><td>「◯月は1〜◯日の範囲で指定してください」（月に応じて日数を差し込む）</td></tr>
     </tbody>
   </table>
 
@@ -1299,7 +1348,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.27 / 2026-08-28</span>
+    <span>版数 0.37 / 2026-08-31</span>
   </footer>
 
 </div>
