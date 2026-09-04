@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router'
+import { NavLink, Outlet } from 'react-router'
 import Sidebar from './Sidebar'
 import type { Me } from '../types'
 
@@ -8,14 +8,18 @@ interface LayoutProps {
 }
 
 // 認証後の共通レイアウト。PC幅はサイドバー、スマホ幅（S-02のみ対応、基本設計書4.7節）は
-// 簡易な上部バーに切り替わる
+// 簡易な上部バーに切り替わる。上部バーにはS-12マイプロフィールへのリンクのみ追加している
+// （2026-09-04追加。「スマホ版にもプロフィールの作成できる機能が欲しい」との要望を受けた）
 export default function Layout({ me, onLogout }: LayoutProps) {
   return (
     <div className="sm:flex sm:min-h-screen">
       <Sidebar me={me} onLogout={onLogout} />
 
       <div className="flex items-center justify-end gap-3 border-b border-slate-200 bg-white px-6 py-2 text-sm text-slate-500 sm:hidden">
-        {me.last_name} {me.first_name}
+        <span className="mr-auto">{me.last_name} {me.first_name}</span>
+        <NavLink to="/profile" className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+          プロフィール
+        </NavLink>
         <button type="button" onClick={onLogout} className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50">
           ログアウト
         </button>
