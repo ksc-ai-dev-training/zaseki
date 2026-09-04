@@ -36,7 +36,13 @@ export default defineConfig({
   server: {
     port: frontendPort,
     proxy: {
-      '/api': `http://localhost:${backendPort}`,
+      '/api': {
+        target: `http://localhost:${backendPort}`,
+        // 既定のchangeOrigin:trueだと転送時にHostヘッダーがbackendPort側に書き換わり、
+        // google_auth.pyのredirect_uri_for()がHostからリダイレクトURIを組み立てる際に
+        // ポート番号がずれてredirect_uri_mismatchになる（Google認証編5.3参照。2026-09-04追加）
+        changeOrigin: false,
+      },
     },
   },
 })
