@@ -73,6 +73,8 @@ export interface AreaAvailability {
 
 export interface AvailabilityResponse {
   date: string
+  // 過去方向にこの日付より前は照会できない（D12、既定31日前。2026-09-04追加）
+  history_min_date: string
   areas: AreaAvailability[]
 }
 

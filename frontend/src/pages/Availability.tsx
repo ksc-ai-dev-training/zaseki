@@ -587,13 +587,15 @@ export default function Availability() {
                 type="button"
                 onClick={() => setDate((d) => shiftDateStr(d, -1))}
                 aria-label="前日"
-                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
+                disabled={Boolean(availability?.history_min_date) && date <= availability!.history_min_date}
+                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-40"
               >
                 ‹
               </button>
               <input
                 type="date"
                 value={date}
+                min={availability?.history_min_date}
                 onChange={(e) => setDate(e.target.value)}
                 className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm sm:flex-none"
               />

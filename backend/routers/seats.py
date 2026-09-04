@@ -39,7 +39,14 @@ async def get_availability(
     area: Literal["all", "north", "east", "west"] = "all",
     user: CurrentUser = Depends(require_auth),
 ):
-    """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。実体は_build_availability参照。"""
+    """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。実体は_build_availability参照。
+    過去方向はD12（app_settings.seat_history_lookback_days、既定31日）より前は照会できない
+    （A-45と同じ下限。未来方向は予約のため従来どおり無制限。2026-09-04追加。それまでは
+    一般ユーザーでも無制限に過去を遡れてしまっており、管理部専用のA-45〔S-10〕より制限が
+    緩いという逆転が生じていた）。"""
+    lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
+    if date < Date.today() - timedelta(days=lookback_days):
+        raise HTTPException(400, detail="指定できる日付は直近1か月以内です")
     return await _build_availability(date, area, user)
 
 
@@ -77,6 +84,8 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     伴い区別を追加）。
     """
     await release_expired_fixed_seats()
+    lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
+    history_min_date = Date.today() - timedelta(days=lookback_days)
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT s.id, s.seat_no, s.seat_type, s.pos_x, s.pos_y, a.name AS area_name,
@@ -179,6 +188,7 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
 
     return {
         "date": date.isoformat(),
+        "history_min_date": history_min_date.isoformat(),
         "areas": [
             {
                 "area": area_name,
