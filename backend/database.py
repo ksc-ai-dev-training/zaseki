@@ -498,6 +498,116 @@ async def generate_recurring_reservations(
     return {"rule_id": rule_id, "results": results}
 
 
+async def _available_free_seats(pool, area: str, target_date: Date) -> list:
+    """指定日・指定エリアで、まだ誰にも割り当たっていないフリー座席（座席番号順）"""
+    blocked = await project_blocked_seats(target_date)
+    rows = await pool.fetch(
+        """SELECT s.id, s.seat_no FROM seats s JOIN areas a ON a.id = s.area_id
+           WHERE s.status = 'active' AND s.seat_type = 'free'
+             AND ($1 = 'all' OR lower(a.name) = $1)
+             AND NOT EXISTS (
+                 SELECT 1 FROM reservations r WHERE r.seat_id = s.id AND r.date = $2 AND r.status = 'active'
+             )
+           ORDER BY s.seat_no""",
+        area, target_date,
+    )
+    return [r for r in rows if r["id"] not in blocked]
+
+
+async def generate_bulk_free_seat_reservations(
+    member_user_ids: list[int], area: str, pattern: dict, start_date: Date, end_date: Date, created_by: int,
+    *, enforce_rule05: bool,
+) -> dict:
+    """複数メンバーへ、指定エリアの空き座席（フリー座席）を日付ごとに自動で割り振って一括予約する
+    （2026-09-04追加。「代理予約を複数名まとめて、PJのメンバーに対して行いたい。座席はプロジェクト
+    座席ではなく通常のフリー座席として扱ってほしい」との要望を受けた）。1人1席・同一座席の重複割当
+    はしない。日によって空き状況が変わるため割り当たる座席がメンバーごと・日ごとに変わり得る。
+    生成される予約（T-08）はプロジェクト座席の座席の島の割当（allocated_seats）とは無関係の、
+    通常のフリー座席予約として記録する。同一座席1件のrecurring_rulesに複数メンバーを紐付けられない
+    （日によって座席が変わるため）ため、generate_recurring_reservationsと異なりrecurring_rule_idは
+    付与しない（取消は各予約を個別に行う）。
+
+    RULE-02（同一日複数のフリー座席予約禁止）・RULE-07（固定座席保有者はフリー座席を予約不可）・
+    T-07の専有チェックは各メンバー・各日について検証する。enforce_rule05はRULE-05（予約可能期間）
+    を検証するか（呼び出し元がadminならFalse、FR-01-7と同じ考え方。それ以外はTrue）。
+
+    戻り値: {"results": [{"user_id":..., "date": "YYYY-MM-DD", "status": "created"|"excluded",
+                           "reason": str|None, "seat_no": str|None}]}
+    """
+    pool = get_pool()
+    weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
+
+    fixed_user_ids = {
+        r["user_id"] for r in await pool.fetch(
+            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL",
+            member_user_ids,
+        )
+    }
+
+    results: list[dict] = []
+    d = start_date
+    while d <= end_date:
+        if weekdays is not None and _WEEKDAY_CODES[d.weekday()] not in weekdays:
+            d += timedelta(days=1)
+            continue
+
+        available_seats = None
+        taken_seat_ids: set[int] = set()
+        for member_user_id in member_user_ids:
+            reason = None
+            if member_user_id in fixed_user_ids:
+                reason = "固定座席が割り当てられているため、フリー座席は予約できません"
+            elif enforce_rule05:
+                if d < Date.today():
+                    reason = "過去の日付は予約できません"
+                else:
+                    open_date = await free_seat_open_date(d)
+                    if Date.today() < open_date:
+                        reason = f"この座席は{open_date.month}月{open_date.day}日から予約できます"
+            if reason is None:
+                duplicate = await pool.fetchval(
+                    """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
+                       WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
+                    member_user_id, d,
+                )
+                if duplicate:
+                    reason = "同じ日に複数の座席は予約できません"
+
+            seat = None
+            if reason is None:
+                if available_seats is None:
+                    available_seats = await _available_free_seats(pool, area, d)
+                seat = next((s for s in available_seats if s["id"] not in taken_seat_ids), None)
+                if seat is None:
+                    reason = "割り当てられる空き座席がありません"
+
+            if reason is not None:
+                results.append({
+                    "user_id": member_user_id, "date": d.isoformat(),
+                    "status": "excluded", "reason": reason, "seat_no": None,
+                })
+                continue
+            try:
+                await pool.execute(
+                    "INSERT INTO reservations (seat_id, user_id, date, created_by) VALUES ($1, $2, $3, $4)",
+                    seat["id"], member_user_id, d, created_by,
+                )
+                taken_seat_ids.add(seat["id"])
+                results.append({
+                    "user_id": member_user_id, "date": d.isoformat(),
+                    "status": "created", "reason": None, "seat_no": seat["seat_no"],
+                })
+            except asyncpg.UniqueViolationError:
+                taken_seat_ids.add(seat["id"])
+                results.append({
+                    "user_id": member_user_id, "date": d.isoformat(),
+                    "status": "excluded", "reason": "この座席はすでに予約されています", "seat_no": None,
+                })
+        d += timedelta(days=1)
+
+    return {"results": results}
+
+
 async def close_pool() -> None:
     global _pool
     if _pool is not None:

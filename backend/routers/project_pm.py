@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
-from database import generate_recurring_reservations, get_pool
+from database import generate_bulk_free_seat_reservations, generate_recurring_reservations, get_pool
 from routers.project_seats import _format_seat_range
 
 router = APIRouter(prefix="/api", tags=["project-pm"])
@@ -413,6 +413,98 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         else:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "assigned", "created_days": created, "excluded_days": len(excluded)})
+    return {"results": results}
+
+
+class FreeSeatBookingBody(BaseModel):
+    member_user_ids: list[int]
+    area: Literal["all", "north", "east", "west"] = "all"
+    pattern: dict
+    start_date: Date
+    end_date: Date
+
+
+@router.post("/project-quarter-plans/{id}/free-seat-bookings")
+async def bulk_book_free_seats(id: int, body: FreeSeatBookingBody, user: CurrentUser = Depends(require_auth)):
+    """複数メンバーへ、通常のフリー座席（座席の島とは無関係）を日付ごとに自動で割り振って一括予約する
+    （2026-09-04追加。「代理予約を複数名まとめて、PJのメンバーに対して行いたい。座席はプロジェクト
+    座席ではなくフリー座席として扱ってほしい」との要望を受けた）。権限はA-18と同じ
+    role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（T-06.can_assign_seats）。
+    座席の島の割当状況（plan.status）には依存しない（フリー座席の確保なので島の有無を問わない）。
+    RULE-05（予約可能期間）はadmin以外は通常どおり検証する（FR-01-7はadminのみの特例）。"""
+    if not body.member_user_ids:
+        raise HTTPException(400, detail="対象メンバーを1人以上指定してください")
+    if body.start_date > body.end_date:
+        raise HTTPException(400, detail="開始日は終了日以前の日付を指定してください")
+    if body.pattern.get("type") not in ("daily", "weekly"):
+        raise HTTPException(400, detail="pattern.typeはdaily・weeklyのいずれかを指定してください")
+    if body.pattern.get("type") == "weekly" and not body.pattern.get("weekdays"):
+        raise HTTPException(400, detail="毎週の場合は曜日を1つ以上指定してください")
+
+    pool = get_pool()
+    plan = await pool.fetchrow(
+        """SELECT pqp.id, pqp.project_id, p.proxy_user_id FROM project_quarter_plans pqp
+           JOIN projects p ON p.id = pqp.project_id WHERE pqp.id = $1""",
+        id,
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    my_member = await _member_row(pool, plan["project_id"], user.id)
+    can_manage = (
+        user.role == "admin"
+        or plan["proxy_user_id"] == user.id
+        or (my_member is not None and my_member["can_assign_seats"])
+    )
+    if not can_manage:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+
+    member_rows = await pool.fetch(
+        "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
+    )
+    member_user_ids_in_project = {r["user_id"] for r in member_rows}
+    seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
+
+    target_user_ids = []
+    pre_excluded = []
+    for uid in body.member_user_ids:
+        if uid not in member_user_ids_in_project:
+            pre_excluded.append({"user_id": uid, "reason": "このプロジェクトのメンバーではありません"})
+        elif uid in seat_not_required_user_ids:
+            pre_excluded.append({"user_id": uid, "reason": "在宅勤務のため座席は不要に設定されています"})
+        else:
+            target_user_ids.append(uid)
+    if not target_user_ids:
+        raise HTTPException(400, detail="対象にできるメンバーがいません")
+
+    gen = await generate_bulk_free_seat_reservations(
+        target_user_ids, body.area, body.pattern, body.start_date, body.end_date, user.id,
+        enforce_rule05=(user.role != "admin"),
+    )
+
+    by_user: dict[int, list[dict]] = {}
+    for r in gen["results"]:
+        by_user.setdefault(r["user_id"], []).append(r)
+    results = []
+    for uid in body.member_user_ids:
+        rows = by_user.get(uid)
+        if rows is None:
+            reason = next(p["reason"] for p in pre_excluded if p["user_id"] == uid)
+            results.append({"user_id": uid, "status": "excluded", "reason": reason, "created_days": 0, "excluded_days": 0})
+            continue
+        created = [r for r in rows if r["status"] == "created"]
+        excluded = [r for r in rows if r["status"] == "excluded"]
+        if not created:
+            results.append({
+                "user_id": uid, "status": "excluded",
+                "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
+                "created_days": 0, "excluded_days": len(excluded),
+            })
+        else:
+            results.append({
+                "user_id": uid, "status": "assigned",
+                "created_days": len(created), "excluded_days": len(excluded),
+            })
     return {"results": results}
 
 

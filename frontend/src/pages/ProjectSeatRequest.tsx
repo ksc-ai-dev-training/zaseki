@@ -5,7 +5,7 @@ import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
 import type {
-  MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
+  FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
   SeatAssignmentResult, Weekday,
 } from '../types'
 
@@ -240,6 +240,10 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
 
       {plan.can_manage_seat_assign && plan.status === 'seats_allocated' && (
         <BulkSeatAssign plan={plan} onChanged={refresh} />
+      )}
+
+      {plan.can_manage_seat_assign && (
+        <BulkFreeSeatBooking plan={plan} />
       )}
     </div>
   )
@@ -685,6 +689,184 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                         {r.status === 'assigned' ? (
                           <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
                             確保済み{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
+                          </span>
+                        ) : (
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const AREA_OPTIONS: { key: 'all' | 'north' | 'east' | 'west'; label: string }[] = [
+  { key: 'all', label: '全体' }, { key: 'north', label: 'NORTH' }, { key: 'east', label: 'EAST' }, { key: 'west', label: 'WEST' },
+]
+
+// 代理予約を複数名まとめて、プロジェクト座席（座席の島）とは別に通常のフリー座席として確保する
+// （2026-09-04追加。「代理予約は複数人まとめてできるとありがたい。今までは該当箇所にコピーすれば
+// よかったので」との要望を受けた。座席の島の割当と異なり、対象四半期・座席の島の状態を問わず
+// いつでも使える。空き座席への割当は自動（エリア指定のみ）で、座席は日によって変わり得る）
+function BulkFreeSeatBooking({ plan }: { plan: ProjectPlanDetail }) {
+  const candidates = plan.members.filter((m) => !m.has_fixed_seat && !m.seat_not_required)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [area, setArea] = useState<'all' | 'north' | 'east' | 'west'>('all')
+  const [patternType, setPatternType] = useState<'daily' | 'weekly'>('daily')
+  const [weekdays, setWeekdays] = useState<Set<Weekday>>(new Set())
+  const [startDate, setStartDate] = useState(todayStr())
+  const [endDate, setEndDate] = useState(todayStr())
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [results, setResults] = useState<FreeSeatBookingResult[] | null>(null)
+
+  const toggleMember = (userId: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const submit = async () => {
+    if (selected.size === 0) {
+      setError('対象メンバーを1人以上選択してください')
+      return
+    }
+    if (startDate > endDate) {
+      setError('開始日は終了日以前の日付を指定してください')
+      return
+    }
+    if (patternType === 'weekly' && weekdays.size === 0) {
+      setError('毎週の場合は曜日を1つ以上選択してください')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    setResults(null)
+    try {
+      const data = await apiFetch<{ results: FreeSeatBookingResult[] }>(
+        `/api/project-quarter-plans/${plan.id}/free-seat-bookings`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            member_user_ids: [...selected],
+            area,
+            pattern: { type: patternType, weekdays: patternType === 'weekly' ? [...weekdays] : undefined },
+            start_date: startDate,
+            end_date: endDate,
+          }),
+        },
+      )
+      setResults(data.results)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '確保に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="rounded border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 px-4 py-3 font-semibold">フリー座席をまとめて確保（代理予約）</div>
+      <div className="p-4">
+        <p className="mb-3 text-xs text-slate-500">
+          座席の島とは別に、通常のフリー座席を複数メンバーへ日付ごとに自動で割り振って確保します（1人1席）。
+        </p>
+
+        <div className="mb-3">
+          <div className="mb-1 text-xs text-slate-500">対象メンバー</div>
+          <div className="flex flex-wrap gap-3">
+            {candidates.map((m) => (
+              <label key={m.member_id} className="inline-flex items-center gap-1 text-sm">
+                <input type="checkbox" checked={selected.has(m.user_id)} onChange={() => toggleMember(m.user_id)} />
+                {m.name}
+              </label>
+            ))}
+            {candidates.length === 0 && <span className="text-sm text-slate-400">対象にできるメンバーがいません</span>}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <div className="mb-1 text-xs text-slate-500">エリア</div>
+          <div className="flex gap-3">
+            {AREA_OPTIONS.map((a) => (
+              <label key={a.key} className="inline-flex items-center gap-1 text-sm">
+                <input type="radio" checked={area === a.key} onChange={() => setArea(a.key)} />
+                {a.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-end gap-4">
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-500">開始日</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 rounded border border-slate-300 px-3" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-500">終了日</span>
+            <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 rounded border border-slate-300 px-3" />
+          </label>
+          <div className="flex gap-4">
+            <label className="inline-flex items-center gap-1 text-sm">
+              <input type="radio" checked={patternType === 'daily'} onChange={() => setPatternType('daily')} />
+              毎日
+            </label>
+            <label className="inline-flex items-center gap-1 text-sm">
+              <input type="radio" checked={patternType === 'weekly'} onChange={() => setPatternType('weekly')} />
+              毎週（曜日を選択）
+            </label>
+          </div>
+        </div>
+        {patternType === 'weekly' && (
+          <div className="mb-3">
+            <WeekdayCheckboxGroup label="対象の曜日" value={weekdays} onChange={setWeekdays} />
+          </div>
+        )}
+
+        {error && <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+        <button
+          type="button"
+          disabled={submitting || candidates.length === 0}
+          onClick={submit}
+          className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+        >
+          この内容でまとめて確保する
+        </button>
+
+        {results && (
+          <div className="mt-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="pb-2 pr-3">氏名</th>
+                  <th className="pb-2">結果</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r) => {
+                  const member = plan.members.find((m) => m.user_id === r.user_id)
+                  return (
+                    <tr key={r.user_id} className="border-b border-slate-100">
+                      <td className="py-2 pr-3">{member?.name ?? r.user_id}</td>
+                      <td className="py-2">
+                        {r.status === 'assigned' ? (
+                          <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                            {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
                           </span>
                         ) : (
                           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>

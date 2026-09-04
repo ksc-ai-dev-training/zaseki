@@ -451,6 +451,17 @@ export interface SeatAssignmentResult {
   excluded_days?: number
 }
 
+// POST /project-quarter-plans/{id}/free-seat-bookings（S-04。「代理予約を複数名まとめて、PJの
+// メンバーに対して行いたい」との要望を受けて2026-09-04追加。プロジェクト座席ではなく通常の
+// フリー座席として扱う）
+export interface FreeSeatBookingResult {
+  user_id: number
+  status: 'assigned' | 'excluded'
+  reason?: string
+  created_days: number
+  excluded_days: number
+}
+
 // フィードバック（S-13「フィードバック」タブ・S-14一覧、FR-09-2・FR-09-3、2026-09-01追加）
 export type FeedbackCategory = 'bug' | 'request' | 'other'
 
