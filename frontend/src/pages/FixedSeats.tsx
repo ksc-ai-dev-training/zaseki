@@ -19,7 +19,11 @@ export default function FixedSeats() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const { items: candidates, isLoading: candidatesLoading } = useFixedSeatCandidates(query)
-  const { items: assignments, isLoading: assignmentsLoading, refresh: refreshAssignments } = useFixedSeatAssignments()
+  const [assignmentQuery, setAssignmentQuery] = useState('')
+  const { items: allAssignments, isLoading: assignmentsLoading, refresh: refreshAssignments } = useFixedSeatAssignments()
+  const assignments = assignmentQuery
+    ? allAssignments.filter((a) => a.user_name.includes(assignmentQuery))
+    : allAssignments
 
   const [unassignTarget, setUnassignTarget] = useState<FixedSeatAssignment | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -62,9 +66,9 @@ export default function FixedSeats() {
               placeholder="氏名で検索（固定座席を持たない利用者が対象）"
               className="mb-3 h-9 w-full max-w-sm rounded border border-slate-300 px-3 text-sm"
             />
-            <div className="overflow-x-auto">
+            <div className="max-h-96 overflow-y-auto overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="pb-2 pr-3">氏名</th>
                     <th className="pb-2 pr-3">現在の座席利用状況</th>
@@ -103,9 +107,16 @@ export default function FixedSeats() {
         </div>
 
         <div className="rounded border border-slate-200 bg-white">
-          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
             固定座席利用者（現在の割当）
             <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500">{assignments.length}件</span>
+            <input
+              type="search"
+              value={assignmentQuery}
+              onChange={(e) => setAssignmentQuery(e.target.value)}
+              placeholder="氏名で検索"
+              className="ml-auto h-9 w-full max-w-[220px] rounded border border-slate-300 px-3 text-sm font-normal"
+            />
           </div>
           <div className="overflow-x-auto p-4">
             <table className="w-full text-sm">
@@ -147,7 +158,9 @@ export default function FixedSeats() {
                 ))}
                 {!assignmentsLoading && assignments.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-4 text-center text-slate-400">固定座席の割当はありません</td>
+                    <td colSpan={5} className="py-4 text-center text-slate-400">
+                      {assignmentQuery ? '該当する利用者がいません' : '固定座席の割当はありません'}
+                    </td>
                   </tr>
                 )}
               </tbody>

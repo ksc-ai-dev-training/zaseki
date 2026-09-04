@@ -108,14 +108,14 @@
             <div class="floor-room" style="grid-column:6 / span 2;grid-row:2 / span 4">倉庫</div>
             <div class="floor-room" style="grid-column:10;grid-row:2 / span 4">キャビネット</div>
 
-            <div class="seat-tile status-fixed" title="固定座席" style="grid-column:8;grid-row:2">B1<span class="seat-tag">中村</span></div>
+            <div class="seat-tile status-fixed" title="固定座席" style="grid-column:8;grid-row:2"><span class="seat-tag">中村</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:9;grid-row:2" onclick="openSeatModal('B5','NORTH')">B5</button>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:3" onclick="openSeatModal('B2','NORTH')">B2</button>
             <button class="seat-tile status-free" type="button" style="grid-column:9;grid-row:3" onclick="openSeatModal('B6','NORTH')">B6</button>
-            <div class="seat-tile status-occupied" title="使用中（本日誕生日）" style="grid-column:8;grid-row:4"><span class="seat-birthday-badge">🎂</span>B3<span class="seat-tag">松本</span></div>
-            <div class="seat-tile status-project" title="プロジェクト座席（佐藤恵子・新人研修サポートプロジェクト）" style="grid-column:9;grid-row:4">B7<span class="seat-tag">新人研修</span></div>
+            <div class="seat-tile status-occupied" title="使用中（本日誕生日）" style="grid-column:8;grid-row:4"><span class="seat-birthday-badge">🎂</span><span class="seat-tag">松本</span></div>
+            <div class="seat-tile status-project" title="プロジェクト座席（佐藤恵子・新人研修サポートプロジェクト）" style="grid-column:9;grid-row:4"><span class="seat-tag">新人研修</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:5" onclick="openSeatModal('B4','NORTH')">B4</button>
-            <div class="seat-tile status-occupied" title="使用中" style="grid-column:9;grid-row:5">B8<span class="seat-tag">小林</span></div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:9;grid-row:5"><span class="seat-tag">小林</span></div>
           </div>
         </div>
 
@@ -123,18 +123,18 @@
           <div class="seat-block-label">Aブロック</div>
           <div class="seat-grid north-l rows-2">
 
-            <div class="seat-tile status-fixed" title="固定座席（田中一郎）" style="grid-column:3;grid-row:1">A1<span class="seat-tag">田中(一)</span></div>
+            <div class="seat-tile status-fixed" title="固定座席（田中一郎）" style="grid-column:3;grid-row:1"><span class="seat-tag">田中(一)</span></div>
             <div class="floor-pillar" title="柱" style="grid-column:4;grid-row:1 / span 2;width:40px;height:36px;justify-self:center;align-self:center">柱</div>
-            <button class="seat-tile status-mine" type="button" title="自分の予約" style="grid-column:5;grid-row:1" onclick="openCancelSeatModal('A2','NORTH')">A2<span class="seat-tag">鈴木（自分）</span></button>
+            <button class="seat-tile status-mine" type="button" title="自分の予約" style="grid-column:5;grid-row:1" onclick="openCancelSeatModal('A2','NORTH')"><span class="seat-tag">鈴木（自分）</span></button>
             <button class="seat-tile status-free" type="button" style="grid-column:6;grid-row:1" onclick="openSeatModal('A3','NORTH')">A3</button>
-            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:1">A4<span class="seat-tag">木村</span></div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:1"><span class="seat-tag">木村</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:1" onclick="openSeatModal('A5','NORTH')">A5</button>
-            <div class="seat-tile status-project" title="プロジェクト座席（伊藤大輝・基盤刷新プロジェクト）" style="grid-column:9;grid-row:1">A6<span class="seat-tag">基盤</span></div>
+            <div class="seat-tile status-project" title="プロジェクト座席（伊藤大輝・基盤刷新プロジェクト）" style="grid-column:9;grid-row:1"><span class="seat-tag">基盤</span></div>
             <div class="floor-pillar" title="柱" style="grid-column:10;grid-row:1 / span 2;width:40px;height:36px;justify-self:center;align-self:center">柱</div>
 
             <div class="seat-tile status-pending" title="未確定（プロジェクト座席・個人未確定・基盤刷新プロジェクト）" style="grid-column:5;grid-row:2">A7<span class="seat-tag">基盤</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:6;grid-row:2" onclick="openSeatModal('A8','NORTH')">A8</button>
-            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:2">A9<span class="seat-tag">渡辺</span></div>
+            <div class="seat-tile status-occupied" title="使用中" style="grid-column:7;grid-row:2"><span class="seat-tag">渡辺</span></div>
             <button class="seat-tile status-free" type="button" style="grid-column:8;grid-row:2" onclick="openSeatModal('A10','NORTH')">A10</button>
             <button class="seat-tile status-free" type="button" style="grid-column:9;grid-row:2" onclick="openSeatModal('A11','NORTH')">A11</button>
           </div>
@@ -169,9 +169,9 @@
                 <div class="seat-block-label">Cブロック</div>
                 <div class="seat-grid cols-2">
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('C1','EAST')">C1</button>
-                  <div class="seat-tile status-project" title="プロジェクト座席（高橋亮太・経歴書刷新プロジェクト）">C2<span class="seat-tag">経歴書</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋亮太・経歴書刷新プロジェクト）"><span class="seat-tag">経歴書</span></div>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('C3','EAST')">C3</button>
-                  <div class="seat-tile status-fixed" title="固定座席（山本健太）">C4<span class="seat-tag">山本</span></div>
+                  <div class="seat-tile status-fixed" title="固定座席（山本健太）"><span class="seat-tag">山本</span></div>
                 </div>
               </div>
               <div class="floor-block" style="grid-area:blkD">
@@ -179,14 +179,14 @@
                 <div class="seat-grid cols-2">
                   <button class="seat-tile status-pending" type="button" title="未確定（プロジェクト座席・個人未確定・Zaseki研修プロジェクト）" onclick="openProjectSeatModal('D1','EAST')">D1<span class="seat-tag">Zaseki</span></button>
                   <button class="seat-tile status-pending" type="button" title="未確定（プロジェクト座席・個人未確定・Zaseki研修プロジェクト）" onclick="openProjectSeatModal('D2','EAST')">D2<span class="seat-tag">Zaseki</span></button>
-                  <div class="seat-tile status-occupied" title="使用中">D3<span class="seat-tag">加藤</span></div>
+                  <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">加藤</span></div>
                   <button class="seat-tile status-pending" type="button" title="未確定（プロジェクト座席・個人未確定・Zaseki研修プロジェクト）" onclick="openProjectSeatModal('D4','EAST')">D4<span class="seat-tag">Zaseki</span></button>
                 </div>
               </div>
               <div class="floor-block" style="grid-area:blkE">
                 <div class="seat-block-label">Eブロック</div>
                 <div class="seat-grid cols-2">
-                  <div class="seat-tile status-project" title="プロジェクト座席（田中由美・経理システム更新プロジェクト）">E1<span class="seat-tag">経理</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（田中由美・経理システム更新プロジェクト）"><span class="seat-tag">経理</span></div>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('E2','EAST')">E2</button>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('E3','EAST')">E3</button>
                   <div class="seat-tile status-pending" title="未確定（プロジェクト座席・個人未確定・経理システム更新プロジェクト）">E4<span class="seat-tag">経理</span></div>
@@ -195,14 +195,14 @@
               <div class="floor-block" style="grid-area:blkF">
                 <div class="seat-block-label">Fブロック</div>
                 <div class="seat-grid cols-2">
-                  <div class="seat-tile status-project" title="プロジェクト座席（佐藤次郎・SSS-CMプロジェクト）">F1<span class="seat-tag">SSS-CM</span></div>
-                  <div class="seat-tile status-project" title="プロジェクト座席（西田玲奈・SSS-BSプロジェクト）">F5<span class="seat-tag">SSS-BS</span></div>
-                  <div class="seat-tile status-project" title="プロジェクト座席（高橋直子・SSS-CMプロジェクト）">F2<span class="seat-tag">SSS-CM</span></div>
-                  <div class="seat-tile status-occupied" title="使用中">F6<span class="seat-tag">中川</span></div>
-                  <div class="seat-tile status-project" title="プロジェクト座席（田中健太・SSS-authプロジェクト）">F3<span class="seat-tag">SSS-auth</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（佐藤次郎・SSS-CMプロジェクト）"><span class="seat-tag">SSS-CM</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（西田玲奈・SSS-BSプロジェクト）"><span class="seat-tag">SSS-BS</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋直子・SSS-CMプロジェクト）"><span class="seat-tag">SSS-CM</span></div>
+                  <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">中川</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（田中健太・SSS-authプロジェクト）"><span class="seat-tag">SSS-auth</span></div>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('F7','EAST')">F7</button>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('F4','EAST')">F4</button>
-                  <div class="seat-tile status-occupied" title="使用中">F8<span class="seat-tag">小川</span></div>
+                  <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">小川</span></div>
                 </div>
               </div>
               <div class="floor-block" style="grid-area:blkG">
@@ -210,17 +210,17 @@
                 <div class="seat-grid cols-2">
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('G1','EAST')">G1</button>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('G2','EAST')">G2</button>
-                  <div class="seat-tile status-fixed" title="固定座席">G3<span class="seat-tag">清水</span></div>
+                  <div class="seat-tile status-fixed" title="固定座席"><span class="seat-tag">清水</span></div>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('G4','EAST')">G4</button>
                 </div>
               </div>
               <div class="floor-block" style="grid-area:blkH">
                 <div class="seat-block-label">Hブロック</div>
                 <div class="seat-grid cols-2">
-                  <div class="seat-tile status-occupied" title="使用中">H1<span class="seat-tag">井上</span></div>
+                  <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">井上</span></div>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('H2','EAST')">H2</button>
                   <button class="seat-tile status-free" type="button" onclick="openSeatModal('H3','EAST')">H3</button>
-                  <div class="seat-tile status-project" title="プロジェクト座席（高橋大輔・経歴書刷新プロジェクト）">H4<span class="seat-tag">経歴書</span></div>
+                  <div class="seat-tile status-project" title="プロジェクト座席（高橋大輔・経歴書刷新プロジェクト）"><span class="seat-tag">経歴書</span></div>
                 </div>
               </div>
               <div class="floor-block" style="grid-area:blkI">
@@ -254,17 +254,17 @@
           <div class="floor-block" style="grid-area:blkJ">
             <div class="seat-block-label">Jブロック</div>
             <div class="seat-grid cols-2">
-              <div class="seat-tile status-fixed" title="固定座席（高橋美咲）">J1<span class="seat-tag">高橋(美)</span></div>
+              <div class="seat-tile status-fixed" title="固定座席（高橋美咲）"><span class="seat-tag">高橋(美)</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('J2','WEST')">J2</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('J3','WEST')">J3</button>
-              <div class="seat-tile status-occupied" title="使用中">J4<span class="seat-tag">斉藤</span></div>
+              <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">斉藤</span></div>
             </div>
           </div>
           <div class="floor-block" style="grid-area:blkK">
             <div class="seat-block-label">Kブロック</div>
             <div class="seat-grid cols-2">
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('K1','WEST')">K1</button>
-              <div class="seat-tile status-project" title="プロジェクト座席（田中真理・新人研修サポートプロジェクト）">K2<span class="seat-tag">新人研修</span></div>
+              <div class="seat-tile status-project" title="プロジェクト座席（田中真理・新人研修サポートプロジェクト）"><span class="seat-tag">新人研修</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('K3','WEST')">K3</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('K4','WEST')">K4</button>
             </div>
@@ -274,7 +274,7 @@
             <div class="seat-grid cols-2">
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('L1','WEST')">L1</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('L2','WEST')">L2</button>
-              <div class="seat-tile status-occupied" title="使用中（高橋健一）">L3<span class="seat-tag">高橋(健)</span></div>
+              <div class="seat-tile status-occupied" title="使用中（高橋健一）"><span class="seat-tag">高橋(健)</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('L4','WEST')">L4</button>
             </div>
           </div>
@@ -283,11 +283,11 @@
             <div class="seat-grid cols-2">
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('M1','WEST')">M1</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('M5','WEST')">M5</button>
-              <div class="seat-tile status-project" title="プロジェクト座席（高橋里奈・受発注システム刷新プロジェクト）">M2<span class="seat-tag">受発注</span></div>
+              <div class="seat-tile status-project" title="プロジェクト座席（高橋里奈・受発注システム刷新プロジェクト）"><span class="seat-tag">受発注</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('M6','WEST')">M6</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('M3','WEST')">M3</button>
               <div class="seat-tile status-pending" title="未確定（プロジェクト座席・個人未確定・受発注システム刷新プロジェクト）">M7<span class="seat-tag">受発注</span></div>
-              <div class="seat-tile status-occupied" title="使用中">M4<span class="seat-tag">村上</span></div>
+              <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">村上</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('M8','WEST')">M8</button>
             </div>
           </div>
@@ -296,17 +296,17 @@
             <div class="seat-grid cols-2">
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('N1','WEST')">N1</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('N2','WEST')">N2</button>
-              <div class="seat-tile status-fixed" title="固定座席">N3<span class="seat-tag">石井</span></div>
+              <div class="seat-tile status-fixed" title="固定座席"><span class="seat-tag">石井</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('N4','WEST')">N4</button>
             </div>
           </div>
           <div class="floor-block" style="grid-area:blkO">
             <div class="seat-block-label">Oブロック</div>
             <div class="seat-grid cols-2">
-              <div class="seat-tile status-occupied" title="使用中">O1<span class="seat-tag">前田</span></div>
+              <div class="seat-tile status-occupied" title="使用中"><span class="seat-tag">前田</span></div>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('O2','WEST')">O2</button>
               <button class="seat-tile status-free" type="button" onclick="openSeatModal('O3','WEST')">O3</button>
-              <div class="seat-tile status-project" title="プロジェクト座席（高橋修・経歴書刷新プロジェクト）">O4<span class="seat-tag">経歴書</span></div>
+              <div class="seat-tile status-project" title="プロジェクト座席（高橋修・経歴書刷新プロジェクト）"><span class="seat-tag">経歴書</span></div>
             </div>
           </div>
           <div class="floor-block" style="grid-area:blkP">

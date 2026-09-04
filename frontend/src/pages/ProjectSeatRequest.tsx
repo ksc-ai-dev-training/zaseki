@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
 import type {
-  MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, QuarterPlanStatus,
+  MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
   SeatAssignmentResult, Weekday,
 } from '../types'
 
@@ -12,6 +13,16 @@ const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
   { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
 ]
+
+function formatWeekdays(days: Weekday[]): string {
+  return WEEKDAYS.filter((w) => days.includes(w.key)).map((w) => w.label).join('・')
+}
+
+function formatQuarterLabel(periodStart: string): string {
+  const [y, m] = periodStart.split('-')
+  const startMonth = Number(m)
+  return `${y}年${startMonth}〜${startMonth + 2}月`
+}
 
 const STATUS_LABEL: Record<QuarterPlanStatus, string> = {
   seats_confirmed: 'アンケート未送信',
@@ -35,7 +46,7 @@ function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value
   }
   return (
     <div>
-      <div className="mb-1 text-xs text-slate-500">{label}（曜日を2つ選択）</div>
+      <div className="mb-1 text-xs text-slate-500">{label}</div>
       <div className="flex gap-3">
         {WEEKDAYS.map((w) => (
           <label key={w.key} className="inline-flex items-center gap-1 text-sm">
@@ -52,6 +63,25 @@ function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value
 export default function ProjectSeatRequest() {
   const { items, error, isLoading } = useMyProjects()
 
+  // 対象四半期タブ（S-09と同様の考え方）。自分が所属する全プロジェクトのplansに現れる
+  // period_startの和集合をタブとし、初期表示は最も新しいもの（＝次の期間）を自動選択する
+  // （2026-08-31追加。「対象四半期を自由に選択できるようにできる？」との要望を受けた。
+  // 従来は各プロジェクトの直近1件のみが固定で表示され、他の四半期を見る手段がなかった）。
+  const quarterTabs = useMemo(() => {
+    const starts = new Set<string>()
+    items.forEach((it) => it.plans.forEach((p) => starts.add(p.period_start)))
+    return [...starts].sort()
+  }, [items])
+
+  const [selectedQuarter, setSelectedQuarter] = useState('')
+  const [hasAutoSelectedQuarter, setHasAutoSelectedQuarter] = useState(false)
+  useEffect(() => {
+    if (!hasAutoSelectedQuarter && quarterTabs.length > 0) {
+      setSelectedQuarter(quarterTabs[quarterTabs.length - 1])
+      setHasAutoSelectedQuarter(true)
+    }
+  }, [quarterTabs, hasAutoSelectedQuarter])
+
   return (
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
@@ -59,20 +89,43 @@ export default function ProjectSeatRequest() {
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-04</span>
       </header>
 
-      <div className="space-y-8 p-6">
+      <div className="p-6">
         {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
         {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">読み込みに失敗しました</p>}
         {!isLoading && items.length === 0 && (
           <p className="text-sm text-slate-400">所属しているプロジェクトはありません。</p>
         )}
-        {items.map((mp) => <ProjectSection key={mp.project_id} item={mp} />)}
+
+        {quarterTabs.length > 0 && (
+          <div className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
+            {quarterTabs.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setSelectedQuarter(q)}
+                className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm ${
+                  selectedQuarter === q
+                    ? 'border-blue-800 font-semibold text-blue-800'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {formatQuarterLabel(q)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-8">
+          {items.map((mp) => <ProjectSection key={mp.project_id} item={mp} selectedQuarter={selectedQuarter} />)}
+        </div>
       </div>
     </div>
   )
 }
 
-function ProjectSection({ item }: { item: MyProjectItem }) {
+function ProjectSection({ item, selectedQuarter }: { item: MyProjectItem; selectedQuarter: string }) {
   const roleLabel = item.project_title ?? '一般メンバー'
+  const plan = item.plans.find((p) => p.period_start === selectedQuarter) ?? null
 
   return (
     <section>
@@ -80,11 +133,15 @@ function ProjectSection({ item }: { item: MyProjectItem }) {
         {item.project_name}
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">{roleLabel}</span>
       </h2>
-      {item.plan ? (
-        <PlanPanel planId={item.plan.id} summaryStatus={item.plan.status} />
-      ) : (
+      {item.plans.length === 0 ? (
         <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
           対象四半期の計画はまだ開始されていません。
+        </p>
+      ) : plan ? (
+        <PlanPanel key={plan.id} planId={plan.id} summaryStatus={plan.status} />
+      ) : (
+        <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+          この四半期の計画はありません。
         </p>
       )}
     </section>
@@ -174,7 +231,7 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
       )}
 
       {plan.is_pmpl && plan.status === 'survey_open' && (
-        <SurveyForm plan={plan} onSubmitted={refresh} />
+        <SurveyPanel plan={plan} onSubmitted={refresh} />
       )}
 
       {plan.is_pmpl && (
@@ -188,21 +245,83 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
   )
 }
 
-function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitted: () => void }) {
+type SurveyMode = 'hidden' | 'summary' | 'editing'
+
+// 回答済みの場合は既定で折りたたみ（hidden）、「表示する」で回答内容の要約（summary）を
+// 表示・非表示に切り替えられる。要約からは「回答を修正する」で編集フォーム（editing）を開ける
+// （2026-08-31追加・同日再訂正。「アンケートに解答したら非表示にするようにしてほしい」→
+// 「アンケートに回答したら表示と非表示ができるようにしてほしい」との要望を受けた。当初は
+// 「回答を修正する」＝表示のトグルを兼ねていたが、修正〔編集フォーム〕と表示・非表示は別の
+// 操作として分離した。曜日確定〔status変化〕までは引き続き回答内容を変更できるため、
+// フォーム自体は削除しない）
+function SurveyPanel({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitted: () => void }) {
+  const [mode, setMode] = useState<SurveyMode>(plan.response === null ? 'editing' : 'hidden')
+
+  if (mode === 'hidden' && plan.response) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-4 py-3">
+        <span className="flex items-center gap-2 font-semibold">
+          出社曜日アンケートの回答
+          <span className="rounded bg-green-50 px-2 py-0.5 text-xs font-normal text-green-700">回答済み</span>
+        </span>
+        <button type="button" onClick={() => setMode('summary')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+          表示する
+        </button>
+      </div>
+    )
+  }
+
+  if (mode === 'summary' && plan.response) {
+    return (
+      <div className="rounded border border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+          出社曜日アンケートの回答
+          <span className="rounded bg-green-50 px-2 py-0.5 text-xs font-normal text-green-700">回答済み</span>
+        </div>
+        <div className="space-y-1.5 p-4 text-sm">
+          <div><span className="text-slate-500">第一希望: </span>{formatWeekdays(plan.response.choice1_weekdays)}</div>
+          <div><span className="text-slate-500">第二希望: </span>{formatWeekdays(plan.response.choice2_weekdays)}</div>
+          {plan.response.note && <div><span className="text-slate-500">備考: </span>{plan.response.note}</div>}
+          {plan.response.requested_seats !== null && (
+            <div><span className="text-slate-500">必要座席数の変更希望: </span>{plan.response.requested_seats}名</div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={() => setMode('hidden')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+              非表示にする
+            </button>
+            <button type="button" onClick={() => setMode('editing')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+              回答を修正する
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <SurveyForm
+      plan={plan}
+      onSubmitted={async () => {
+        // 折りたたみ後にすぐ表示する要約がstale値にならないよう、再取得が終わってから閉じる
+        await onSubmitted()
+        setMode('hidden')
+      }}
+      onCancel={plan.response ? () => setMode('summary') : undefined}
+    />
+  )
+}
+
+function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; onSubmitted: () => void; onCancel?: () => void }) {
   const [choice1, setChoice1] = useState<Set<Weekday>>(new Set(plan.response?.choice1_weekdays ?? []))
   const [choice2, setChoice2] = useState<Set<Weekday>>(new Set(plan.response?.choice2_weekdays ?? []))
   const [note, setNote] = useState(plan.response?.note ?? '')
   const [requestedSeats, setRequestedSeats] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState(false)
 
   const submit = async () => {
-    if (choice1.size !== 2) { setError('第一希望は曜日を2つ選択してください'); return }
-    if (choice2.size !== 2) { setError('第二希望は曜日を2つ選択してください'); return }
     setSubmitting(true)
     setError(null)
-    setSubmitted(false)
     try {
       await apiFetch(`/api/project-quarter-plans/${plan.id}/response`, {
         method: 'PUT',
@@ -212,7 +331,6 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
           requested_seats: requestedSeats ? Number(requestedSeats) : null,
         }),
       })
-      setSubmitted(true)
       onSubmitted()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '回答に失敗しました')
@@ -242,7 +360,7 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
           <span className="mb-1 block text-xs text-slate-500">必要座席数の変更希望（現在: {plan.required_seats}名）</span>
           <input
             type="number"
-            min={1}
+            min={0}
             value={requestedSeats}
             onChange={(e) => setRequestedSeats(e.target.value)}
             placeholder="変更後の人数（変更がなければ空欄のまま）"
@@ -250,10 +368,12 @@ function SurveyForm({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitte
           />
         </label>
         {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        {submitted && !error && (
-          <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">回答をありがとうございます。送信しました。</p>
-        )}
-        <div className="text-right">
+        <div className="flex justify-end gap-2">
+          {onCancel && (
+            <button type="button" onClick={onCancel} className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+              キャンセル
+            </button>
+          )}
           <button type="button" disabled={submitting} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
             この内容で回答する
           </button>
@@ -327,14 +447,100 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
 }
 
 function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChanged: () => void }) {
+  const navigate = useNavigate()
   const [picks, setPicks] = useState<Record<number, number | ''>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<SeatAssignmentResult[] | null>(null)
+  const [busyMemberId, setBusyMemberId] = useState<number | null>(null)
 
-  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.has_fixed_seat)
+  // 確保済みメンバーの座席変更（2026-09-03追加。「メンバーへの座席確保なのですが変更できるように
+  // してほしい」との要望を受けた。従来は一度確保すると「割り当てる座席」欄が「—」になり、この画面
+  // からは変更できなかった）。新規確保用のpicksとは別に、行ごとの変更先選択をchangePicksで持つ。
+  // 'home'は在宅勤務にする特殊な選択肢（2026-09-03同日追加。「変更先の選択に在宅勤務も追加してほしい」
+  // との要望を受けた。従来、確保済みメンバーを在宅勤務に切り替えるには「在宅のため不要」チェックボックスが
+  // 確保済みの間は非活性〔先に予約の取消が必要〕で、この画面からは完結できなかった）
+  const [changePicks, setChangePicks] = useState<Record<number, number | 'home' | ''>>({})
+  const [changingMemberId, setChangingMemberId] = useState<number | null>(null)
+  const [changeError, setChangeError] = useState<string | null>(null)
+  const [changeMessage, setChangeMessage] = useState<string | null>(null)
+
+  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.has_fixed_seat && !m.seat_not_required)
   const assignedSeatIds = new Set(plan.members.map((m) => m.assigned_seat_id).filter((v): v is number => v !== null))
   const seatOptions = (plan.allocated_seats ?? []).filter((s) => !assignedSeatIds.has(s.id))
+  // 変更先の候補は、必要人数ちょうどで座席の島が埋まっている（空き座席がない）ことが多く、
+  // 空き座席だけでは選べる相手がいなかったため、既に他メンバーに割り当て済みの座席も選択肢に含め、
+  // 選ぶとその相手と座席を交換する（2026-09-03追加。「変更先を選択を押しても座席が表示されないため
+  // 変更することができません」との報告を受けた）
+  const memberNameBySeatId = new Map(
+    plan.members.filter((mm) => mm.assigned_seat_id !== null).map((mm) => [mm.assigned_seat_id as number, mm.name])
+  )
+
+  // ずっと在宅勤務でプロジェクト座席が不要なメンバーの設定（FR-03-10、2026-09-01追加。
+  // 「出社する必要がなく席を確保しなくていい人もいるのでそれ用の選択をできるようにしてほしい」
+  // との要望を受けた）。固定座席保有者と同様、確保対象・未確保者数から除外する
+  const toggleSeatNotRequired = async (m: ProjectPlanMember, next: boolean) => {
+    setBusyMemberId(m.member_id)
+    setError(null)
+    try {
+      await apiFetch(`/api/project-members/${m.member_id}/seat-not-required`, {
+        method: 'PUT',
+        body: JSON.stringify({ seat_not_required: next }),
+      })
+      onChanged()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '更新に失敗しました')
+    } finally {
+      setBusyMemberId(null)
+    }
+  }
+
+  // 座席表（S-02のフロアマップ）から選ぶ導線（2026-08-31追加。「座席表から選択できるように
+  // してほしい」との要望を受けた）。プルダウンでの一括確保はそのまま残し、選択肢を追加する形にした
+  const goSeatMap = () => {
+    navigate('/', {
+      state: {
+        memberSeatAssignFor: {
+          planId: plan.id,
+          projectName: plan.project_name,
+          periodStart: plan.period_start,
+          allocatedSeatIds: (plan.allocated_seats ?? []).map((s) => s.id),
+          members: unassigned.map((m) => ({ userId: m.user_id, name: m.name })),
+        },
+      },
+    })
+  }
+
+  const changeSeat = async (m: ProjectPlanMember) => {
+    const pick = changePicks[m.user_id]
+    if (!pick) return
+    setChangingMemberId(m.member_id)
+    setChangeError(null)
+    setChangeMessage(null)
+    try {
+      const data = await apiFetch<{ seat_no: string | null; excluded_days: number; swapped_with: string | null }>(
+        `/api/project-quarter-plans/${plan.id}/seat-assignments/${m.user_id}`,
+        { method: 'PUT', body: JSON.stringify({ seat_id: pick === 'home' ? null : pick }) },
+      )
+      setChangePicks((prev) => {
+        const next = { ...prev }
+        delete next[m.user_id]
+        return next
+      })
+      if (data.seat_no === null) {
+        setChangeMessage(`${m.name}を在宅勤務にし、座席を解放しました`)
+      } else {
+        const swapNote = data.swapped_with ? `（${data.swapped_with}と交換）` : ''
+        const excludedNote = data.excluded_days ? `（${data.excluded_days}日を除外）` : ''
+        setChangeMessage(`${m.name}の座席を${data.seat_no}に変更しました${swapNote}${excludedNote}`)
+      }
+      onChanged()
+    } catch (e) {
+      setChangeError(e instanceof ApiError ? e.message : '変更に失敗しました')
+    } finally {
+      setChangingMemberId(null)
+    }
+  }
 
   const submit = async () => {
     const assignments = Object.entries(picks)
@@ -370,7 +576,8 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
             <tr className="border-b border-slate-200 text-left text-slate-500">
               <th className="pb-2 pr-3">氏名</th>
               <th className="pb-2 pr-3">座席の確保状況</th>
-              <th className="pb-2">割り当てる座席</th>
+              <th className="pb-2 pr-3">割り当てる座席</th>
+              <th className="pb-2">在宅のため不要</th>
             </tr>
           </thead>
           <tbody>
@@ -378,11 +585,13 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
               <tr key={m.member_id} className="border-b border-slate-100">
                 <td className="py-2 pr-3">{m.name}</td>
                 <td className="py-2 pr-3 text-xs text-slate-500">
-                  {m.has_fixed_seat ? '固定座席あり' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
+                  {m.has_fixed_seat ? '固定座席あり' : m.seat_not_required ? '在宅のため不要' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
                 </td>
-                <td className="py-2">
+                <td className="py-2 pr-3">
                   {m.has_fixed_seat ? (
                     <span className="text-xs text-slate-400">対象外（固定座席保有者）</span>
+                  ) : m.seat_not_required ? (
+                    <span className="text-xs text-slate-400">対象外（在宅のため不要）</span>
                   ) : m.assigned_seat_id === null ? (
                     <select
                       value={picks[m.user_id] ?? ''}
@@ -395,7 +604,48 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                       ))}
                     </select>
                   ) : (
-                    <span className="text-xs text-slate-400">—</span>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={changePicks[m.user_id] ?? ''}
+                        onChange={(e) => setChangePicks((prev) => ({
+                          ...prev,
+                          [m.user_id]: e.target.value ? (e.target.value === 'home' ? 'home' : Number(e.target.value)) : '',
+                        }))}
+                        className="h-8 w-36 rounded border border-slate-300 px-2 text-sm"
+                      >
+                        <option value="">変更先を選択</option>
+                        <option value="home">在宅勤務</option>
+                        {(plan.allocated_seats ?? []).filter((s) => s.id !== m.assigned_seat_id).map((s) => {
+                          const occupant = memberNameBySeatId.get(s.id)
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {s.seat_no}{occupant ? `（${occupant}と交換）` : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!changePicks[m.user_id] || changingMemberId === m.member_id}
+                        onClick={() => changeSeat(m)}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        確保する
+                      </button>
+                    </div>
+                  )}
+                </td>
+                <td className="py-2">
+                  {m.has_fixed_seat ? (
+                    <span className="text-xs text-slate-400">－</span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={m.seat_not_required}
+                      disabled={busyMemberId === m.member_id || (m.assigned_seat_id !== null && !m.seat_not_required)}
+                      title={m.assigned_seat_id !== null && !m.seat_not_required ? '既に座席を確保済みです。先に予約を取り消してください' : undefined}
+                      onChange={(e) => toggleSeatNotRequired(m, e.target.checked)}
+                    />
                   )}
                 </td>
               </tr>
@@ -403,7 +653,12 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           </tbody>
         </table>
         {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <div className="mt-3 text-right">
+        {changeError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{changeError}</p>}
+        {changeMessage && <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{changeMessage}</p>}
+        <div className="mt-3 flex items-center justify-between">
+          <button type="button" disabled={unassigned.length === 0} onClick={goSeatMap} className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            座席表から選ぶ
+          </button>
           <button type="button" disabled={submitting || unassigned.length === 0} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
             この内容で一括確保する
           </button>

@@ -10,6 +10,10 @@ interface FloorProps {
   onAssignFixedSeat?: (seat: Seat) => void
   selectedSeatIds?: Set<number>
   readOnly?: boolean
+  memberAssignMode?: boolean
+  memberAssignEligibleIds?: Set<number>
+  memberAssignPickedLabels?: Record<number, string>
+  onMemberAssignClick?: (seat: Seat) => void
 }
 
 const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center', alignSelf: 'center' }

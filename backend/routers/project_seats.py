@@ -2,76 +2,45 @@
 # 詳細設計書3.8節・3.9節
 import json
 import re
-from datetime import date as Date, timedelta
+from datetime import date as Date
 from typing import Literal
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool, get_setting
-from slack import send_slack_notification
+from database import get_pool
+from slack import (
+    DEFAULT_MESSAGE_FINALIZE_HEADER,
+    DEFAULT_MESSAGE_REMINDER,
+    SLACK_MESSAGE_FINALIZE_HEADER_KEY,
+    SLACK_MESSAGE_REMINDER_KEY,
+    render_slack_message,
+    send_slack_notification,
+)
 
 router = APIRouter(prefix="/api", tags=["project-seats"])
 
 _WEEKDAY_JA = {"mon": "月", "tue": "火", "wed": "水", "thu": "木", "fri": "金"}
+_WEEKDAY_ISODOW = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5}
 
 
-async def _base_months() -> list[int]:
-    raw = await get_setting("quarter_base_months")
-    return json.loads(raw) if raw else [1, 4, 7, 10]
-
-
-async def _ensure_next_quarter_plans(pool) -> None:
-    """次の四半期の計画データを、対象プロジェクトごとに自動的に起票する（FR-03-1、2026-08-28実装）。
-    従来はエリア責任者・管理部が「四半期計画を開始する」ボタンを押す手動操作だったが、全プロジェクトが
-    毎四半期必ず1件必要とするものであり手動操作を要する理由がないとの要望を受け、A-27・A-38の
-    参照時に不足分を自動起票する方式に変更した。ON CONFLICT DO NOTHINGのため複数回呼んでも副作用はない。
-
-    required_seatsの初期値は、固定座席（T-04）を既に持つメンバーを除いた人数とする（2026-08-28再訂正、
-    「固定席の人のみのプロジェクトはプロジェクト席を用意する必要がない」との要望を受けた。固定座席保有者は
-    RULE-07によりそもそもプロジェクト座席を確保できないため、必要数に含めると余分な座席を要求してしまう。
-    メンバーが1人もいないプロジェクトは判定材料がないため、従来どおり1人扱いとする）。"""
-    base_months = await _base_months()
-    next_start = _next_quarter_start(Date.today(), base_months)
-    next_end = _quarter_end(next_start, base_months)
-    await pool.execute(
-        """INSERT INTO project_quarter_plans (project_id, period_start, period_end, required_seats)
-           SELECT p.id, $1, $2,
-                  CASE WHEN COUNT(pm.id) = 0 THEN 1
-                       ELSE COUNT(pm.id) FILTER (WHERE fsa.user_id IS NULL)
-                  END
-           FROM projects p
-           LEFT JOIN project_members pm ON pm.project_id = p.id
+async def _required_seats_for_project(conn, project_id: int) -> int:
+    """プロジェクトメンバーのうち、固定座席保有者・在宅のため不要なメンバー（FR-03-10）を除いた人数を
+    必要座席数として算出する（メンバーが1人もいない場合のみ1人扱い）。旧_ensure_next_quarter_plans()の
+    起票時ロジックを、A-67（都度の期間設定）向けに1プロジェクト単位の関数として切り出した
+    （2026-09-03、検討資料「プロジェクト座席・曜日調整フロー改善案」変更D参照）。"""
+    row = await conn.fetchrow(
+        """SELECT CASE WHEN COUNT(pm.id) = 0 THEN 1
+                       ELSE COUNT(pm.id) FILTER (WHERE fsa.user_id IS NULL AND NOT pm.seat_not_required)
+                  END AS required_seats
+           FROM project_members pm
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
-           GROUP BY p.id
-           ON CONFLICT (project_id, period_start) DO NOTHING""",
-        next_start, next_end,
+           WHERE pm.project_id = $1""",
+        project_id,
     )
-
-
-def _quarter_start_for(d: Date, base_months: list[int]) -> Date:
-    candidates = [m for m in base_months if m <= d.month]
-    if candidates:
-        return Date(d.year, max(candidates), 1)
-    return Date(d.year - 1, max(base_months), 1)
-
-
-def _quarter_end(period_start: Date, base_months: list[int]) -> Date:
-    idx = base_months.index(period_start.month)
-    if idx + 1 < len(base_months):
-        next_start = Date(period_start.year, base_months[idx + 1], 1)
-    else:
-        next_start = Date(period_start.year + 1, base_months[0], 1)
-    return next_start - timedelta(days=1)
-
-
-def _next_quarter_start(today: Date, base_months: list[int]) -> Date:
-    current = _quarter_start_for(today, base_months)
-    idx = base_months.index(current.month)
-    if idx + 1 < len(base_months):
-        return Date(current.year, base_months[idx + 1], 1)
-    return Date(current.year + 1, base_months[0], 1)
+    return row["required_seats"]
 
 
 _SEAT_NO_RE = re.compile(r"^([A-Za-z]+)(\d+)$")
@@ -94,10 +63,11 @@ def _format_seat_range(seat_nos: list[str]) -> str:
 @router.get("/projects")
 async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
     """A-27: 全プロジェクト一覧。S-08「プロジェクト・PM管理」タブの一覧・編集モーダルのメンバー表で使う
-    （2026-08-28、members・member_count・proxy_user_id・proxy_user_nameを追加）。呼び出し時に次の四半期の
-    計画データの自動作成（_ensure_next_quarter_plans）を行う（2026-08-28追加、FR-03-1改訂）。"""
+    （2026-08-28、members・member_count・proxy_user_id・proxy_user_nameを追加）。呼び出し時の次の四半期の
+    計画データの自動作成（_ensure_next_quarter_plans）は、2026-09-03に「四半期」という概念自体を撤廃した
+    ことに伴い廃止した（検討資料「プロジェクト座席・曜日調整フロー改善案」変更D。プロジェクト座席の期間は
+    エリア責任者・管理部が都度A-67で設定する）。"""
     pool = get_pool()
-    await _ensure_next_quarter_plans(pool)
 
     rows = await pool.fetch(
         """SELECT p.id, p.name, p.proxy_user_id,
@@ -241,21 +211,35 @@ async def delete_project(id: int, _: CurrentUser = Depends(require_roles("admin"
 
 @router.get("/project-quarter-plans")
 async def list_quarter_plans(
-    quarter: str = "",
     _: CurrentUser = Depends(require_roles("admin")),
 ):
-    """A-38: 四半期での一覧。quarterはperiod_start（YYYY-MM-DD）での絞り込み（任意）。
-    areaクエリパラメータは2026-08-27にT-07からarea_id自体が削除されたため対象外とした
-    （2026-08-28、ドキュメントの記載漏れを整理）。A-27と同様、呼び出し時に次の四半期の計画データの
-    自動作成を行う（2026-08-28追加、FR-03-1改訂）。"""
+    """A-38: プロジェクト座席の計画データ一覧。2026-09-03、「四半期」という概念自体を撤廃したことに伴い
+    quarterクエリパラメータ（period_startでの絞り込み）を廃止し、常に全件を返すよう変更した
+    （検討資料「プロジェクト座席・曜日調整フロー改善案」変更D。S-09の対象四半期タブも廃止し、
+    period_start降順の1本のリストに一本化した）。areaクエリパラメータは2026-08-27にT-07から
+    area_id自体が削除されたため対象外とした（2026-08-28、ドキュメントの記載漏れを整理）。呼び出し時の
+    次の四半期の計画データの自動作成（旧FR-03-1）も、変更Dで廃止した（プロジェクト座席の期間は
+    エリア責任者・管理部がA-67で都度設定する）。non_fixed_member_countは、固定座席保有者に加えて
+    seat_not_requiredなメンバー（FR-03-10）も除いた「実際にプロジェクト座席を必要とするメンバー数」を
+    表す（2026-09-01訂正。固定座席保有者と同じ扱いに揃えてほしいとの要望を受けた。フィールド名は変更せず
+    互換のまま意味だけ拡張している）。各行のseat_assigner_namesはPJ席決担当（T-05.proxy_user_id、S-08
+    「プロジェクト・PM管理」タブの「PJ席決担当」列で指定）の氏名（2026-09-02再訂正。当初は
+    T-06.can_assign_seats〔S-04の「席決めを任せる」で個別に委譲する別の権限〕から求めていたが、
+    「S-08の担当者のS-09の席決め担当に落とし込みたい」との指摘を受け、S-08の一覧・編集モーダルの
+    「PJ席決担当」列（A-27のproxy_user_nameと同じ、projects.proxy_user_id）から求めるよう修正した。
+    A-27と同じくPM・PLのいずれか1名に限定される想定だが、未指定の間は空になりうる）。
+    previous_area（'NORTH'|'EAST'|'WEST'|null）は、直近に座席の島を割り当てた四半期（status=
+    'seats_allocated'、対象四半期の絞り込みに関わらず全期間から探す）で実際に使ったエリアを返す
+    （2026-09-03追加、S-09の曜日調整表をエリアで分けたいとの要望を受けた。T-07にarea_id自体は
+    存在しないため、割当済みの座席〔allocated_seats〕から逆引きする。一度も座席の島を割り当てて
+    いないプロジェクトはnull）。"""
     pool = get_pool()
-    await _ensure_next_quarter_plans(pool)
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
                   pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats, pqp.status,
-                  string_agg(DISTINCT (u.last_name || ' ' || u.first_name), '、')
-                      FILTER (WHERE pm.project_title IN ('PM', 'PL')) AS pm_pl_names,
-                  COUNT(DISTINCT pm.id) FILTER (WHERE fsa.user_id IS NULL) AS non_fixed_member_count,
+                  (SELECT pu.last_name || ' ' || pu.first_name FROM users pu WHERE pu.id = p.proxy_user_id)
+                      AS seat_assigner_names,
+                  COUNT(DISTINCT pm.id) FILTER (WHERE fsa.user_id IS NULL AND NOT pm.seat_not_required) AS non_fixed_member_count,
                   wr.choice1_weekdays, wr.choice2_weekdays, wr.note,
                   (wr.id IS NOT NULL) AS has_response
            FROM project_quarter_plans pqp
@@ -264,10 +248,8 @@ async def list_quarter_plans(
            LEFT JOIN users u ON u.id = pm.user_id
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
            LEFT JOIN project_weekday_responses wr ON wr.plan_id = pqp.id
-           WHERE ($1 = '' OR pqp.period_start = $1::date)
-           GROUP BY pqp.id, p.name, wr.choice1_weekdays, wr.choice2_weekdays, wr.note, wr.id
-           ORDER BY pqp.period_start, p.name""",
-        quarter,
+           GROUP BY pqp.id, p.name, p.proxy_user_id, wr.choice1_weekdays, wr.choice2_weekdays, wr.note, wr.id
+           ORDER BY pqp.period_start DESC, p.name"""
     )
 
     seat_ids = {sid for r in rows if r["allocated_seats"] for sid in json.loads(r["allocated_seats"])}
@@ -278,6 +260,22 @@ async def list_quarter_plans(
         )
         seat_no_by_id = {r["id"]: r["seat_no"] for r in seat_rows}
 
+    # 曜日調整表のNORTH／EAST・WEST分け（2026-09-03追加。「曜日表をNORTHエリア/EAST＆WESTに分けることは
+    # できるか」との要望を受けた）。T-07は2026-08-27にarea_idを削除済みで、曜日調整の段階（座席の島の
+    # 割当前）ではプロジェクトごとのエリア情報が存在しないため、直近に座席の島を割り当てた（status=
+    # 'seats_allocated'）四半期で実際に使ったエリアを「前回の割当エリア」として代用する、との回答による。
+    # 対象四半期の絞り込みに関わらず全期間から探すため、rowsではなくproject_quarter_plansを直接見る。
+    area_rows = await pool.fetch(
+        """SELECT DISTINCT ON (pqp.project_id) pqp.project_id, a.name AS area_name
+           FROM project_quarter_plans pqp
+           CROSS JOIN LATERAL jsonb_array_elements_text(pqp.allocated_seats::jsonb) AS elem(seat_id_text)
+           JOIN seats s ON s.id = elem.seat_id_text::bigint
+           JOIN areas a ON a.id = s.area_id
+           WHERE pqp.status = 'seats_allocated' AND pqp.allocated_seats IS NOT NULL
+           ORDER BY pqp.project_id, pqp.period_start DESC"""
+    )
+    previous_area_by_project = {r["project_id"]: r["area_name"] for r in area_rows}
+
     items = []
     for r in rows:
         allocated_seat_ids = json.loads(r["allocated_seats"]) if r["allocated_seats"] else None
@@ -287,7 +285,7 @@ async def list_quarter_plans(
         )
         items.append({
             "id": r["id"], "project_id": r["project_id"], "project_name": r["project_name"],
-            "pm_pl_names": r["pm_pl_names"] or "未設定",
+            "seat_assigner_names": r["seat_assigner_names"] or "未設定",
             "period_start": r["period_start"].isoformat(), "period_end": r["period_end"].isoformat(),
             "required_seats": r["required_seats"], "status": r["status"],
             "non_fixed_member_count": r["non_fixed_member_count"],
@@ -297,8 +295,122 @@ async def list_quarter_plans(
             "choice1_weekdays": json.loads(r["choice1_weekdays"]) if r["choice1_weekdays"] else None,
             "choice2_weekdays": json.loads(r["choice2_weekdays"]) if r["choice2_weekdays"] else None,
             "note": r["note"],
+            "previous_area": previous_area_by_project.get(r["project_id"]),
         })
-    return {"items": items}
+
+    # 期間未設定のプロジェクト（今日以降に及ぶ計画データを1件も持たないプロジェクト）を別枠で返す
+    # （2026-09-03追加、変更D。「四半期」の自動起票がなくなったため、S-09側でエリア責任者が
+    # 「まだ期間を設定していないプロジェクト」に気づけるようにする必要がある）。
+    unplanned_rows = await pool.fetch(
+        """SELECT p.id, p.name
+           FROM projects p
+           WHERE NOT EXISTS (
+               SELECT 1 FROM project_quarter_plans pqp
+               WHERE pqp.project_id = p.id AND pqp.period_end >= CURRENT_DATE
+           )
+           ORDER BY p.name"""
+    )
+    unplanned_projects = [{"id": r["id"], "name": r["name"]} for r in unplanned_rows]
+
+    return {"items": items, "unplanned_projects": unplanned_projects}
+
+
+class QuarterPlanCreate(BaseModel):
+    period_start: Date
+    period_end: Date
+
+
+@router.post("/projects/{id}/quarter-plans")
+async def create_quarter_plan(id: int, body: QuarterPlanCreate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-67: プロジェクトの座席期間を都度設定する（FR-03-1、2026-09-03新設）。「四半期という概念を撤廃して
+    都度期間を設定するようにしましょう。プロジェクト席を決めるときはまず期間を設定した後、アンケートが
+    自動で送られるようにしましょう」との要望を受けた（検討資料「プロジェクト座席・曜日調整フロー改善案」
+    変更D）。従来のシステムによる四半期ごとの自動起票（_ensure_next_quarter_plans、FR-03-1の旧仕様）を
+    廃止し、エリア責任者・管理部が対象プロジェクトごとに本APIで任意の開始日・終了日を明示的に設定する
+    方式に一本化した。新規作成した計画データはA-65・A-66と同様に直接status='survey_open'で作成し、
+    出社曜日アンケートを即座に回答可能にする（変更Bの方針を踏襲）。required_seatsは、旧
+    _ensure_next_quarter_plans()と同じロジック（固定座席保有者・在宅のため不要なメンバーを除いた人数、
+    メンバーが1人もいなければ1人扱い）で自動算出する。Body: {period_start, period_end}（YYYY-MM-DD）。
+    period_end < period_startは400。同じproject_idの他の計画と期間が重なる場合は400。
+    UNIQUE (project_id, period_start)制約に抵触する場合（同じ開始日の計画が既に存在する場合）は409。"""
+    if body.period_end < body.period_start:
+        raise HTTPException(400, detail="終了日は開始日以降を指定してください")
+    pool = get_pool()
+    project = await pool.fetchrow("SELECT id FROM projects WHERE id = $1", id)
+    if project is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    overlap = await pool.fetchval(
+        """SELECT 1 FROM project_quarter_plans
+           WHERE project_id = $1 AND period_start <= $3 AND period_end >= $2""",
+        id, body.period_start, body.period_end,
+    )
+    if overlap:
+        raise HTTPException(400, detail="指定した期間が、このプロジェクトの他の計画期間と重なっています")
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            required_seats = await _required_seats_for_project(conn, id)
+            try:
+                row = await conn.fetchrow(
+                    """INSERT INTO project_quarter_plans
+                           (project_id, period_start, period_end, required_seats, status)
+                       VALUES ($1, $2, $3, $4, 'survey_open')
+                       RETURNING id""",
+                    id, body.period_start, body.period_end, required_seats,
+                )
+            except asyncpg.UniqueViolationError:
+                raise HTTPException(409, detail="同じ開始日の計画が既に存在します")
+    return {"id": row["id"], "detail": "座席期間を設定しました"}
+
+
+class QuarterPlanBulkCreate(BaseModel):
+    project_ids: list[int]
+    period_start: Date
+    period_end: Date
+
+
+@router.post("/project-quarter-plans/bulk-create")
+async def create_quarter_plans_bulk(body: QuarterPlanBulkCreate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-68: 複数のプロジェクトへ同じ座席期間（開始日・終了日）をまとめて新規設定する（FR-03-1、
+    2026-09-03新設）。「変更Aの期間は全プロジェクトに完全に自由〔任意の開始日・終了日〕、全プロジェクトが
+    同じ期間を共有するようにしたい」との要望を受けた（検討資料「プロジェクト座席・曜日調整フロー改善案」
+    変更D再訂正）。A-67（単一プロジェクトへの新規設定）だけでは「全プロジェクトが同じ期間を共有する」
+    運用を都度手作業で繰り返すことになるため、通常はS-09の「期間未設定のプロジェクトへ座席期間を
+    一括設定する」から本APIを使い、期間未設定の全プロジェクトへ同じ期間をまとめて設定する想定。
+    A-66（period-bulk、既存計画の一括修正）と対になる新規作成版で、同じトランザクション方針
+    （1件でも期間の重なりがあれば全体を失敗させ、どのプロジェクトも作成しない）を踏襲する。
+    Body: {project_ids: [...], period_start, period_end}。required_seatsはA-67と同じロジックで
+    プロジェクトごとに自動算出する。作成した計画データは直接status='survey_open'で作成する。"""
+    if not body.project_ids:
+        raise HTTPException(400, detail="期間を設定するプロジェクトを1つ以上選択してください")
+    if body.period_end < body.period_start:
+        raise HTTPException(400, detail="終了日は開始日以降を指定してください")
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for project_id in body.project_ids:
+                project = await conn.fetchrow("SELECT id, name FROM projects WHERE id = $1", project_id)
+                if project is None:
+                    raise HTTPException(404, detail="対象が見つかりません")
+                overlap = await conn.fetchval(
+                    """SELECT 1 FROM project_quarter_plans
+                       WHERE project_id = $1 AND period_start <= $3 AND period_end >= $2""",
+                    project_id, body.period_start, body.period_end,
+                )
+                if overlap:
+                    raise HTTPException(400, detail=f"「{project['name']}」は、指定した期間が他の計画期間と重なっています")
+                required_seats = await _required_seats_for_project(conn, project_id)
+                try:
+                    await conn.execute(
+                        """INSERT INTO project_quarter_plans
+                               (project_id, period_start, period_end, required_seats, status)
+                           VALUES ($1, $2, $3, $4, 'survey_open')""",
+                        project_id, body.period_start, body.period_end, required_seats,
+                    )
+                except asyncpg.UniqueViolationError:
+                    raise HTTPException(409, detail=f"「{project['name']}」は、同じ開始日の計画が既に存在します")
+    return {"detail": "座席期間を設定しました"}
 
 
 class RequiredSeatsUpdate(BaseModel):
@@ -323,34 +435,106 @@ async def update_required_seats(id: int, body: RequiredSeatsUpdate, _: CurrentUs
     return {"detail": "必要座席数を更新しました"}
 
 
-@router.post("/project-quarter-plans/{id}/survey")
-async def send_survey(id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-41: 出社曜日アンケートを送信（FR-03-3）。status→'survey_open'。Slack通知（FR-03-9①）を送信する
-    （2026-08-28実装。Webhook URL未設定時は送信しない、送信失敗しても本操作は成功扱いとする）。"""
+class PeriodUpdate(BaseModel):
+    period_start: Date
+    period_end: Date
+
+
+@router.put("/project-quarter-plans/{id}/period")
+async def update_period(id: int, body: PeriodUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-65: 座席期間（開始日・終了日）の例外的な上書き（FR-03-1、2026-09-03追加）。「座席期間を
+    エリア責任者が指定〔2か月間のプロジェクト席など〕できるようにしたい」との要望を受けた
+    （検討資料「プロジェクト座席・曜日調整フロー改善案」変更A）。当初は四半期単位の自動起票
+    （_ensure_next_quarter_plans）を残したまま必要なプロジェクトのみ上書きする位置づけだったが、
+    同日中の変更Dで自動起票自体を廃止し、都度A-67で新規作成した計画データの期間を後から修正する
+    用途に変わった。status IN ('seats_confirmed', 'survey_open')（座席の島の割当前）の間
+    変更でき、weekdays_finalized以降は対象外とする（同日中の変更Bで、起票と同時にstatus=
+    'survey_open'になるよう変更したため、実質的にsurvey_openの間ずっと変更できることになる。
+    必要座席数〔A-40〕がいつでも変更できるのと同じ考え方に揃えた）。"""
+    if body.period_end < body.period_start:
+        raise HTTPException(400, detail="終了日は開始日以降を指定してください")
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.id, pqp.status, pqp.period_start, pqp.period_end, p.name AS project_name
-           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
-           WHERE pqp.id = $1""",
-        id,
+        "SELECT id, project_id, status FROM project_quarter_plans WHERE id = $1", id
     )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if plan["status"] != "seats_confirmed":
-        raise HTTPException(400, detail="この状態ではアンケートを送信できません")
-    await pool.execute(
-        "UPDATE project_quarter_plans SET status = 'survey_open', updated_at = now() WHERE id = $1", id
+    if plan["status"] not in ("seats_confirmed", "survey_open"):
+        raise HTTPException(400, detail="座席の島の割当前（曜日確定前）のみ座席期間を変更できます")
+
+    overlap = await pool.fetchval(
+        """SELECT 1 FROM project_quarter_plans
+           WHERE project_id = $1 AND id != $2
+             AND period_start <= $4 AND period_end >= $3""",
+        plan["project_id"], id, body.period_start, body.period_end,
     )
-    await send_slack_notification(
-        f"「{plan['project_name']}」（{plan['period_start']}〜{plan['period_end']}）の出社曜日アンケートを送信しました。"
-    )
-    return {"detail": "アンケートを送信しました"}
+    if overlap:
+        raise HTTPException(400, detail="指定した期間が、同じプロジェクトの他の計画期間と重なっています")
+
+    try:
+        await pool.execute(
+            "UPDATE project_quarter_plans SET period_start = $1, period_end = $2, updated_at = now() WHERE id = $3",
+            body.period_start, body.period_end, id,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(409, detail="同じ開始日の計画が既に存在します")
+    return {"detail": "座席期間を更新しました"}
+
+
+class PeriodBulkUpdate(BaseModel):
+    plan_ids: list[int]
+    period_start: Date
+    period_end: Date
+
+
+@router.put("/project-quarter-plans/period-bulk")
+async def update_period_bulk(body: PeriodBulkUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-66: 指定した複数の計画へ同じ座席期間（開始日・終了日）をまとめて上書きする（FR-03-1、
+    2026-09-03追加）。「一括でプロジェクトの期間を決めれるようにしたい」との要望を受けた。かつては
+    A-63（survey-bulk、廃止）と同じ考え方だった。1件でも対象外（status NOT IN ('seats_confirmed',
+    'survey_open')）や他の計画期間との重なりがあれば全体を失敗させ、どのプロジェクトも更新しない
+    （部分成功による中途半端な状態を避けるため）。単一の計画に対する上書き（A-65）と条件は同じ。"""
+    if not body.plan_ids:
+        raise HTTPException(400, detail="期間を設定するプロジェクトを1つ以上選択してください")
+    if body.period_end < body.period_start:
+        raise HTTPException(400, detail="終了日は開始日以降を指定してください")
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for plan_id in body.plan_ids:
+                plan = await conn.fetchrow(
+                    """SELECT pqp.id, pqp.project_id, pqp.status, p.name AS project_name
+                       FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+                       WHERE pqp.id = $1""",
+                    plan_id,
+                )
+                if plan is None:
+                    raise HTTPException(404, detail="対象が見つかりません")
+                if plan["status"] not in ("seats_confirmed", "survey_open"):
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」は座席の島の割当前（曜日確定前）ではないため、座席期間を変更できません")
+                overlap = await conn.fetchval(
+                    """SELECT 1 FROM project_quarter_plans
+                       WHERE project_id = $1 AND id != $2
+                         AND period_start <= $4 AND period_end >= $3""",
+                    plan["project_id"], plan_id, body.period_start, body.period_end,
+                )
+                if overlap:
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」は、指定した期間が他の計画期間と重なっています")
+                try:
+                    await conn.execute(
+                        "UPDATE project_quarter_plans SET period_start = $1, period_end = $2, updated_at = now() WHERE id = $3",
+                        body.period_start, body.period_end, plan_id,
+                    )
+                except asyncpg.UniqueViolationError:
+                    raise HTTPException(409, detail=f"「{plan['project_name']}」は、同じ開始日の計画が既に存在します")
+    return {"detail": "座席期間を更新しました"}
 
 
 @router.post("/project-quarter-plans/{id}/survey-reminder")
 async def send_survey_reminder(id: int, _: CurrentUser = Depends(require_roles("admin"))):
     """A-42: 未回答のプロジェクトへのリマインドを手動送信（FR-03-9②）。A-41と同様、Slack通知を送信する
-    （2026-08-28実装）。"""
+    （2026-08-28実装）。通知文言は通知設定タブ（S-08）で編集でき、{project_name}を埋め込める
+    （2026-09-02追加）。"""
     plan = await get_pool().fetchrow(
         """SELECT pqp.id, pqp.status, p.name AS project_name
            FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
@@ -361,9 +545,10 @@ async def send_survey_reminder(id: int, _: CurrentUser = Depends(require_roles("
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "survey_open":
         raise HTTPException(400, detail="この状態ではリマインドを送信できません")
-    await send_slack_notification(
-        f"リマインド: 「{plan['project_name']}」の出社曜日アンケートが未回答です。ご回答をお願いします。"
+    message = await render_slack_message(
+        SLACK_MESSAGE_REMINDER_KEY, DEFAULT_MESSAGE_REMINDER, project_name=plan["project_name"],
     )
+    await send_slack_notification(message)
     return {"detail": "リマインドを送信しました"}
 
 
@@ -379,7 +564,16 @@ class WeekdayFinalizeBody(BaseModel):
 @router.put("/project-quarter-plans/finalize-weekdays")
 async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depends(require_roles("admin"))):
     """A-43: 指定した複数の計画の出社曜日を一括確定（FR-03-5）。status→'weekdays_finalized'。対象プロジェクト
-    ごとの確定結果をまとめてSlack通知する（FR-03-9③、2026-08-28実装）。"""
+    ごとの確定結果をまとめてSlack通知する（FR-03-9③、2026-08-28実装）。status='weekdays_finalized'（確定済み）
+    の計画を含めてもよく、その場合は確定内容の上書きとして扱う（2026-09-02訂正。「確定した出社曜日をミスして
+    確定押してしまったときの変更ボタンが欲しい」との要望を受けた。当初は一度確定した計画をアンケート回答受付中
+    に戻してから全プロジェクト共通の調整表で再確定させる方式〔A-61〕だったが、「表から丸ごと取り消しではなく
+    変更にしてほしい」との指摘を受け、対象プロジェクトを個別に直接上書きできるこの方式に改めた。A-61は廃止し、
+    本APIに統合した）。座席の島の割当（A-44）後のstatus='seats_allocated'は対象外のまま（そちらは既存の
+    「座席を編集」で対応する別の操作のため）。確定自体を取り消してアンケート回答受付中に戻す操作は、
+    本APIではなく別途のunfinalize_weekdays（A-62）で行う。通知の先頭行（見出し）は通知設定タブ
+    （S-08）で編集できる（2026-09-02追加）。プロジェクトごとの結果一覧（「・「プロジェクト名」: 曜日」の
+    行）は編集対象外の固定フォーマットとする。"""
     pool = get_pool()
     notified_lines = []
     async with pool.acquire() as conn:
@@ -393,7 +587,7 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                 )
                 if plan is None:
                     raise HTTPException(404, detail="対象が見つかりません")
-                if plan["status"] != "survey_open":
+                if plan["status"] not in ("survey_open", "weekdays_finalized"):
                     raise HTTPException(400, detail="この状態では曜日を確定できません")
                 await conn.execute(
                     """UPDATE project_quarter_plans
@@ -403,10 +597,34 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                 )
                 weekday_label = "・".join(_WEEKDAY_JA[w] for w in item.weekdays_finalized) or "なし"
                 notified_lines.append(f"・「{plan['project_name']}」: {weekday_label}")
-    await send_slack_notification(
-        "出社曜日を確定しました。\n" + "\n".join(notified_lines)
-    )
+    header = await render_slack_message(SLACK_MESSAGE_FINALIZE_HEADER_KEY, DEFAULT_MESSAGE_FINALIZE_HEADER)
+    await send_slack_notification(header + "\n" + "\n".join(notified_lines))
     return {"detail": "出社曜日を確定しました"}
+
+
+@router.put("/project-quarter-plans/{id}/unfinalize-weekdays")
+async def unfinalize_weekdays(id: int, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-62: 出社曜日の確定を取り消し、status→'survey_open'に戻す（2026-09-02追加。「取り消しボタンも作成する
+    ようにしてほしい」との要望を受け、A-61〔廃止〕と同じ内容で再新設。配置場所は「確定した出社曜日」表の各行
+    〔S-09〕とする）。status='weekdays_finalized'からのみ呼び出せる（それ以外は400）。座席の島の割当（A-44）後の
+    status='seats_allocated'は対象外（そちらは既存の「座席を編集」で対応する別の操作のため）。weekdays_finalized
+    の値はクリアせず残し、出社曜日の調整表（WeekdayMatrix）に再表示される際、直前の確定内容をチェック状態の
+    初期値として使う。"""
+    pool = get_pool()
+    plan = await pool.fetchrow(
+        """SELECT pqp.id, pqp.status, p.name AS project_name
+           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.id = $1""",
+        id,
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if plan["status"] != "weekdays_finalized":
+        raise HTTPException(400, detail="この状態では確定を取り消せません")
+    await pool.execute(
+        "UPDATE project_quarter_plans SET status = 'survey_open', updated_at = now() WHERE id = $1", id
+    )
+    return {"detail": "出社曜日の確定を取り消しました"}
 
 
 class SeatBlockAssign(BaseModel):
@@ -428,9 +646,11 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     編集できるようにしたい」との要望を受けた）。編集時は、旧・新いずれの割当座席についても
     その期間中の予約（A-18で生成済みのメンバー個人の周期予約を含む）を取り消す。座席の島が
     変わればメンバーごとの具体的な座席（A-18）も作り直す必要があるため、PJ席決担当が編集後に
-    再度確保し直す想定である。プロジェクトの現在のメンバーが全員固定座席（T-04）を保有している
-    場合は、座席の島自体を割り当てられない（2026-08-31追加。「固定席の人はプロジェクト席を
-    作成できないようにしてほしい」との要望を受けた。required_seatsは計画の起票時点のスナップショット
+    再度確保し直す想定である。プロジェクトの現在のメンバーが全員固定座席（T-04）を保有している、
+    またはずっと在宅勤務でプロジェクト座席が不要（T-06.seat_not_required、FR-03-10）である
+    場合は、座席の島自体を割り当てられない（2026-08-31追加・2026-09-01訂正。「固定席の人はプロジェクト席を
+    作成できないようにしてほしい」「在宅の人も固定座席保有者と同じように必要座席数から除外してほしい」
+    との要望を受けた。required_seatsは計画の起票時点のスナップショット
     のため、起票後にメンバー構成・固定座席の状況が変わっても遡って更新されない〔2.9節T-07参照〕。
     このため、required_seatsが古い値のまま残っている計画に対しては、この時点の実際のメンバー構成を
     都度再確認しないと、誰も使えない座席の島を作成できてしまう不具合があった）。"""
@@ -438,7 +658,8 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         raise HTTPException(400, detail="座席を1つ以上選択してください")
     pool = get_pool()
     plan = await pool.fetchrow(
-        "SELECT id, project_id, status, period_start, period_end, allocated_seats FROM project_quarter_plans WHERE id = $1", id
+        "SELECT id, project_id, status, period_start, period_end, allocated_seats, weekdays_finalized "
+        "FROM project_quarter_plans WHERE id = $1", id
     )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
@@ -448,11 +669,12 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     non_fixed_member_count = await pool.fetchval(
         """SELECT COUNT(*) FROM project_members pm
            WHERE pm.project_id = $1
+             AND NOT pm.seat_not_required
              AND NOT EXISTS (SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id)""",
         plan["project_id"],
     )
     if non_fixed_member_count == 0:
-        raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席を保有しているため、プロジェクト座席は不要です")
+        raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席保有者または在宅のため不要のいずれかであり、プロジェクト座席は不要です")
 
     seats = await pool.fetch(
         "SELECT id, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", body.seat_ids
@@ -465,24 +687,42 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         raise HTTPException(404, detail="対象が見つかりません")
 
     other_plans = await pool.fetch(
-        """SELECT allocated_seats FROM project_quarter_plans
+        """SELECT allocated_seats, weekdays_finalized FROM project_quarter_plans
            WHERE status = 'seats_allocated' AND id != $1
              AND period_start <= $2 AND period_end >= $3""",
         id, plan["period_end"], plan["period_start"],
     )
-    already_allocated = {sid for r in other_plans if r["allocated_seats"] for sid in json.loads(r["allocated_seats"])}
+    # 四半期の期間が重なっていても、確定した出社曜日が1日も重ならない他プロジェクトとは
+    # 同じ座席を共有できる（2026-09-02追加。「10/1が初日のプロジェクト座席でフロアマップを見ると
+    # 未確定で埋まっている」の調査に伴う関連修正。座席の専有はdatabase.project_blocked_seats()と
+    # 同じく曜日単位で判定するのが実態のため、割当時の重複チェックも期間だけでなく曜日の重なりを
+    # 見るようにした。例: 火・水出社のプロジェクトと木・金出社のプロジェクトは同じ座席を割り当てられる）
+    my_weekdays = set(json.loads(plan["weekdays_finalized"])) if plan["weekdays_finalized"] else set()
+    already_allocated: set[int] = set()
+    for r in other_plans:
+        other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
+        if not (my_weekdays & other_weekdays):
+            continue
+        if r["allocated_seats"]:
+            already_allocated |= set(json.loads(r["allocated_seats"]))
     if already_allocated & set(body.seat_ids):
         raise HTTPException(409, detail="既に他プロジェクトへ割り当てられている座席が含まれています")
 
     old_seat_ids = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
     cancel_target_ids = list(set(old_seat_ids) | set(body.seat_ids))
+    # 取り消す予約は、このプロジェクトが実際に専有する曜日（my_weekdays）に該当する日のみに限る
+    # （2026-09-02追加。座席の共有〔上記〕を許可したことに伴う対の修正。曜日を絞らずに期間内を
+    # 一律で取り消すと、曜日が重ならない他プロジェクト〔共有相手〕の正当な予約まで巻き込んで
+    # 取り消してしまうため）
+    my_isodows = [_WEEKDAY_ISODOW[w] for w in my_weekdays]
 
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
                 """UPDATE reservations SET status = 'cancelled', updated_at = now()
-                   WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3""",
-                cancel_target_ids, plan["period_start"], plan["period_end"],
+                   WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3
+                     AND EXTRACT(ISODOW FROM date)::int = ANY($4::int[])""",
+                cancel_target_ids, plan["period_start"], plan["period_end"], my_isodows,
             )
             await conn.execute(
                 """UPDATE project_quarter_plans

@@ -163,4 +163,5 @@ async def me(user: CurrentUser = Depends(require_auth)):
         "employment_type": user.employment_type,
         "employment_status": user.employment_status,
         "avatar_image": avatar_image,
+        "is_system_operator": user.is_system_operator,
     }

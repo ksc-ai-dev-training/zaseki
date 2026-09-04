@@ -23,20 +23,40 @@ interface SeatTileProps {
   selectedSeatIds?: Set<number>
   /** S-10「座席状況の履歴照会」。参照専用表示とし、状態によらずクリック不可のdivで表示する（2026-08-31追加） */
   readOnly?: boolean
+  /** S-04「メンバーへの座席確保モード」（座席表からメンバーへ座席を選ぶ、2026-08-31追加） */
+  memberAssignMode?: boolean
+  /** 座席の島の範囲内かつ未確定（クリックして割り当てられる）座席id */
+  memberAssignEligibleIds?: Set<number>
+  /** このセッション中に暫定的に割り当て済みの座席id→メンバー氏名（送信前のプレビュー表示用） */
+  memberAssignPickedLabels?: Record<number, string>
+  onMemberAssignClick?: (seat: Seat) => void
 }
 
-// マイプロフィール（S-12）のアイコン・誕生日バッジ（FR-08-3・4）。使用中の座席タイルにのみ表示する
-function OccupantExtras({ seat }: { seat: Seat }) {
+// 実際に利用者が使用中の座席（自分の予約・使用中・固定座席・プロジェクト座席個人確定済み）は
+// 座席番号ではなく氏名（苗字）を表示する（2026-08-31訂正。「座席番号と苗字が表示されているが
+// 苗字のみの表示にしてほしい」との要望を受けた）。未確定（project_pending）はプロジェクトの
+// 略称を表示するだけで特定の個人ではないため対象外とし、従来どおり座席番号も表示する。
+const PERSON_OCCUPIED_STATUSES = new Set<SeatStatus>(['mine', 'occupied', 'occupied_fixed', 'project_confirmed'])
+
+// 座席タイルの中身（座席番号または氏名、マイプロフィール・S-12のアイコン・誕生日バッジ）。
+// アイコンを登録している利用者は、苗字とあわせてアイコンも表示する（FR-08-3）
+function SeatContent({ seat }: { seat: Seat }) {
+  const showSeatNo = !PERSON_OCCUPIED_STATUSES.has(seat.status)
   return (
     <>
       {seat.avatar_image && <img src={seat.avatar_image} alt="" className="seat-avatar" />}
       {seat.is_birthday && <span className="seat-birthday-badge" title="本日誕生日です">🎂</span>}
+      {showSeatNo && seat.seat_no}
+      {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
     </>
   )
 }
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
-export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, readOnly }: SeatTileProps) {
+export default function SeatTile({
+  seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, readOnly,
+  memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
+}: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
   }
@@ -44,9 +64,32 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
   if (readOnly) {
     return (
       <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
-        <OccupantExtras seat={seat} />
-        {seat.seat_no}
-        {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+        <SeatContent seat={seat} />
+      </div>
+    )
+  }
+
+  if (memberAssignMode) {
+    // 座席の島の範囲内かつ未確定の座席のみ選択可能（2026-08-31追加）。クリックすると割り当てる
+    // メンバーを選ぶモーダルが開く（Availability.tsx側）。既に暫定割当済みの座席は再クリックで解除できる
+    const eligible = memberAssignEligibleIds?.has(seat.id) ?? false
+    const pickedLabel = memberAssignPickedLabels?.[seat.id]
+    if (eligible) {
+      return (
+        <button
+          type="button"
+          className={`seat-tile status-free ${pickedLabel ? 'ring-2 ring-green-600' : ''}`}
+          style={style}
+          onClick={() => onMemberAssignClick?.(seat)}
+        >
+          {seat.seat_no}
+          {pickedLabel && <span className="seat-tag">{pickedLabel}</span>}
+        </button>
+      )
+    }
+    return (
+      <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
+        <SeatContent seat={seat} />
       </div>
     )
   }
@@ -69,9 +112,7 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
     }
     return (
       <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style}>
-        <OccupantExtras seat={seat} />
-        {seat.seat_no}
-        {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+        <SeatContent seat={seat} />
       </div>
     )
   }
@@ -95,17 +136,13 @@ export default function SeatTile({ seat, onReserve, onCancel, style, fixedSeatAs
   if (seat.status === 'mine') {
     return (
       <button type="button" className="seat-tile status-mine" style={style} onClick={() => onCancel(seat)}>
-        <OccupantExtras seat={seat} />
-        {seat.seat_no}
-        {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+        <SeatContent seat={seat} />
       </button>
     )
   }
   return (
     <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
-      <OccupantExtras seat={seat} />
-      {seat.seat_no}
-      {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
+      <SeatContent seat={seat} />
     </div>
   )
 }

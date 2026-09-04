@@ -50,6 +50,7 @@ interface UserForm {
   isAdmin: boolean
   areaManagerRole: AreaManagerRole
   employmentStatus: EmploymentStatus
+  isSystemOperator: boolean
   customRoleIds: number[]
 }
 
@@ -108,6 +109,7 @@ function UsersTab() {
     setForm({
       id: u.id, lastName: u.last_name, firstName: u.first_name, employmentType: u.employment_type,
       isAdmin: u.role === 'admin', areaManagerRole: u.area_manager_role, employmentStatus: u.employment_status,
+      isSystemOperator: u.is_system_operator,
       customRoleIds: [...u.custom_role_ids],
     })
   }
@@ -137,6 +139,7 @@ function UsersTab() {
           role: form.isAdmin ? 'admin' : ('general' as Role),
           area_manager_role: form.isAdmin ? form.areaManagerRole : null,
           employment_status: form.employmentStatus,
+          is_system_operator: form.isSystemOperator,
         }),
       })
       await Promise.all([
@@ -296,6 +299,14 @@ function UsersTab() {
                 <option value="leave">休職中</option>
                 <option value="retired">退職済み</option>
               </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.isSystemOperator}
+                onChange={(e) => setForm({ ...form, isSystemOperator: e.target.checked })}
+              />
+              <span>システム運用担当（フィードバック一覧を閲覧できる。管理部ロールとは独立）</span>
             </label>
             {form.employmentStatus === 'retired' && (
               <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -501,7 +512,7 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
   error: string | null
 }) {
   const [query, setQuery] = useState('')
-  const { items: candidates } = useUsers('all', 'active', false, query)
+  const { items: candidates } = useUsers('all', 'all', false, query)
   const memberIds = new Set(form.members.map((m) => m.user_id))
   const searchResults = query ? candidates.filter((c) => !memberIds.has(c.id)).slice(0, 6) : []
 
@@ -627,26 +638,40 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
   )
 }
 
+const WEBHOOK_KEY = 'project_seat_slack_webhook_url'
+// アンケート送信時の文言（project_seat_slack_message_survey）は、2026-09-03の変更B（検討資料
+// 「プロジェクト座席・曜日調整フロー改善案」）でシステムによるアンケート送信通知自体を廃止した
+// ことに伴い削除した（エリア責任者が自分でSlackへ連絡する運用に変更）。
+const MESSAGE_FIELDS: { key: string; label: string; hint: string }[] = [
+  { key: 'project_seat_slack_message_reminder', label: 'リマインド送信時の文言', hint: '使える項目: {project_name}' },
+  { key: 'project_seat_slack_message_finalize_header', label: '曜日確定時の文言（見出し行）', hint: 'この後にプロジェクトごとの確定曜日一覧（固定フォーマット）が続く' },
+]
+
 function NotificationsTab() {
   const { items, isLoading, refresh } = useAppSettings()
-  const [value, setValue] = useState('')
+  const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    if (items[0]) setValue(items[0].value ?? '')
+    if (items.length > 0) {
+      setValues(Object.fromEntries(items.map((it) => [it.key, it.value ?? ''])))
+    }
   }, [items])
+
+  const setField = (key: string, v: string) => { setValues((prev) => ({ ...prev, [key]: v })); setSaved(false) }
 
   const save = async () => {
     setSaving(true)
     setError(null)
     setSaved(false)
     try {
-      await apiFetch('/api/app-settings/project_seat_slack_webhook_url', {
-        method: 'PUT',
-        body: JSON.stringify({ value }),
-      })
+      await Promise.all(
+        Object.entries(values).map(([key, value]) =>
+          apiFetch(`/api/app-settings/${key}`, { method: 'PUT', body: JSON.stringify({ value }) })
+        )
+      )
       setSaved(true)
       await refresh()
     } catch (e) {
@@ -657,23 +682,42 @@ function NotificationsTab() {
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white p-6">
+    <div className="max-w-2xl rounded border border-slate-200 bg-white p-6">
       <p className="mb-4 text-sm text-slate-500">
-        出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）を設定する。プロジェクト座席共通の1つの通知先のみを持つ。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う。
+        出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）と、実際に送信される通知文言を設定する。プロジェクト座席共通の1つの通知先のみを持つ。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う。
       </p>
-      <label className="block max-w-md text-sm">
+      <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Slack通知先（Webhook URL）</span>
         <input
           type="text"
-          value={value}
-          onChange={(e) => { setValue(e.target.value); setSaved(false) }}
+          value={values[WEBHOOK_KEY] ?? ''}
+          onChange={(e) => setField(WEBHOOK_KEY, e.target.value)}
           placeholder="https://hooks.slack.com/services/..."
           disabled={isLoading}
           className="h-9 w-full rounded border border-slate-300 px-3"
         />
       </label>
-      {saved && <p className="mt-2 text-xs text-green-700">保存しました</p>}
-      {error && <p className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      <div className="mt-6 space-y-4">
+        <div className="text-sm font-semibold text-slate-700">通知文言（2026-09-02追加。「実際の通知の文言を編集できる機能を追加してほしい」との要望を受けた）</div>
+        {MESSAGE_FIELDS.map((f) => (
+          <label key={f.key} className="block text-sm">
+            <span className="mb-1 block text-slate-500">{f.label}</span>
+            <textarea
+              rows={2}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setField(f.key, e.target.value)}
+              disabled={isLoading}
+              maxLength={500}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            />
+            <span className="mt-1 block text-xs text-slate-400">{f.hint}</span>
+          </label>
+        ))}
+      </div>
+
+      {saved && <p className="mt-4 text-xs text-green-700">保存しました</p>}
+      {error && <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       <button type="button" disabled={saving} onClick={save} className="mt-4 rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
         保存する
       </button>

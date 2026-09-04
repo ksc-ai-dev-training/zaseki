@@ -1,0 +1,18 @@
+# ビルドコンテキストから除外（イメージ肥大化・秘密情報の混入を防ぐ）
+.git
+node_modules
+frontend/node_modules
+frontend/dist
+backend/.venv
+backend/__pycache__
+**/__pycache__
+*.pyc
+
+# 秘密情報。.envは絶対にイメージに含めない
+.env
+.env.*
+!.env.example
+
+# 成果物ドキュメント・検討資料（実行時には不要）
+docs
+検討資料

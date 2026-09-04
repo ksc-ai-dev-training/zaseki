@@ -1,11 +1,32 @@
-import { useEffect, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useMyProfile } from '../hooks/useMyProfile'
 import { useMe } from '../hooks/useMe'
+import Modal from '../components/Modal'
 
+// 保存する画像はCROP_SIZEの円形ビューポートで見えている範囲をOUTPUT_SIZE四方に描き直したJPEGに
+// 統一する（2026-09-02追加。「アイコンが自動的に中央で切り抜かれるので、自分でズーム・位置を
+// 調整できるようにしてほしい」との要望を受けた。以前はアップロードしたファイルをそのまま
+// data URLとして保存し、表示側のobject-coverによる中央切り抜きに委ねていた）
 const MAX_AVATAR_BYTES = 300 * 1024
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const CROP_SIZE = 224
+const OUTPUT_SIZE = 240
+const MIN_ZOOM = 1
+const MAX_ZOOM = 3
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
+
+function dataUrlByteLength(dataUrl: string): number {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  return Math.ceil((base64.length * 3) / 4)
+}
+
+function clampOffset(x: number, y: number, dispW: number, dispH: number): { x: number; y: number } {
+  const minX = Math.min(0, CROP_SIZE - dispW)
+  const minY = Math.min(0, CROP_SIZE - dispH)
+  return { x: Math.min(0, Math.max(minX, x)), y: Math.min(0, Math.max(minY, y)) }
+}
 
 // うるう年（2028年）を基準に、年を持たない月日の日数上限を求める（2/29を許容するため。バックエンドと同じ考え方）
 function daysInMonth(month: number): number {
@@ -25,6 +46,19 @@ export default function MyProfile() {
   const [saved, setSaved] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // アイコンの位置・拡大率を調整するモーダル（S-12）の状態
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  const [zoom, setZoom] = useState(MIN_ZOOM)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const cropImgRef = useRef<HTMLImageElement>(null)
+  const dragRef = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null)
+
+  const baseScale = natural ? Math.max(CROP_SIZE / natural.w, CROP_SIZE / natural.h) : 1
+  const scale = baseScale * zoom
+  const dispW = natural ? natural.w * scale : 0
+  const dispH = natural ? natural.h * scale : 0
+
   useEffect(() => {
     if (!profile) return
     setAvatarImage(profile.avatar_image)
@@ -36,19 +70,88 @@ export default function MyProfile() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    setSaved(false)
     if (!ACCEPTED_TYPES.includes(file.type)) {
       setError('画像はJPEG・PNG・GIF・WebP形式でアップロードしてください')
       return
     }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setError('画像は300KB以下のファイルを選択してください')
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('画像は10MB以下のファイルを選択してください')
       return
     }
     setError(null)
+    setNatural(null)
+    setZoom(MIN_ZOOM)
+    setOffset({ x: 0, y: 0 })
     const reader = new FileReader()
-    reader.onload = () => setAvatarImage(reader.result as string)
+    reader.onload = () => setCropSrc(reader.result as string)
     reader.readAsDataURL(file)
+  }
+
+  const onCropImageLoad = () => {
+    const img = cropImgRef.current
+    if (!img) return
+    const w = img.naturalWidth
+    const h = img.naturalHeight
+    const initialScale = Math.max(CROP_SIZE / w, CROP_SIZE / h)
+    setNatural({ w, h })
+    setOffset({ x: (CROP_SIZE - w * initialScale) / 2, y: (CROP_SIZE - h * initialScale) / 2 })
+  }
+
+  const onZoomChange = (nextZoom: number) => {
+    if (!natural) { setZoom(nextZoom); return }
+    const oldDispW = natural.w * scale
+    const oldDispH = natural.h * scale
+    const fracX = (CROP_SIZE / 2 - offset.x) / oldDispW
+    const fracY = (CROP_SIZE / 2 - offset.y) / oldDispH
+    const newScale = baseScale * nextZoom
+    const newDispW = natural.w * newScale
+    const newDispH = natural.h * newScale
+    setZoom(nextZoom)
+    setOffset(clampOffset(CROP_SIZE / 2 - fracX * newDispW, CROP_SIZE / 2 - fracY * newDispH, newDispW, newDispH))
+  }
+
+  const onCropPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffsetX: offset.x, startOffsetY: offset.y }
+  }
+
+  const onCropPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || !natural) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setOffset(clampOffset(dragRef.current.startOffsetX + dx, dragRef.current.startOffsetY + dy, dispW, dispH))
+  }
+
+  const onCropPointerUp = () => { dragRef.current = null }
+
+  const cancelCrop = () => { setCropSrc(null); dragRef.current = null }
+
+  const confirmCrop = () => {
+    const img = cropImgRef.current
+    if (!img || !natural) return
+    const canvas = document.createElement('canvas')
+    canvas.width = OUTPUT_SIZE
+    canvas.height = OUTPUT_SIZE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const sx = -offset.x / scale
+    const sy = -offset.y / scale
+    const sSize = CROP_SIZE / scale
+    ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+
+    let quality = 0.85
+    let dataUrl = canvas.toDataURL('image/jpeg', quality)
+    while (dataUrlByteLength(dataUrl) > MAX_AVATAR_BYTES && quality > 0.3) {
+      quality -= 0.15
+      dataUrl = canvas.toDataURL('image/jpeg', quality)
+    }
+    if (dataUrlByteLength(dataUrl) > MAX_AVATAR_BYTES) {
+      setError('画像の保存に失敗しました。別の画像でお試しください')
+      return
+    }
+    setAvatarImage(dataUrl)
+    setSaved(false)
+    setCropSrc(null)
   }
 
   const onMonthChange = (value: string) => {
@@ -116,7 +219,7 @@ export default function MyProfile() {
                   )}
                 </div>
               </div>
-              <p className="mt-2 text-xs text-slate-400">JPEG・PNG・GIF・WebP形式、300KB以下。未設定の場合は氏名の頭文字で表示されます。</p>
+              <p className="mt-2 text-xs text-slate-400">JPEG・PNG・GIF・WebP形式、10MB以下。選択すると位置・拡大率を調整する画面が開きます。未設定の場合は氏名の頭文字で表示されます。</p>
             </div>
 
             <div className="mb-6">
@@ -172,6 +275,59 @@ export default function MyProfile() {
           </div>
         )}
       </div>
+
+      {cropSrc && (
+        <Modal
+          title="アイコンの位置・拡大率を調整"
+          onClose={cancelCrop}
+          footer={
+            <>
+              <button type="button" onClick={cancelCrop} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={confirmCrop} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white hover:bg-blue-900">適用する</button>
+            </>
+          }
+        >
+          <div className="flex flex-col items-center gap-4">
+            <div
+              className="relative touch-none overflow-hidden rounded-full border border-slate-300 bg-slate-100"
+              style={{ width: CROP_SIZE, height: CROP_SIZE, cursor: 'grab' }}
+              onPointerDown={onCropPointerDown}
+              onPointerMove={onCropPointerMove}
+              onPointerUp={onCropPointerUp}
+              onPointerLeave={onCropPointerUp}
+            >
+              <img
+                ref={cropImgRef}
+                src={cropSrc}
+                onLoad={onCropImageLoad}
+                draggable={false}
+                alt=""
+                style={{
+                  position: 'absolute',
+                  left: offset.x,
+                  top: offset.y,
+                  width: dispW || undefined,
+                  height: dispH || undefined,
+                  maxWidth: 'none',
+                }}
+              />
+            </div>
+            <label className="flex w-full items-center gap-2 text-xs text-slate-500">
+              拡大
+              <input
+                type="range"
+                min={MIN_ZOOM}
+                max={MAX_ZOOM}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => onZoomChange(Number(e.target.value))}
+                className="flex-1"
+              />
+            </label>
+            <p className="text-xs text-slate-400">ドラッグして位置を調整できます。</p>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

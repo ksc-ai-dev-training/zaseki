@@ -1,4 +1,5 @@
 # A-08, A-09, A-10, A-11, A-12 空き状況・予約（S-02）。詳細設計書3.3節・5.5.2節・6.4節
+import json
 from datetime import date as Date
 from typing import Literal
 
@@ -16,6 +17,8 @@ from database import (
 )
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
+
+_WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 class ReservationCreate(BaseModel):
@@ -157,7 +160,20 @@ async def cancel_recurring_occurrence(rule_id: int, date: Date, user: CurrentUse
 async def list_my_reservations(
     scope: Literal["upcoming", "past"], user: CurrentUser = Depends(require_auth)
 ):
-    """A-08: 自分の予約一覧（FR-01-4）。常に自分のuser_idのみが対象（5.4節）"""
+    """A-08: 自分の予約一覧（FR-01-4）。常に自分のuser_idのみが対象（5.4節）。
+
+    従来のtype〔single/recurring〕をレスポンスから廃止し、seat_type（座席種別）に置き換えた
+    （2026-09-03追加。「種別としてプロジェクト座席なのに周期予約になっているのは違和感を感じる」との
+    報告を受けた。typeは予約の作り方〔A-10かA-18か〕を表すだけで、プロジェクト座席はA-18経由のため
+    常にrecurringになり、S-02の一覧では実際の座席種別〔フリー／プロジェクト〕が分からなかった）。
+    プロジェクト座席の専有は座席自体のseats.seat_typeを変更しない設計（3.3節・3.9節、A-46備考も参照）
+    のため、reservations行はプロジェクト座席であってもseats.seat_type='free'のまま記録される。
+    そのためA-46（search_reservations）のproject_name_for()と同じ考え方で、座席の島の割当
+    （project_quarter_plans.allocated_seats）と予約日の曜日が確定した出社曜日（weekdays_finalized）に
+    一致する行のみseat_typeを'project'に上書きする。
+    あわせてregistrant（登録者）を、自分以外が登録した場合は従来の固定文言「代理予約」から、実際に
+    登録した利用者（created_by）の氏名＋「（代理予約）」に変更した（「誰が登録したのか特定の名前が
+    表示されるようにしてほしい」との要望を受けた）。"""
     today = Date.today()
     if scope == "upcoming":
         condition = "r.status = 'active' AND r.date >= $2"
@@ -166,15 +182,38 @@ async def list_my_reservations(
         condition = "(r.status = 'cancelled' OR r.date < $2)"
         order = "r.date DESC"
 
-    rows = await get_pool().fetch(
-        f"""SELECT r.id, r.date, r.status, r.created_by, r.recurring_rule_id, s.seat_no, a.name AS area_name
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"""SELECT r.id, r.date, r.status, r.created_by, r.seat_id, s.seat_no, s.seat_type,
+                   a.name AS area_name, cb.last_name AS created_by_last_name, cb.first_name AS created_by_first_name
             FROM reservations r
             JOIN seats s ON s.id = r.seat_id
             JOIN areas a ON a.id = s.area_id
+            LEFT JOIN users cb ON cb.id = r.created_by
             WHERE r.user_id = $1 AND {condition}
             ORDER BY {order}""",
         user.id, today,
     )
+
+    plan_rows = await pool.fetch(
+        """SELECT pqp.period_start, pqp.period_end, pqp.allocated_seats, pqp.weekdays_finalized
+           FROM project_quarter_plans pqp
+           WHERE pqp.status = 'seats_allocated' AND pqp.allocated_seats IS NOT NULL"""
+    )
+    plans = [
+        (
+            p["period_start"], p["period_end"], set(json.loads(p["allocated_seats"])),
+            set(json.loads(p["weekdays_finalized"])) if p["weekdays_finalized"] else set(),
+        )
+        for p in plan_rows
+    ]
+
+    def is_project_seat(seat_id: int, date: Date) -> bool:
+        target_weekday = _WEEKDAY_CODES[date.weekday()]
+        return any(
+            seat_id in seat_ids and p_start <= date <= p_end and target_weekday in weekdays
+            for p_start, p_end, seat_ids, weekdays in plans
+        )
 
     items = []
     for r in rows:
@@ -182,10 +221,17 @@ async def list_my_reservations(
             state = "upcoming"
         else:
             state = "cancelled" if r["status"] == "cancelled" else "used"
+        if r["created_by"] == user.id:
+            registrant = "本人"
+        elif r["created_by_last_name"] is not None:
+            registrant = f"{r['created_by_last_name']} {r['created_by_first_name']}（代理予約）"
+        else:
+            registrant = "代理予約"
+        seat_type = "project" if is_project_seat(r["seat_id"], r["date"]) else r["seat_type"]
         items.append({
             "id": r["id"], "date": r["date"].isoformat(), "seat_no": r["seat_no"],
-            "area": r["area_name"], "type": "recurring" if r["recurring_rule_id"] is not None else "single",
-            "registrant": "本人" if r["created_by"] == user.id else "代理予約",
+            "area": r["area_name"], "seat_type": seat_type,
+            "registrant": registrant,
             "state": state,
         })
     return {"items": items}

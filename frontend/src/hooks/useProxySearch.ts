@@ -2,7 +2,7 @@ import useSWR from 'swr'
 import { apiFetch } from '../lib/api'
 import type { ProxyRow } from '../types'
 
-export type ProxySeatTypeFilter = 'all' | 'free' | 'fixed'
+export type ProxySeatTypeFilter = 'all' | 'free' | 'fixed' | 'project'
 
 // A-46: 代理予約・取消の対象者検索（予約・割当単位の一覧）。start/endはYYYY-MM（表示期間、任意）
 export function useProxySearch(userName: string, seatType: ProxySeatTypeFilter, start: string, end: string) {

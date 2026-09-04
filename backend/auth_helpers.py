@@ -29,6 +29,7 @@ class CurrentUser:
     area_manager_role: str | None
     employment_type: str
     employment_status: str
+    is_system_operator: bool
 
 
 def issue_jwt(user_id: int, role: str) -> str:
@@ -51,7 +52,7 @@ async def require_auth(request: Request) -> CurrentUser:
     payload = verify_jwt(token)
     row = await get_pool().fetchrow(
         """SELECT id, email, last_name, first_name, role, area_manager_role,
-                  employment_type, employment_status, deleted_at
+                  employment_type, employment_status, is_system_operator, deleted_at
            FROM users WHERE id = $1""",
         int(payload["sub"]),
     )
@@ -62,6 +63,7 @@ async def require_auth(request: Request) -> CurrentUser:
         id=row["id"], email=row["email"], last_name=row["last_name"], first_name=row["first_name"],
         role=row["role"], area_manager_role=row["area_manager_role"],
         employment_type=row["employment_type"], employment_status=row["employment_status"],
+        is_system_operator=row["is_system_operator"],
     )
 
 
@@ -71,3 +73,12 @@ def require_roles(*roles: str):
             raise HTTPException(403, detail="この操作を行う権限がありません")
         return user
     return checker
+
+
+async def require_system_operator(user: CurrentUser = Depends(require_auth)) -> CurrentUser:
+    """P-SYSOP: システム運用担当（FR-09-3、2026-09-01追加）。role='admin'（管理部）とは独立した
+    属性で判定する（フィードバック一覧は業務上の管理部ではなく、システムを実際に運用している人に
+    見せたいとの要望のため）。"""
+    if not user.is_system_operator:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+    return user

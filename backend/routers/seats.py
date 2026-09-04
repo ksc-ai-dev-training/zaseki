@@ -63,7 +63,11 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     """A-06・A-45共通のフロアマップ状況組み立て処理。
 
     'fixed'座席はT-04（S-05）の恒久割当で判定し、日次のreservationは参照しない（T-04には
-    日次の行が存在しないため）。プロジェクト座席はT-07（S-09）の座席の島の割当（allocated_seats）
+    日次の行が存在しないため）。release_expired_fixed_seats()は実際の本日時点で期限切れの割当のみ
+    解除するため、指定dateが未来日で、かつその日が割当のvalid_untilを過ぎている場合は、まだDB上の
+    割当は残っていてもその日には空席として扱う（2026-09-02修正。フロアマップで期限翌日以降の未来日を
+    表示すると、まだ本日を迎えていない期限切れ前の割当のせいで、期限を過ぎているはずのその日でも
+    「固定」表示のままになる不具合があったため）。プロジェクト座席はT-07（S-09）の座席の島の割当（allocated_seats）
     のうち、指定dateがその計画のperiod_start〜period_endに含まれるものだけを対象とする
     （project_blocked_seats、2026-08-28訂正。割当が決定した四半期の前でも通常のフリー座席として
     予約できる必要があるため、座席自体を恒久的にproject化する実装は撤回した）。対象期間中の
@@ -79,7 +83,8 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
                   r.id AS reservation_id, r.user_id AS reserved_user_id, ru.last_name, ru.first_name,
                   ru.avatar_image AS reserved_avatar_image, ru.birth_month AS reserved_birth_month,
                   ru.birth_day AS reserved_birth_day,
-                  fsa.user_id AS fixed_user_id, fu.last_name AS fixed_last_name,
+                  fsa.user_id AS fixed_user_id, fsa.valid_until AS fixed_valid_until,
+                  fu.last_name AS fixed_last_name,
                   fu.avatar_image AS fixed_avatar_image, fu.birth_month AS fixed_birth_month,
                   fu.birth_day AS fixed_birth_day
            FROM seats s
@@ -113,7 +118,8 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
         is_birthday = False
 
         if r["seat_type"] == "fixed":
-            if r["fixed_user_id"] is None:
+            expired_on_viewed_date = r["fixed_valid_until"] is not None and r["fixed_valid_until"] < date
+            if r["fixed_user_id"] is None or expired_on_viewed_date:
                 status, display_name = "free", None
             else:
                 status, display_name = "occupied_fixed", r["fixed_last_name"]
@@ -198,8 +204,12 @@ async def get_availability_period(
     start・endは指定がなければRULE-05の予約可能期間全体（前月26日〜当月末日、当月26日
     以降は翌月末日まで延長）を既定値とし、指定があってもその範囲を超えないようクランプする
     （画面モックアップのresetPeriodFilter/clampToPeriodを踏襲）。
-    固定座席（T-04未実装だがseat_type='fixed'）は毎日同じ利用者のままで一覧が見づらいため対象外とする。
+    固定座席（seat_type='fixed'）は毎日同じ利用者のままで表示が冗長になるため、割当期間中の
+    最初の日だけ氏名を表示し、以降は'-'とする（2026-09-02、「固定座席の人の席は表示しなくていい」
+    としていた方針を「表示してほしいが冗長さは避けたい」に変更する要望を受けて対象に含めた。
+    以前の除外方針は撤回）。有効期限（valid_until）を過ぎた日はA-06と同様に空き席として扱う。
     """
+    await release_expired_fixed_seats()
     full_start, full_end = await free_seat_bookable_period()
     range_start = min(max(start or full_start, full_start), full_end)
     range_end = min(max(end or full_end, full_start), full_end)
@@ -214,7 +224,7 @@ async def get_availability_period(
            LEFT JOIN reservations r
                ON r.seat_id = s.id AND r.date BETWEEN $1 AND $2 AND r.status = 'active'
            LEFT JOIN users u ON u.id = r.user_id
-           WHERE s.status = 'active' AND s.seat_type != 'fixed'
+           WHERE s.status = 'active'
              AND ($3 = 'all' OR lower(a.name) = $3)
            ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
         range_start, range_end, area,
@@ -251,6 +261,27 @@ async def get_availability_period(
             "display_name": display_name,
             "reservation_id": r["reservation_id"] if status == "mine" else None,
         }
+
+    fixed_rows = await get_pool().fetch(
+        "SELECT fsa.seat_id, u.last_name, fsa.valid_until FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id"
+    )
+    fixed_by_seat_id = {r["seat_id"]: r for r in fixed_rows}
+    for seat in seats.values():
+        fsa = fixed_by_seat_id.get(seat["id"])
+        if seat["seat_type"] != "fixed" or fsa is None:
+            continue
+        name_shown = False
+        d = range_start
+        while d <= range_end:
+            if fsa["valid_until"] is None or d <= fsa["valid_until"]:
+                display_name = fsa["last_name"] if not name_shown else "-"
+                name_shown = True
+                seat["days"][d.isoformat()] = {
+                    "status": "occupied_fixed",
+                    "display_name": display_name,
+                    "reservation_id": None,
+                }
+            d += timedelta(days=1)
 
     dates = []
     d = range_start

@@ -17,6 +17,9 @@ export interface Me {
   employment_status: EmploymentStatus
   /** マイプロフィール（S-12）で登録したアイコン画像（data URL）。未登録はnull（2026-08-31追加） */
   avatar_image: string | null
+  /** システム運用担当（FR-09-3、2026-09-01追加）。role='admin'とは独立の属性で、
+   * フィードバック一覧（S-14）へのアクセスに使う */
+  is_system_operator: boolean
 }
 
 // A-56・A-57 マイプロフィール（S-12）。要件定義書4.8節・FR-08-1〜2
@@ -122,10 +125,12 @@ export interface ProxyRow {
   id: number
   user_id: number
   user_name: string
-  seat_type: 'free' | 'fixed'
+  seat_type: 'free' | 'fixed' | 'project'
   date: string | null
   seat_no: string
   area: 'NORTH' | 'EAST' | 'WEST'
+  /** seat_type='project'のときのプロジェクト名。それ以外はnull（2026-09-01追加） */
+  project_name: string | null
 }
 
 // S-02をS-11から「代理予約モード」で開く際にreact-routerのlocation.stateへ積む値
@@ -134,8 +139,9 @@ export interface ProxyBookingFor {
   userName: string
 }
 
-// A-07 GET /seats/availability/period（S-02 期間ビュー）。固定座席（seat_type='fixed'）は対象外
-export type PeriodCellStatus = 'free' | 'mine' | 'occupied'
+// A-07 GET /seats/availability/period（S-02 期間ビュー）。固定座席（seat_type='fixed'）は割当期間中の
+// 最初の日のみ氏名を表示し、以降は'-'（display_name）とする（occupied_fixed、2026-09-02追加）
+export type PeriodCellStatus = 'free' | 'mine' | 'occupied' | 'occupied_fixed'
 
 export interface PeriodCell {
   status: PeriodCellStatus
@@ -160,6 +166,38 @@ export interface PeriodAvailabilityResponse {
   full_end: string
   dates: string[]
   seats: PeriodSeat[]
+}
+
+// A-69 GET /reservations/period-grid（S-11 期間ビュー）。A-07と同じ座席×日付のマトリクス形式だが、
+// 管理部が代理で取消・変更するため氏名の匿名化を行わず、対象者と操作対象のIDを常に返す
+// （2026-09-03追加。「S-11をS-02の期間ビューのような画面にしたい」との要望を受けた）
+export type PeriodGridCellStatus = 'free' | 'reserved' | 'fixed'
+
+export interface PeriodGridCell {
+  status: PeriodGridCellStatus
+  kind: ProxyRowKind | null
+  /** kind='reservation'ならreservations.id、kind='fixed'ならseats.id（A-21の解除に使う）。'free'ならnull */
+  id: number | null
+  user_id: number | null
+  user_name: string | null
+  project_name: string | null
+}
+
+export interface PeriodGridSeat {
+  id: number
+  seat_no: string
+  area: 'NORTH' | 'EAST' | 'WEST'
+  seat_type: SeatType
+  days: Record<string, PeriodGridCell>
+}
+
+export interface PeriodGridResponse {
+  start: string
+  end: string
+  full_start: string
+  full_end: string
+  dates: string[]
+  seats: PeriodGridSeat[]
 }
 
 // A-30 GET /areas（S-07 座席マスタ管理のエリア選択欄等）
@@ -191,7 +229,7 @@ export interface MyReservation {
   date: string
   seat_no: string
   area: string
-  type: 'single' | 'recurring'
+  seat_type: SeatType
   registrant: string
   state: ReservationState
 }
@@ -206,6 +244,8 @@ export interface UserRoleItem {
   role: Role
   area_manager_role: AreaManagerRole
   employment_status: EmploymentStatus
+  /** システム運用担当（FR-09-3、2026-09-01追加）。フィードバック一覧（S-14）へのアクセスに使う */
+  is_system_operator: boolean
   retired: boolean
   /** T-15のrole_master_id一覧。編集モーダルのチェックボックス初期状態に使う */
   custom_role_ids: number[]
@@ -253,7 +293,7 @@ export interface QuarterPlanItem {
   id: number
   project_id: number
   project_name: string
-  pm_pl_names: string
+  seat_assigner_names: string
   period_start: string
   period_end: string
   required_seats: number
@@ -266,6 +306,7 @@ export interface QuarterPlanItem {
   choice1_weekdays: Weekday[] | null
   choice2_weekdays: Weekday[] | null
   note: string | null
+  previous_area: 'NORTH' | 'EAST' | 'WEST' | null
 }
 
 // S-02をS-09から「座席の島の割当モード」で開く際にreact-routerのlocation.stateへ積む値
@@ -276,6 +317,29 @@ export interface SeatBlockFor {
   // 割当済み（status='seats_allocated'）の計画を「編集」で開いた場合、現在の割当座席（2026-08-28追加）。
   // 新規割当（weekdays_finalizedから遷移）の場合はundefined
   allocatedSeatIds?: number[]
+  // 対象四半期の開始日（YYYY-MM-DD、10/1・1/1・4/1・7/1のいずれか）。フロアマップの初期表示日の
+  // 起点にする（2026-08-31追加。「プロジェクト座席が決まる基準日の座席表を表示してほしい」との
+  // 要望を受けた。割当時点〔今日〕ではなく実際に座席が使われ始める日の空き状況を見ながら座席を
+  // 選べるようにするため）
+  periodStart: string
+  // 確定した出社曜日（T-07.weekdays_finalized）。フロアマップの初期表示日は、periodStartそのもの
+  // ではなく、periodStart以降でこの曜日に最初に該当する日にする（2026-09-02追加。「曜日が確定して
+  // いるときに座席の割り当てをするので、その曜日のプロジェクト始動日初日に設定してほしい」との
+  // 要望を受けた。periodStart自体が確定曜日と一致しないことがあるため）
+  weekdaysFinalized?: Weekday[] | null
+}
+
+// S-04をS-02から「メンバーへの座席確保モード」で開く際にreact-routerのlocation.stateへ積む値
+// （2026-08-31追加。「座席表から選択できるようにしてほしい」との要望を受けた）
+export interface MemberSeatAssignFor {
+  planId: number
+  projectName: string
+  // 対象四半期の開始日（YYYY-MM-DD）。フロアマップの初期表示日にする（S-09の座席の島の割当と同じ考え方）
+  periodStart: string
+  // 座席の島の範囲（この範囲内の座席のみ選択対象にする）
+  allocatedSeatIds: number[]
+  // まだ座席が確保されていないメンバー（固定座席保有者は対象外）
+  members: { userId: number; name: string }[]
 }
 
 export type ProjectTitle = 'PM' | 'PL' | 'SL' | null
@@ -295,7 +359,9 @@ export interface MyProjectItem {
   project_name: string
   project_title: ProjectTitle
   can_assign_seats: boolean
-  plan: MyProjectPlanSummary | null
+  // 対象四半期を自由に選択できるよう、存在する計画を全件（period_start昇順）返す
+  // （2026-08-31訂正。従来はplan: MyProjectPlanSummary | null で直近1件のみだった）
+  plans: MyProjectPlanSummary[]
 }
 
 // A-14 GET /project-quarter-plans/{id}（S-04）
@@ -306,6 +372,7 @@ export interface ProjectPlanMember {
   project_title: ProjectTitle
   can_assign_seats: boolean
   has_fixed_seat: boolean
+  seat_not_required: boolean
   assigned_seat_id: number | null
   assigned_seat_no: string | null
 }
@@ -374,4 +441,17 @@ export interface SeatAssignmentResult {
   reason?: string
   created_days?: number
   excluded_days?: number
+}
+
+// フィードバック（S-13「フィードバック」タブ・S-14一覧、FR-09-2・FR-09-3、2026-09-01追加）
+export type FeedbackCategory = 'bug' | 'request' | 'other'
+
+// A-60 GET /feedback（S-14、管理部のみ）
+export interface FeedbackItem {
+  id: number
+  category: FeedbackCategory
+  category_ja: string
+  content: string
+  created_at: string
+  name: string
 }

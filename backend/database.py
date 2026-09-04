@@ -66,12 +66,17 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_image       TEXT,
     birth_month        SMALLINT CHECK (birth_month BETWEEN 1 AND 12),
     birth_day          SMALLINT CHECK (birth_day BETWEEN 1 AND 31),
+    -- システム運用担当（FR-09-3、2026-09-01追加）。「フィードバック一覧は管理部ではなくシステムを
+    -- 運用している人に見せたい」との要望を受けた。role='admin'（管理部、業務上の役割）とは独立した
+    -- 属性とし、area_manager_role同様、S-08「利用者ロール管理」で管理部が任意の利用者に付与する
+    is_system_operator BOOLEAN NOT NULL DEFAULT false,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_image TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_month SMALLINT CHECK (birth_month BETWEEN 1 AND 12);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_day SMALLINT CHECK (birth_day BETWEEN 1 AND 31);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system_operator BOOLEAN NOT NULL DEFAULT false;
 
 -- T-02 areas
 CREATE TABLE IF NOT EXISTS areas (
@@ -164,10 +169,14 @@ CREATE TABLE IF NOT EXISTS project_members (
     project_title          VARCHAR(10) CHECK (project_title IN ('PM', 'PL', 'SL')),
     can_assign_seats       BOOLEAN NOT NULL DEFAULT false,
     seat_assign_granted_by BIGINT REFERENCES users(id),
+    -- ずっと在宅勤務でプロジェクト座席が不要なメンバー用のフラグ（FR-03-10、2026-09-01追加）。
+    -- has_fixed_seatと同様、座席確保操作（FR-03-7）の対象・必要人数から除外する
+    seat_not_required      BOOLEAN NOT NULL DEFAULT false,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (project_id, user_id)
 );
+ALTER TABLE project_members ADD COLUMN IF NOT EXISTS seat_not_required BOOLEAN NOT NULL DEFAULT false;
 
 -- T-07 project_quarter_plans。2026-08-27にarea_id/area_assigned_byを廃止した設計を反映（座席の島の
 -- 割当で選んだ座席のarea_idから自明に決まるため、四半期計画自体にエリアを持たせる必要がない）
@@ -225,6 +234,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
     description TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- T-17 feedback（ヘルプ画面からのフィードバック。FR-09-2・FR-09-3、2026-09-01追加）
+CREATE TABLE IF NOT EXISTS feedback (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id),
+    category    VARCHAR(10) NOT NULL
+                CHECK (category IN ('bug', 'request', 'other')),
+    content     TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """
 
@@ -308,16 +327,26 @@ async def project_blocked_seats(target_date: Date) -> dict[int, str]:
     四半期の座席の島の割当（A-44）は前月25日までに決定するが、専有されるのはあくまで
     その四半期のperiod_start〜period_end期間中のみで、割当が決定した時点（それより前）は
     通常のフリー座席として予約できる（2026-08-28訂正。座席自体のseat_typeを恒久的に
-    'project'へ変更する実装は誤りだったため撤回し、都度この関数で期間を判定する方式に変更）。"""
+    'project'へ変更する実装は誤りだったため撤回し、都度この関数で期間を判定する方式に変更）。
+    期間中であっても、指定日の曜日がそのプロジェクトの確定した出社曜日（weekdays_finalized）に
+    含まれない日は対象外とする（2026-09-02修正。「10/1が初日のプロジェクト席でフロアマップを見ると
+    未確定（プロジェクト座席）で埋まっている」との報告を受けた。従来は期間中の曜日を問わず毎日
+    専有扱いにしていたため、例えば火・水のみ出社が確定しているプロジェクトの座席が、月・木・金にも
+    「未確定」表示で埋まり、他の利用者が実際には誰も使わないその座席をフリー座席として予約できない
+    不具合があった）。"""
     rows = await get_pool().fetch(
-        """SELECT pqp.allocated_seats, p.name
+        """SELECT pqp.allocated_seats, pqp.weekdays_finalized, p.name
            FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.status = 'seats_allocated' AND $1 BETWEEN pqp.period_start AND pqp.period_end""",
         target_date,
     )
+    target_weekday = _WEEKDAY_CODES[target_date.weekday()]
     result: dict[int, str] = {}
     for r in rows:
+        weekdays = json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else []
+        if target_weekday not in weekdays:
+            continue
         if r["allocated_seats"]:
             for seat_id in json.loads(r["allocated_seats"]):
                 result[seat_id] = r["name"]

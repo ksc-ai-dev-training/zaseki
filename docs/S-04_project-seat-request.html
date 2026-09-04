@@ -230,7 +230,7 @@
         <div class="panel-body">
           <div class="table-wrap">
             <table class="table" id="bulk-assign-table">
-              <thead><tr><th>氏名</th><th>座席の確保状況</th><th>割り当てる座席</th></tr></thead>
+              <thead><tr><th>氏名</th><th>座席の確保状況</th><th>割り当てる座席</th><th>在宅のため不要</th></tr></thead>
               <tbody>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">高</span>高橋 美咲</td>
@@ -244,6 +244,7 @@
                       <option value="N4">N4</option>
                     </select>
                   </td>
+                  <td><input type="checkbox" onchange="toggleSeatNotRequired('高橋 美咲', this)"></td>
                 </tr>
                 <tr>
                   <td><span class="avatar" style="margin-right:8px">中</span>中村 隆</td>
@@ -257,6 +258,13 @@
                       <option value="N4">N4</option>
                     </select>
                   </td>
+                  <td><input type="checkbox" onchange="toggleSeatNotRequired('中村 隆', this)"></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar" style="margin-right:8px">石</span>石井 陽菜</td>
+                  <td class="cell-sub">在宅のため不要</td>
+                  <td class="cell-sub">対象外（在宅のため不要）</td>
+                  <td><input type="checkbox" checked onchange="toggleSeatNotRequired('石井 陽菜', this)"></td>
                 </tr>
               </tbody>
             </table>
@@ -287,6 +295,21 @@ function submitSurveyResponse() {
 }
 function toggleSeatAssignRight(name, checkbox) {
   alert((checkbox.checked ? name + 'に席決め権限を付与しました' : name + 'の席決め権限を外しました') + '（モック。管理部の承認は不要）');
+}
+function toggleSeatNotRequired(name, checkbox) {
+  var row = checkbox.closest('tr');
+  var statusCell = row.children[1];
+  var seatCell = row.children[2];
+  if (checkbox.checked) {
+    statusCell.textContent = '在宅のため不要';
+    seatCell.innerHTML = '対象外（在宅のため不要）';
+    seatCell.className = 'cell-sub';
+  } else {
+    statusCell.textContent = '未確保';
+    seatCell.innerHTML = '<select style="width:120px"><option value="">座席を選択</option><option value="N1">N1</option><option value="N2">N2</option><option value="N3">N3</option><option value="N4">N4</option></select>';
+    seatCell.className = '';
+  }
+  alert((checkbox.checked ? name + 'を「在宅のため不要」に設定しました' : name + 'の「在宅のため不要」設定を解除しました') + '（モック）');
 }
 function showPreviousQuarter(e) {
   e.preventDefault();

@@ -1,6 +1,7 @@
-# A-46, A-47, A-48, A-54 代理予約・取消（S-11）。詳細設計書3.11節
+# A-46, A-47, A-48, A-54, A-69 代理予約・取消（S-11）。詳細設計書3.11節
 import calendar
-from datetime import date as Date
+import json
+from datetime import date as Date, timedelta
 from typing import Literal
 
 import asyncpg
@@ -8,13 +9,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool, project_blocked_seats, release_expired_fixed_seats, users_with_current_project_seat
+from database import (
+    free_seat_bookable_period,
+    get_pool,
+    project_blocked_seats,
+    release_expired_fixed_seats,
+    users_with_current_project_seat,
+)
+from routers.seats import _seat_sort_key
 
 router = APIRouter(prefix="/api/reservations", tags=["proxy"])
 
 # 雇用形態そのもの（employment_type）の表示名。役割列で使う「AB」（一般+契約のみの略称、
 # 要件定義書v0.61）とは別物のため混同しないこと（2026-08-28訂正）。
 EMPLOYMENT_TYPE_JA = {"employee": "社員", "contract": "契約職員", "bp": "BP"}
+
+_WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 @router.get("/proxy-candidates")
@@ -55,18 +65,58 @@ async def list_proxy_candidates(q: str = "", _: CurrentUser = Depends(require_ro
     }
 
 
+async def _project_name_lookup(pool):
+    """座席・日付からプロジェクト名を判定する関数を返す（A-46・A-69で共有）。座席の島の割当期間内、
+    かつその日の曜日が確定した出社曜日（weekdays_finalized）に含まれる場合のみプロジェクト名を返す
+    （database.project_blocked_seats()と同じ考え方。確定曜日以外の日にその座席へ入った予約は、
+    プロジェクト座席としての専有対象外の日に行われた通常のフリー座席予約であるため対象外とする）。
+    元はA-46にのみあったロジックをA-69（期間ビュー、2026-09-03追加）と共有するため切り出した。"""
+    plan_rows = await pool.fetch(
+        """SELECT p.name, pqp.period_start, pqp.period_end, pqp.allocated_seats, pqp.weekdays_finalized
+           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.status = 'seats_allocated' AND pqp.allocated_seats IS NOT NULL"""
+    )
+    plans = [
+        (
+            r["name"], r["period_start"], r["period_end"], set(json.loads(r["allocated_seats"])),
+            set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set(),
+        )
+        for r in plan_rows
+    ]
+
+    def project_name_for(seat_id: int, date: Date) -> str | None:
+        target_weekday = _WEEKDAY_CODES[date.weekday()]
+        for name, p_start, p_end, seat_ids, weekdays in plans:
+            if seat_id in seat_ids and p_start <= date <= p_end and target_weekday in weekdays:
+                return name
+        return None
+
+    return project_name_for
+
+
 @router.get("/search")
 async def search_reservations(
     user_name: str = "",
-    seat_type: Literal["all", "free", "fixed"] = "all",
+    seat_type: Literal["all", "free", "fixed", "project"] = "all",
     start: str = "",
     end: str = "",
     _: CurrentUser = Depends(require_roles("admin")),
 ):
     """A-46: 代理予約・取消の対象者検索（予約・割当単位の一覧、座席種別を問わず）。
-    表示期間（start/end、YYYY-MM）はフリー座席の予約日にのみ適用する（固定座席は日付を
-    持たない恒久的な割当のため対象外、基本設計書4.11節）。プロジェクト座席（T-05〜T-07）は
-    未実装のため対象に含めない（2026-08-28追加、A-46に絞り込みパラメータを追加）。"""
+    表示期間（start/end、YYYY-MM）はフリー座席・プロジェクト座席の予約日にのみ適用する
+    （固定座席は日付を持たない恒久的な割当のため対象外、基本設計書4.11節）。
+
+    プロジェクト座席の専有は座席自体のseat_typeを変更しない設計（3.3節・3.9節参照）のため、
+    reservations行はプロジェクト座席であってもseats.seat_type='free'のまま記録される。
+    そのため「フリー座席」のクエリ結果に対し、座席の島の割当（project_quarter_plans.
+    allocated_seats）とその予約日が対象期間内に含まれるかを都度突き合わせ、該当すれば
+    'project'として分類し直す（2026-09-01訂正。「PJ席を利用しているのにフリー座席の表示に
+    なっている」との報告を受けた。従来はT-05〜T-07が未実装だった頃の「プロジェクト座席は
+    対象に含めない」という古い前提のままで、実装後もこの区別が行われていなかった）。
+    割当期間内であっても、予約日の曜日がそのプロジェクトの確定した出社曜日（weekdays_finalized）に
+    含まれない場合は'project'に分類しない（2026-09-02追加。database.project_blocked_seats()と
+    同じ考え方。確定曜日以外の日にその座席へ入った予約は、プロジェクト座席としての専有対象外の
+    日に行われた通常のフリー座席予約であるため）。"""
     await release_expired_fixed_seats()
     pool = get_pool()
     period_start = Date.fromisoformat(f"{start}-01") if start else None
@@ -76,10 +126,13 @@ async def search_reservations(
     else:
         period_end = None
 
+    project_name_for = await _project_name_lookup(pool)
+
     items = []
-    if seat_type in ("all", "free"):
+    if seat_type in ("all", "free", "project"):
         rows = await pool.fetch(
-            """SELECT r.id, r.date, u.id AS user_id, u.last_name, u.first_name, s.seat_no, a.name AS area_name
+            """SELECT r.id, r.date, u.id AS user_id, u.last_name, u.first_name,
+                      s.id AS seat_id, s.seat_no, a.name AS area_name
                FROM reservations r
                JOIN users u ON u.id = r.user_id
                JOIN seats s ON s.id = r.seat_id
@@ -91,14 +144,17 @@ async def search_reservations(
                ORDER BY r.date, u.last_name, u.first_name""",
             user_name, period_start, period_end,
         )
-        items += [
-            {
+        for r in rows:
+            project_name = project_name_for(r["seat_id"], r["date"])
+            row_type = "project" if project_name else "free"
+            if seat_type != "all" and seat_type != row_type:
+                continue
+            items.append({
                 "kind": "reservation", "id": r["id"], "user_id": r["user_id"],
-                "user_name": f"{r['last_name']} {r['first_name']}", "seat_type": "free",
+                "user_name": f"{r['last_name']} {r['first_name']}", "seat_type": row_type,
                 "date": r["date"].isoformat(), "seat_no": r["seat_no"], "area": r["area_name"],
-            }
-            for r in rows
-        ]
+                "project_name": project_name,
+            })
     if seat_type in ("all", "fixed"):
         rows = await pool.fetch(
             """SELECT fsa.seat_id, u.id AS user_id, u.last_name, u.first_name, s.seat_no, a.name AS area_name
@@ -115,10 +171,101 @@ async def search_reservations(
                 "kind": "fixed", "id": r["seat_id"], "user_id": r["user_id"],
                 "user_name": f"{r['last_name']} {r['first_name']}", "seat_type": "fixed",
                 "date": None, "seat_no": r["seat_no"], "area": r["area_name"],
+                "project_name": None,
             }
             for r in rows
         ]
     return {"items": items}
+
+
+@router.get("/period-grid")
+async def get_period_grid(
+    start: Date | None = None,
+    end: Date | None = None,
+    area: Literal["all", "north", "east", "west"] = "all",
+    _: CurrentUser = Depends(require_roles("admin")),
+):
+    """A-69: 代理予約・取消の期間ビュー（S-11）。S-02のA-07（期間ビュー）と同じ座席×日付の
+    マトリクス形式だが、管理部が任意の利用者の予約・割当を代理で取消・変更する（A-48・A-21）
+    ための管理画面のため、A-07のような氏名の匿名化（姓のみの表示・「自分」表記・他者の
+    reservation_idを隠す）は行わず、対象者の氏名・ユーザーIDと操作対象のID（reservation_idまたは
+    seats.id）を常に返す（2026-09-03追加。「座席の予約・割当を代理で取り消すをS-02の期間ビューの
+    ような画面にしたい」との要望を受けた）。固定座席もA-07のような「初日のみ氏名表示」の圧縮は
+    行わず、どの日をクリックしても同じ固定座席の解除・変更操作ができるよう毎日氏名を返す。"""
+    await release_expired_fixed_seats()
+    pool = get_pool()
+    full_start, full_end = await free_seat_bookable_period()
+    range_start = min(max(start or full_start, full_start), full_end)
+    range_end = min(max(end or full_end, full_start), full_end)
+    if range_start > range_end:
+        range_start, range_end = range_end, range_start
+
+    project_name_for = await _project_name_lookup(pool)
+
+    rows = await pool.fetch(
+        """SELECT s.id, s.seat_no, s.seat_type, a.name AS area_name,
+                  r.date, r.id AS reservation_id, r.user_id AS reserved_user_id, u.last_name, u.first_name
+           FROM seats s
+           JOIN areas a ON a.id = s.area_id
+           LEFT JOIN reservations r
+               ON r.seat_id = s.id AND r.date BETWEEN $1 AND $2 AND r.status = 'active'
+           LEFT JOIN users u ON u.id = r.user_id
+           WHERE s.status = 'active'
+             AND ($3 = 'all' OR lower(a.name) = $3)
+           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
+        range_start, range_end, area,
+    )
+
+    seats: dict[int, dict] = {}
+    for r in rows:
+        seat = seats.setdefault(r["id"], {
+            "id": r["id"], "seat_no": r["seat_no"], "area": r["area_name"],
+            "seat_type": r["seat_type"], "days": {},
+        })
+        if r["date"] is None:
+            continue
+        if r["reserved_user_id"] is None:
+            seat["days"][r["date"].isoformat()] = {
+                "status": "free", "kind": None, "id": None,
+                "user_id": None, "user_name": None, "project_name": None,
+            }
+            continue
+        seat["days"][r["date"].isoformat()] = {
+            "status": "reserved", "kind": "reservation", "id": r["reservation_id"],
+            "user_id": r["reserved_user_id"], "user_name": f"{r['last_name']} {r['first_name']}",
+            "project_name": project_name_for(r["id"], r["date"]),
+        }
+
+    fixed_rows = await pool.fetch(
+        """SELECT fsa.seat_id, fsa.user_id, u.last_name, u.first_name, fsa.valid_until
+           FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id"""
+    )
+    for fr in fixed_rows:
+        seat = seats.get(fr["seat_id"])
+        if seat is None or seat["seat_type"] != "fixed":
+            continue
+        d = range_start
+        while d <= range_end:
+            if fr["valid_until"] is None or d <= fr["valid_until"]:
+                seat["days"][d.isoformat()] = {
+                    "status": "fixed", "kind": "fixed", "id": fr["seat_id"],
+                    "user_id": fr["user_id"], "user_name": f"{fr['last_name']} {fr['first_name']}",
+                    "project_name": None,
+                }
+            d += timedelta(days=1)
+
+    dates = []
+    d = range_start
+    while d <= range_end:
+        dates.append(d.isoformat())
+        d += timedelta(days=1)
+
+    return {
+        "start": range_start.isoformat(), "end": range_end.isoformat(),
+        "full_start": full_start.isoformat(), "full_end": full_end.isoformat(),
+        "dates": dates,
+        "seats": sorted(seats.values(), key=lambda s: _seat_sort_key(s["seat_no"])),
+    }
 
 
 class ProxyReservationCreate(BaseModel):

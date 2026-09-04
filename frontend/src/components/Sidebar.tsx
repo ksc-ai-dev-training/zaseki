@@ -6,12 +6,16 @@ interface SidebarProps {
   onLogout: () => void
 }
 
-const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean }[] = [
+const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean; systemOperatorOnly?: boolean }[] = [
   { to: '/', label: '空き状況・予約' },
   { to: '/project-seats', label: 'プロジェクト座席' },
   { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', adminOnly: true },
   { to: '/admin', label: '管理メニュー', adminOnly: true },
   { to: '/profile', label: 'マイプロフィール' },
+  { to: '/help', label: 'ヘルプ' },
+  // フィードバック一覧は管理部（role='admin'）ではなくシステム運用担当のみに見せる
+  // （FR-09-3、2026-09-01追加。「管理部ではなくシステムを運用している人に見れるようにしてほしい」）
+  { to: '/feedback', label: 'フィードバック一覧', systemOperatorOnly: true },
 ]
 
 const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '一般' }
@@ -20,8 +24,8 @@ const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '�
 // S-02のみに用意した簡易な上部バー（Layout.tsx）に譲る（スマホ対応の対象はS-02のみ、基本設計書4.7節）
 export default function Sidebar({ me, onLogout }: SidebarProps) {
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:flex">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4">
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:sticky sm:top-0 sm:flex sm:h-screen">
+      <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 px-5 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-800 text-sm font-bold text-white">Z</div>
         <div>
           <div className="text-sm font-bold text-slate-800">Zaseki</div>
@@ -29,8 +33,10 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
-        {NAV_ITEMS.filter((item) => !item.adminOnly || me.role === 'admin').map((item) => (
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        {NAV_ITEMS.filter(
+          (item) => (!item.adminOnly || me.role === 'admin') && (!item.systemOperatorOnly || me.is_system_operator)
+        ).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -46,7 +52,7 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
         ))}
       </nav>
 
-      <div className="border-t border-slate-200 p-3">
+      <div className="shrink-0 border-t border-slate-200 p-3">
         <div className="flex items-center gap-2">
           {me.avatar_image ? (
             <img src={me.avatar_image} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />

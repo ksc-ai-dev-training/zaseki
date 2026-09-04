@@ -1,4 +1,4 @@
-# A-13〜A-18 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
+# A-13〜A-18、A-58 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
 import json
 from datetime import date as Date
 from typing import Literal
@@ -46,46 +46,44 @@ async def _seat_labels(pool, seat_ids: list[int]) -> dict[int, str]:
 @router.get("/projects/mine")
 async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     """A-13: 自分がPM・PL・SL・メンバーであるプロジェクトと、対象四半期の計画状況の一覧。
-    各プロジェクトについて直近のperiod_startを持つ計画（現在進行中とみなす1件）のみを返す
-    （5.4節のスコープ判定、2026-08-28追加）。"""
+    各プロジェクトについて存在する計画を全件（period_start昇順）返す（2026-08-31訂正。従来は
+    直近のperiod_startを持つ計画1件〔現在進行中とみなす〕のみを返していたが、「対象四半期を
+    自由に選択できるようにしてほしい」との要望を受け、S-09と同様に対象四半期を選べるようにした）。"""
     rows = await get_pool().fetch(
         """SELECT pm.project_id, p.name AS project_name, pm.project_title, pm.can_assign_seats,
                   plan.id AS plan_id, plan.period_start, plan.period_end, plan.status,
                   plan.required_seats, plan.allocated_seats
            FROM project_members pm
            JOIN projects p ON p.id = pm.project_id
-           LEFT JOIN LATERAL (
-               SELECT * FROM project_quarter_plans
-               WHERE project_id = pm.project_id ORDER BY period_start DESC LIMIT 1
-           ) plan ON true
+           LEFT JOIN project_quarter_plans plan ON plan.project_id = pm.project_id
            WHERE pm.user_id = $1
-           ORDER BY p.name""",
+           ORDER BY p.name, plan.period_start""",
         user.id,
     )
     pool = get_pool()
     all_seat_ids = {sid for r in rows if r["allocated_seats"] for sid in json.loads(r["allocated_seats"])}
     seat_no_by_id = await _seat_labels(pool, list(all_seat_ids))
 
-    items = []
+    items_by_project: dict[int, dict] = {}
     for r in rows:
-        plan = None
-        if r["plan_id"] is not None:
-            allocated_seat_ids = json.loads(r["allocated_seats"]) if r["allocated_seats"] else None
-            plan = {
-                "id": r["plan_id"], "period_start": r["period_start"].isoformat(),
-                "period_end": r["period_end"].isoformat(), "status": r["status"],
-                "required_seats": r["required_seats"],
-                "allocated_seat_label": (
-                    _format_seat_range([seat_no_by_id[sid] for sid in allocated_seat_ids if sid in seat_no_by_id])
-                    if allocated_seat_ids else None
-                ),
-            }
-        items.append({
+        item = items_by_project.setdefault(r["project_id"], {
             "project_id": r["project_id"], "project_name": r["project_name"],
             "project_title": r["project_title"], "can_assign_seats": r["can_assign_seats"],
-            "plan": plan,
+            "plans": [],
         })
-    return {"items": items}
+        if r["plan_id"] is None:
+            continue
+        allocated_seat_ids = json.loads(r["allocated_seats"]) if r["allocated_seats"] else None
+        item["plans"].append({
+            "id": r["plan_id"], "period_start": r["period_start"].isoformat(),
+            "period_end": r["period_end"].isoformat(), "status": r["status"],
+            "required_seats": r["required_seats"],
+            "allocated_seat_label": (
+                _format_seat_range([seat_no_by_id[sid] for sid in allocated_seat_ids if sid in seat_no_by_id])
+                if allocated_seat_ids else None
+            ),
+        })
+    return {"items": list(items_by_project.values())}
 
 
 @router.get("/project-quarter-plans/{id}")
@@ -104,6 +102,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
 
     members_rows = await pool.fetch(
         """SELECT pm.id AS member_id, pm.user_id, u.last_name, u.first_name, pm.project_title, pm.can_assign_seats,
+                  pm.seat_not_required,
                   EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id) AS has_fixed_seat
            FROM project_members pm JOIN users u ON u.id = pm.user_id
            WHERE pm.project_id = $1 ORDER BY pm.id""",
@@ -165,6 +164,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
                 "name": f"{m['last_name']} {m['first_name']}",
                 "project_title": m["project_title"], "can_assign_seats": m["can_assign_seats"],
                 "has_fixed_seat": m["has_fixed_seat"],
+                "seat_not_required": m["seat_not_required"],
                 "assigned_seat_id": assigned_seat_by_user.get(m["user_id"]),
                 "assigned_seat_no": seat_no_by_id.get(assigned_seat_by_user.get(m["user_id"])),
             }
@@ -222,13 +222,12 @@ class SurveyResponseBody(BaseModel):
 async def submit_survey_response(id: int, body: SurveyResponseBody, user: CurrentUser = Depends(require_auth)):
     """A-16: 出社曜日アンケートへの回答（FR-03-4）。T-11をUPSERT。requested_seatsはT-07.required_seats
     へ自動反映する。P-PMPL（project_title∈{'PM','PL'}）のみ、status='survey_open'の間のみ回答できる
-    （曜日確定後は変更不可、2026-08-28追加）。"""
-    if len(body.choice1_weekdays) != 2:
-        raise HTTPException(400, detail="第一希望は曜日を2つ選択してください")
-    if len(body.choice2_weekdays) != 2:
-        raise HTTPException(400, detail="第二希望は曜日を2つ選択してください")
-    if body.requested_seats is not None and body.requested_seats < 1:
-        raise HTTPException(400, detail="必要座席数は1以上を指定してください")
+    （曜日確定後は変更不可、2026-08-28追加）。第一・第二希望とも、選択できる曜日数は問わない
+    （2026-09-02訂正。「2つのみの選択を変更してなんでも選択できるようにしてほしい」との要望を受け、
+    従来の「ちょうど2つ」という制約〔choice1・choice2とも〕を撤廃した。0個〔希望なし〕も許容する）。
+    """
+    if body.requested_seats is not None and body.requested_seats < 0:
+        raise HTTPException(400, detail="必要座席数は0以上を指定してください")
     if body.note is not None and len(body.note) > 500:
         raise HTTPException(400, detail="備考は500文字以内で入力してください")
 
@@ -285,6 +284,39 @@ async def update_seat_assign_permission(id: int, body: SeatAssignPermissionBody,
     return {"detail": "席決め権限を更新しました" if body.can_assign_seats else "席決め権限を外しました"}
 
 
+class SeatNotRequiredBody(BaseModel):
+    seat_not_required: bool
+
+
+@router.put("/project-members/{id}/seat-not-required")
+async def update_seat_not_required(id: int, body: SeatNotRequiredBody, user: CurrentUser = Depends(require_auth)):
+    """A-58: ずっと在宅勤務のためプロジェクト座席が不要なメンバーを設定する（FR-03-10、要求仕様書には
+    明記のない追加提案）。T-06.seat_not_requiredを更新する。固定座席保有者と同様、メンバーへの座席確保
+    （FR-03-7）の対象・未確保者数から除外されるだけで、既存の確保済み座席の予約は自動では取り消さない。
+    座席確保操作（FR-03-7）を行える者（admin、PJ席決担当、席決め権限保有者）が設定できる。"""
+    pool = get_pool()
+    target = await pool.fetchrow(
+        "SELECT pm.id, pm.project_id, p.proxy_user_id FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.id = $1",
+        id,
+    )
+    if target is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    caller = await _member_row(pool, target["project_id"], user.id)
+    can_manage = (
+        user.role == "admin"
+        or target["proxy_user_id"] == user.id
+        or (caller is not None and caller["can_assign_seats"])
+    )
+    if not can_manage:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+
+    await pool.execute(
+        "UPDATE project_members SET seat_not_required = $1, updated_at = now() WHERE id = $2",
+        body.seat_not_required, id,
+    )
+    return {"detail": "座席不要に設定しました" if body.seat_not_required else "座席不要の設定を解除しました"}
+
+
 class SeatAssignmentItem(BaseModel):
     member_user_id: int
     seat_id: int
@@ -326,11 +358,11 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
     allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
-    member_user_ids = {
-        r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM project_members WHERE project_id = $1", plan["project_id"]
-        )
-    }
+    member_rows = await pool.fetch(
+        "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
+    )
+    member_user_ids = {r["user_id"] for r in member_rows}
+    seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
     fixed_seat_user_ids = {
         r["user_id"] for r in await pool.fetch(
             "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[])",
@@ -356,6 +388,10 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "excluded", "reason": "固定座席が割り当てられているため、プロジェクト座席は確保できません"})
             continue
+        if a.member_user_id in seat_not_required_user_ids:
+            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+                             "status": "excluded", "reason": "在宅勤務のためプロジェクト座席は不要に設定されています"})
+            continue
         if seat_counts[a.seat_id] > 1:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "excluded", "reason": "他のメンバーと座席が重複しています"})
@@ -378,3 +414,141 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "assigned", "created_days": created, "excluded_days": len(excluded)})
     return {"results": results}
+
+
+class SeatChangeBody(BaseModel):
+    seat_id: int | None = None
+
+
+@router.put("/project-quarter-plans/{id}/seat-assignments/{member_user_id}")
+async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody, user: CurrentUser = Depends(require_auth)):
+    """A-64: 既に座席を確保済みのメンバーの座席を、同じ座席の島の範囲内で別の座席に変更する
+    （2026-09-03追加。「メンバーへの座席確保なのですが変更できるようにしてほしい」との要望を受けた。
+    従来は一度確保すると「割り当てる座席」欄が「—」表示になり、この画面からは変更できず、
+    S-11等で個別に取消してからA-18で確保し直す必要があった）。旧座席の予約を（未来分のみ）取り消してから、
+    A-18と同じロジックで新しい座席への周期予約を生成する。権限・状態チェックはA-18と同じ。
+
+    変更先の座席が既に他のメンバーに割り当て済みの場合は、当初拒否していたが（初版）、座席の島が
+    必要人数ちょうどで確保されている（＝空き座席がない）ケースが多く、「変更先を選択を押しても座席が
+    表示されないため変更することができません」との報告を受け、2026-09-03当日中に交換（スワップ）方式に
+    変更した。対象の2名の座席をまとめて入れ替える（双方の旧座席の予約を取り消してから、それぞれ相手の
+    座席で確保し直す）。
+
+    body.seat_id=nullは「在宅勤務にする」（2026-09-03同日追加。「変更先の選択に在宅勤務も追加してほしい」
+    との要望を受けた。従来、確保済みメンバーを在宅勤務〔seat_not_required〕に切り替えるには、この画面の
+    「在宅のため不要」チェックボックスが確保済みの間は非活性〔先に予約の取消が必要〕で、この画面からは
+    完結できなかった）。旧座席の予約を（未来分のみ）取り消し、T-06.seat_not_requiredをtrueにする。
+    新しい座席の確保は行わない。"""
+    pool = get_pool()
+    plan = await pool.fetchrow(
+        """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.id = $1""",
+        id,
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if plan["status"] != "seats_allocated":
+        raise HTTPException(400, detail="座席の島の割当後でなければメンバーの座席を変更できません")
+
+    my_member = await _member_row(pool, plan["project_id"], user.id)
+    can_manage = (
+        user.role == "admin"
+        or plan["proxy_user_id"] == user.id
+        or (my_member is not None and my_member["can_assign_seats"])
+    )
+    if not can_manage:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+
+    allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
+    if body.seat_id is not None and body.seat_id not in allocated_seat_ids:
+        raise HTTPException(400, detail="この座席の島に含まれない座席です")
+
+    member = await pool.fetchrow(
+        "SELECT id, user_id, seat_not_required FROM project_members WHERE project_id = $1 AND user_id = $2",
+        plan["project_id"], member_user_id,
+    )
+    if member is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if member["seat_not_required"]:
+        raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
+    has_fixed_seat = await pool.fetchval("SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", member_user_id)
+    if has_fixed_seat:
+        raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")
+
+    assign_rows = await pool.fetch(
+        """SELECT DISTINCT ON (r.user_id) r.user_id, r.seat_id
+           FROM reservations r
+           WHERE r.seat_id = ANY($1::bigint[]) AND r.status = 'active' AND r.date BETWEEN $2 AND $3
+           ORDER BY r.user_id, r.date""",
+        list(allocated_seat_ids), plan["period_start"], plan["period_end"],
+    )
+    assigned_seat_by_user = {r["user_id"]: r["seat_id"] for r in assign_rows}
+    old_seat_id = assigned_seat_by_user.get(member_user_id)
+    if old_seat_id is None:
+        raise HTTPException(400, detail="まだ座席が確保されていません。新規の確保は「この内容で一括確保する」から行ってください")
+
+    start_date = max(plan["period_start"], Date.today())
+
+    if body.seat_id is None:
+        await pool.execute(
+            """UPDATE reservations SET status = 'cancelled', updated_at = now()
+               WHERE seat_id = $1 AND user_id = $2 AND status = 'active' AND date BETWEEN $3 AND $4""",
+            old_seat_id, member_user_id, start_date, plan["period_end"],
+        )
+        await pool.execute(
+            "UPDATE project_members SET seat_not_required = true, updated_at = now() WHERE id = $1",
+            member["id"],
+        )
+        return {
+            "detail": "在宅勤務のため座席を解放しました", "seat_no": None, "created_days": 0, "excluded_days": 0,
+            "swapped_with": None,
+        }
+
+    if old_seat_id == body.seat_id:
+        raise HTTPException(400, detail="現在と同じ座席です")
+    other_user_id = next(
+        (uid for uid, sid in assigned_seat_by_user.items() if uid != member_user_id and sid == body.seat_id),
+        None,
+    )
+
+    weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
+    seat_labels = await _seat_labels(pool, [old_seat_id, body.seat_id])
+
+    await pool.execute(
+        """UPDATE reservations SET status = 'cancelled', updated_at = now()
+           WHERE seat_id = $1 AND user_id = $2 AND status = 'active' AND date BETWEEN $3 AND $4""",
+        old_seat_id, member_user_id, start_date, plan["period_end"],
+    )
+    if other_user_id is not None:
+        await pool.execute(
+            """UPDATE reservations SET status = 'cancelled', updated_at = now()
+               WHERE seat_id = $1 AND user_id = $2 AND status = 'active' AND date BETWEEN $3 AND $4""",
+            body.seat_id, other_user_id, start_date, plan["period_end"],
+        )
+
+    gen = await generate_recurring_reservations(
+        body.seat_id, member_user_id, {"type": "weekly", "weekdays": weekdays},
+        start_date, plan["period_end"], user.id,
+        enforce_rule05=False, check_project_block=False,
+    )
+    created = sum(1 for r in gen["results"] if r["status"] == "created")
+    excluded = [r for r in gen["results"] if r["status"] == "excluded"]
+
+    swapped_with = None
+    if other_user_id is not None:
+        other_gen = await generate_recurring_reservations(
+            old_seat_id, other_user_id, {"type": "weekly", "weekdays": weekdays},
+            start_date, plan["period_end"], user.id,
+            enforce_rule05=False, check_project_block=False,
+        )
+        other_name_row = await pool.fetchrow(
+            "SELECT last_name, first_name FROM users WHERE id = $1", other_user_id
+        )
+        swapped_with = f"{other_name_row['last_name']} {other_name_row['first_name']}" if other_name_row else None
+
+    seat_no = seat_labels.get(body.seat_id, "?")
+    detail = f"座席を{seat_no}に変更しました" if swapped_with is None else f"座席を{seat_no}に変更しました（{swapped_with}と交換）"
+    return {
+        "detail": detail, "seat_no": seat_no, "created_days": created, "excluded_days": len(excluded),
+        "swapped_with": swapped_with,
+    }
