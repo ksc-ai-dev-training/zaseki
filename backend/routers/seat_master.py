@@ -33,7 +33,7 @@ async def list_seat_master(
     rows = await get_pool().fetch(
         """SELECT s.id, s.seat_no, s.area_id, a.name AS area_name, s.seat_type, s.status,
                   s.pos_x, s.pos_y,
-                  EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.seat_id = s.id) AS has_fixed_assignment
+                  EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.seat_id = s.id AND fsa.ended_on IS NULL) AS has_fixed_assignment
            FROM seats s
            JOIN areas a ON a.id = s.area_id
            WHERE ($1 = 'all' OR lower(a.name) = $1)

@@ -108,18 +108,35 @@ CREATE TABLE IF NOT EXISTS seats (
 ALTER TABLE seats ADD COLUMN IF NOT EXISTS pos_x DOUBLE PRECISION;
 ALTER TABLE seats ADD COLUMN IF NOT EXISTS pos_y DOUBLE PRECISION;
 
--- T-04 fixed_seat_assignments。日次のreservation行は作らず、解除（A-21）は物理DELETEで表現する
+-- T-04 fixed_seat_assignments。日次のreservation行は作らず、変更・解除（A-20・A-21）も
+-- 物理DELETEはしない（2026-09-04変更。以前は物理DELETEで表現していたが、過去日の空き状況
+-- 照会〔A-06・A-07・A-45〕が常に「今の」割当を参照する作りと組み合わさり、固定座席を変更・解除
+-- すると過去の表示まで書き換わってしまう不具合があったため、割当の履歴を残す方式に改めた）。
+-- 1つの座席には割当の履歴が複数残り得るため、seat_id単体のUNIQUEではなく、
+-- 「現在有効な割当（ended_on IS NULL）は座席1つにつき1件まで」という部分ユニーク索引で表現する。
 CREATE TABLE IF NOT EXISTS fixed_seat_assignments (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    seat_id     BIGINT NOT NULL UNIQUE REFERENCES seats(id),
+    seat_id     BIGINT NOT NULL REFERENCES seats(id),
     user_id     BIGINT NOT NULL REFERENCES users(id),
     assigned_by BIGINT NOT NULL REFERENCES users(id),
-    -- 任意の有効期限（FR-01-5、2026-08-28追加）。NULLは従来どおり無期限（変更するまで恒久的な割当）。
-    -- 期限到来後の自動解除はrelease_expired_fixed_seats()が担う。
+    -- この割当が有効になった日（2026-09-04追加。過去日照会でこの日より前は対象外にする）
+    valid_from  DATE NOT NULL DEFAULT CURRENT_DATE,
+    -- 任意の有効期限（FR-01-5、2026-08-28追加）。NULLは変更・解除されるまで無期限。
+    -- 期限到来後の自動解除はrelease_expired_fixed_seats()が担う（ended_onに反映される）。
     valid_until DATE,
+    -- この割当が実際に終了した日（2026-09-04追加）。NULLはまだ有効中。変更・解除（A-20・A-21）で
+    -- 「昨日まで」に設定するほか、release_expired_fixed_seats()がvalid_until到来を検知した時点で
+    -- valid_untilと同じ値を設定する。「現在有効な割当」はended_on IS NULLで判定する。
+    ended_on    DATE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE fixed_seat_assignments ADD COLUMN IF NOT EXISTS valid_until DATE;
+ALTER TABLE fixed_seat_assignments ADD COLUMN IF NOT EXISTS valid_from DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE fixed_seat_assignments ADD COLUMN IF NOT EXISTS ended_on DATE;
+-- 2026-09-04より前に作られた環境ではseat_id列にUNIQUE制約が付いているため、履歴を複数持てるよう外す
+ALTER TABLE fixed_seat_assignments DROP CONSTRAINT IF EXISTS fixed_seat_assignments_seat_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS fixed_seat_assignments_active_seat
+    ON fixed_seat_assignments (seat_id) WHERE ended_on IS NULL;
 
 -- T-08 reservations
 CREATE TABLE IF NOT EXISTS reservations (
@@ -312,13 +329,45 @@ async def release_expired_fixed_seats() -> None:
     async with pool.acquire() as conn:
         async with conn.transaction():
             expired = await conn.fetch(
-                "SELECT seat_id FROM fixed_seat_assignments WHERE valid_until IS NOT NULL AND valid_until < CURRENT_DATE"
+                """SELECT seat_id FROM fixed_seat_assignments
+                   WHERE ended_on IS NULL AND valid_until IS NOT NULL AND valid_until < CURRENT_DATE"""
             )
             if not expired:
                 return
             seat_ids = [r["seat_id"] for r in expired]
             await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = ANY($1::bigint[])", seat_ids)
-            await conn.execute("DELETE FROM fixed_seat_assignments WHERE seat_id = ANY($1::bigint[])", seat_ids)
+            # 過去日照会（A-06・A-07・A-45）から参照できるよう、行は消さずvalid_untilの日で終了させる
+            await conn.execute(
+                """UPDATE fixed_seat_assignments SET ended_on = valid_until
+                   WHERE ended_on IS NULL AND seat_id = ANY($1::bigint[])""",
+                seat_ids,
+            )
+
+
+async def close_fixed_seat_assignment(conn, *, user_id: int | None = None, seat_id: int | None = None) -> int | None:
+    """現在有効な固定座席割当（ended_on IS NULL）を1件、履歴を残したまま終了させる
+    （A-20の座席変更・A-21の解除・RULE-06の退職処理が共通で使う、2026-09-04追加）。
+    user_id・seat_idのどちらか一方を指定する。当日中に開始した割当（valid_from = 今日）を
+    同日中に終了する場合は、終了日が開始日を下回ってしまうため履歴を残す意味もなく物理削除する。
+    それ以外は「昨日まで有効だった」として残し、今日以降は新しい割当（あれば）に委ねる。
+    戻り値: フリー座席に戻すべき座席のid（該当する割当が無ければNone）。"""
+    assert (user_id is None) != (seat_id is None), "user_idかseat_idのどちらか一方を指定する"
+    condition = "user_id = $1" if user_id is not None else "seat_id = $1"
+    key = user_id if user_id is not None else seat_id
+    row = await conn.fetchrow(
+        f"SELECT seat_id, valid_from FROM fixed_seat_assignments WHERE {condition} AND ended_on IS NULL", key
+    )
+    if row is None:
+        return None
+    today = Date.today()
+    if row["valid_from"] >= today:
+        await conn.execute("DELETE FROM fixed_seat_assignments WHERE seat_id = $1 AND ended_on IS NULL", row["seat_id"])
+    else:
+        await conn.execute(
+            "UPDATE fixed_seat_assignments SET ended_on = $2 WHERE seat_id = $1 AND ended_on IS NULL",
+            row["seat_id"], today - timedelta(days=1),
+        )
+    return row["seat_id"]
 
 
 async def project_blocked_seats(target_date: Date) -> dict[int, str]:
@@ -392,7 +441,7 @@ async def generate_recurring_reservations(
     weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
 
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", target_user_id
+        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", target_user_id
     )
 
     rule_id = await pool.fetchval(

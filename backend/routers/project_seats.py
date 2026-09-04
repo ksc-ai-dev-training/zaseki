@@ -36,7 +36,7 @@ async def _required_seats_for_project(conn, project_id: int) -> int:
                        ELSE COUNT(pm.id) FILTER (WHERE fsa.user_id IS NULL AND NOT pm.seat_not_required)
                   END AS required_seats
            FROM project_members pm
-           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id AND fsa.ended_on IS NULL
            WHERE pm.project_id = $1""",
         project_id,
     )
@@ -246,7 +246,7 @@ async def list_quarter_plans(
            JOIN projects p ON p.id = pqp.project_id
            LEFT JOIN project_members pm ON pm.project_id = pqp.project_id
            LEFT JOIN users u ON u.id = pm.user_id
-           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id AND fsa.ended_on IS NULL
            LEFT JOIN project_weekday_responses wr ON wr.plan_id = pqp.id
            GROUP BY pqp.id, p.name, p.proxy_user_id, wr.choice1_weekdays, wr.choice2_weekdays, wr.note, wr.id
            ORDER BY pqp.period_start DESC, p.name"""
@@ -670,7 +670,7 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         """SELECT COUNT(*) FROM project_members pm
            WHERE pm.project_id = $1
              AND NOT pm.seat_not_required
-             AND NOT EXISTS (SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id)""",
+             AND NOT EXISTS (SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id AND fsa.ended_on IS NULL)""",
         plan["project_id"],
     )
     if non_fixed_member_count == 0:

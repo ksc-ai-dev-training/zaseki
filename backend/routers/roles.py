@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool
+from database import close_fixed_seat_assignment, get_pool
 from slack import (
     DEFAULT_MESSAGE_FINALIZE_HEADER,
     DEFAULT_MESSAGE_REMINDER,
@@ -117,11 +117,8 @@ async def update_user(id: int, body: UserUpdate, _: CurrentUser = Depends(requir
                 body.is_system_operator, id,
             )
             if newly_retired:
-                # RULE-06: 固定座席の割当を解除し、座席をフリー座席に戻す
-                old_seat_id = await conn.fetchval(
-                    "SELECT seat_id FROM fixed_seat_assignments WHERE user_id = $1", id
-                )
-                await conn.execute("DELETE FROM fixed_seat_assignments WHERE user_id = $1", id)
+                # RULE-06: 固定座席の割当を終了させ、座席をフリー座席に戻す（履歴は残す）
+                old_seat_id = await close_fixed_seat_assignment(conn, user_id=id)
                 if old_seat_id is not None:
                     await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", old_seat_id)
                 # RULE-06: 今後の予約（フリー座席・プロジェクト座席）をすべて取消扱いにする

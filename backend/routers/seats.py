@@ -101,7 +101,10 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
            LEFT JOIN reservations r
                ON r.seat_id = s.id AND r.date = $1 AND r.status = 'active'
            LEFT JOIN users ru ON ru.id = r.user_id
-           LEFT JOIN fixed_seat_assignments fsa ON fsa.seat_id = s.id
+           LEFT JOIN fixed_seat_assignments fsa
+               ON fsa.seat_id = s.id AND fsa.valid_from <= $1
+                  AND (fsa.ended_on IS NULL OR $1 <= fsa.ended_on)
+                  AND (fsa.valid_until IS NULL OR $1 <= fsa.valid_until)
            LEFT JOIN users fu ON fu.id = fsa.user_id
            WHERE s.status = 'active'
              AND ($2 = 'all' OR lower(a.name) = $2)
@@ -126,14 +129,14 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
         avatar_image = None
         is_birthday = False
 
-        if r["seat_type"] == "fixed":
-            expired_on_viewed_date = r["fixed_valid_until"] is not None and r["fixed_valid_until"] < date
-            if r["fixed_user_id"] is None or expired_on_viewed_date:
-                status, display_name = "free", None
-            else:
-                status, display_name = "occupied_fixed", r["fixed_last_name"]
-                avatar_image = r["fixed_avatar_image"]
-                is_birthday = _is_birthday(r["fixed_birth_month"], r["fixed_birth_day"], date)
+        if r["fixed_user_id"] is not None:
+            # 指定日を含む期間の固定座席割当が実際にあった場合のみ（fsaのJOIN条件で日付を絞り込み済み）。
+            # 座席の「今の」seat_typeでは判定しない（2026-09-04修正。今の割当先で過去日まで
+            # 上書き表示されてしまう不具合があったため。「固定座席を決定すると過去のデータまで
+            # 変更されてしまう」との報告を受けた）
+            status, display_name = "occupied_fixed", r["fixed_last_name"]
+            avatar_image = r["fixed_avatar_image"]
+            is_birthday = _is_birthday(r["fixed_birth_month"], r["fixed_birth_day"], date)
         elif r["id"] in project_name_by_seat_id:
             if r["reserved_user_id"] is None:
                 status, display_name = "project_pending", project_name_by_seat_id[r["id"]]
@@ -272,20 +275,38 @@ async def get_availability_period(
             "reservation_id": r["reservation_id"] if status == "mine" else None,
         }
 
+    # 表示期間と重なる固定座席割当を履歴も含めて取得する（今の割当だけでなく、期間内に
+    # 交代があった場合は両方拾う。2026-09-04修正、_build_availabilityと同じ考え方）
     fixed_rows = await get_pool().fetch(
-        "SELECT fsa.seat_id, u.last_name, fsa.valid_until FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id"
+        """SELECT fsa.id AS assignment_id, fsa.seat_id, fsa.valid_from, fsa.valid_until, fsa.ended_on, u.last_name
+           FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id
+           WHERE fsa.valid_from <= $2
+             AND (fsa.ended_on IS NULL OR fsa.ended_on >= $1)
+             AND (fsa.valid_until IS NULL OR fsa.valid_until >= $1)""",
+        range_start, range_end,
     )
-    fixed_by_seat_id = {r["seat_id"]: r for r in fixed_rows}
+    fixed_by_seat_id: dict[int, list] = {}
+    for r in fixed_rows:
+        fixed_by_seat_id.setdefault(r["seat_id"], []).append(r)
     for seat in seats.values():
-        fsa = fixed_by_seat_id.get(seat["id"])
-        if seat["seat_type"] != "fixed" or fsa is None:
+        rows_for_seat = fixed_by_seat_id.get(seat["id"])
+        if not rows_for_seat:
             continue
-        name_shown = False
+        last_shown_assignment_id = None
         d = range_start
         while d <= range_end:
-            if fsa["valid_until"] is None or d <= fsa["valid_until"]:
-                display_name = fsa["last_name"] if not name_shown else "-"
-                name_shown = True
+            match = next(
+                (
+                    fr for fr in rows_for_seat
+                    if fr["valid_from"] <= d
+                    and (fr["ended_on"] is None or d <= fr["ended_on"])
+                    and (fr["valid_until"] is None or d <= fr["valid_until"])
+                ),
+                None,
+            )
+            if match is not None:
+                display_name = match["last_name"] if match["assignment_id"] != last_shown_assignment_id else "-"
+                last_shown_assignment_id = match["assignment_id"]
                 seat["days"][d.isoformat()] = {
                     "status": "occupied_fixed",
                     "display_name": display_name,

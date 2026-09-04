@@ -56,7 +56,7 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # 有効期限切れの割当を先に解除しておくことで、期限切れ後にこの判定へ誤って引っかからないようにする。
     await release_expired_fixed_seats()
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", user.id
+        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", user.id
     )
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")

@@ -41,7 +41,7 @@ async def list_proxy_candidates(q: str = "", _: CurrentUser = Depends(require_ro
         """SELECT u.id, u.last_name, u.first_name, u.employment_type,
                   fsa.seat_id AS fixed_seat_id
            FROM users u
-           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id AND fsa.ended_on IS NULL
            WHERE u.deleted_at IS NULL
              AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
            ORDER BY u.last_name, u.first_name""",
@@ -162,7 +162,8 @@ async def search_reservations(
                JOIN users u ON u.id = fsa.user_id
                JOIN seats s ON s.id = fsa.seat_id
                JOIN areas a ON a.id = s.area_id
-               WHERE ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+               WHERE fsa.ended_on IS NULL
+                 AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
                ORDER BY u.last_name, u.first_name""",
             user_name,
         )
@@ -236,20 +237,39 @@ async def get_period_grid(
             "project_name": project_name_for(r["id"], r["date"]),
         }
 
+    # 表示期間と重なる固定座席割当を履歴も含めて取得する（今の割当だけでなく、期間内に
+    # 交代があった場合は両方拾う。2026-09-04修正、seats.pyの同種の処理と同じ考え方）
     fixed_rows = await pool.fetch(
-        """SELECT fsa.seat_id, fsa.user_id, u.last_name, u.first_name, fsa.valid_until
-           FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id"""
+        """SELECT fsa.seat_id, fsa.user_id, fsa.valid_from, fsa.valid_until, fsa.ended_on,
+                  u.last_name, u.first_name
+           FROM fixed_seat_assignments fsa JOIN users u ON u.id = fsa.user_id
+           WHERE fsa.valid_from <= $2
+             AND (fsa.ended_on IS NULL OR fsa.ended_on >= $1)
+             AND (fsa.valid_until IS NULL OR fsa.valid_until >= $1)""",
+        range_start, range_end,
     )
+    fixed_by_seat_id: dict[int, list] = {}
     for fr in fixed_rows:
-        seat = seats.get(fr["seat_id"])
-        if seat is None or seat["seat_type"] != "fixed":
+        fixed_by_seat_id.setdefault(fr["seat_id"], []).append(fr)
+    for seat_id, rows_for_seat in fixed_by_seat_id.items():
+        seat = seats.get(seat_id)
+        if seat is None:
             continue
         d = range_start
         while d <= range_end:
-            if fr["valid_until"] is None or d <= fr["valid_until"]:
+            match = next(
+                (
+                    fr for fr in rows_for_seat
+                    if fr["valid_from"] <= d
+                    and (fr["ended_on"] is None or d <= fr["ended_on"])
+                    and (fr["valid_until"] is None or d <= fr["valid_until"])
+                ),
+                None,
+            )
+            if match is not None:
                 seat["days"][d.isoformat()] = {
-                    "status": "fixed", "kind": "fixed", "id": fr["seat_id"],
-                    "user_id": fr["user_id"], "user_name": f"{fr['last_name']} {fr['first_name']}",
+                    "status": "fixed", "kind": "fixed", "id": match["seat_id"],
+                    "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",
                     "project_name": None,
                 }
             d += timedelta(days=1)
@@ -296,7 +316,7 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
         raise HTTPException(404, detail="対象が見つかりません")
 
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", body.user_id
+        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", body.user_id
     )
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")

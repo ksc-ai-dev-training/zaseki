@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
-from database import get_pool, release_expired_fixed_seats, users_with_current_project_seat
+from database import close_fixed_seat_assignment, get_pool, release_expired_fixed_seats, users_with_current_project_seat
 
 router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assignments"])
 
@@ -21,6 +21,7 @@ async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
            JOIN seats s ON s.id = fsa.seat_id
            JOIN areas a ON a.id = s.area_id
            JOIN users u ON u.id = fsa.user_id
+           WHERE fsa.ended_on IS NULL
            ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no"""
     )
     return {
@@ -47,7 +48,7 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
     rows = await get_pool().fetch(
         """SELECT u.id, u.last_name, u.first_name
            FROM users u
-           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id
+           LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id AND fsa.ended_on IS NULL
            WHERE u.deleted_at IS NULL AND fsa.seat_id IS NULL
              AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
            ORDER BY u.last_name, u.first_name""",
@@ -94,7 +95,7 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
         raise HTTPException(404, detail="対象が見つかりません")
     if seat["seat_type"] == "fixed":
         already = await pool.fetchval(
-            "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1", body.seat_id
+            "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1 AND ended_on IS NULL", body.seat_id
         )
         if already:
             raise HTTPException(409, detail="この座席は既に割り当てられています")
@@ -104,10 +105,9 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            old_seat_id = await conn.fetchval(
-                "SELECT seat_id FROM fixed_seat_assignments WHERE user_id = $1", body.user_id
-            )
-            await conn.execute("DELETE FROM fixed_seat_assignments WHERE user_id = $1", body.user_id)
+            # 対象者が既に別の固定座席を持つ場合、履歴を残したままその割当を終了させる
+            # （物理DELETEはしない。close_fixed_seat_assignment参照）
+            old_seat_id = await close_fixed_seat_assignment(conn, user_id=body.user_id)
             if old_seat_id is not None and old_seat_id != body.seat_id:
                 # 座席を変更する場合、元の座席をfixedのまま放置すると誰にも使えない座席として
                 # 残ってしまうため、通常のフリー座席に戻す
@@ -124,7 +124,8 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
                 body.user_id, body.seat_id,
             )
             await conn.execute(
-                "INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_until) VALUES ($1, $2, $3, $4)",
+                """INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_from, valid_until)
+                   VALUES ($1, $2, $3, CURRENT_DATE, $4)""",
                 body.seat_id, body.user_id, user.id, body.valid_until,
             )
     return {"detail": "固定座席を指定しました"}
@@ -132,15 +133,14 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
 
 @router.delete("/{seat_id}")
 async def unassign(seat_id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-21: 固定座席の割当を解除（物理DELETE）。解除後は通常のフリー座席に戻す
-    （seat_type='free'、2026-08-27訂正。座席タイプを問わず指定できるようになったことに伴う対応）。"""
+    """A-21: 固定座席の割当を解除。解除後は通常のフリー座席に戻す（seat_type='free'、2026-08-27訂正。
+    座席タイプを問わず指定できるようになったことに伴う対応）。過去日の空き状況照会から参照できるよう
+    行自体は残す（物理DELETEはしない、2026-09-04変更。close_fixed_seat_assignment参照）。"""
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            result = await conn.execute(
-                "DELETE FROM fixed_seat_assignments WHERE seat_id = $1", seat_id
-            )
-            if result == "DELETE 0":
+            freed_seat_id = await close_fixed_seat_assignment(conn, seat_id=seat_id)
+            if freed_seat_id is None:
                 raise HTTPException(404, detail="対象が見つかりません")
             await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", seat_id)
     return {"detail": "固定座席の割当を解除しました"}

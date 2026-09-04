@@ -103,7 +103,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
     members_rows = await pool.fetch(
         """SELECT pm.id AS member_id, pm.user_id, u.last_name, u.first_name, pm.project_title, pm.can_assign_seats,
                   pm.seat_not_required,
-                  EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id) AS has_fixed_seat
+                  EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id AND fsa.ended_on IS NULL) AS has_fixed_seat
            FROM project_members pm JOIN users u ON u.id = pm.user_id
            WHERE pm.project_id = $1 ORDER BY pm.id""",
         plan["project_id"],
@@ -365,7 +365,7 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
     fixed_seat_user_ids = {
         r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[])",
+            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL",
             list(member_user_ids),
         )
     }
@@ -471,7 +471,9 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         raise HTTPException(404, detail="対象が見つかりません")
     if member["seat_not_required"]:
         raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
-    has_fixed_seat = await pool.fetchval("SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1", member_user_id)
+    has_fixed_seat = await pool.fetchval(
+        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", member_user_id
+    )
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")
 
