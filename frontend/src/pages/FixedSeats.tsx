@@ -140,7 +140,7 @@ export default function FixedSeats() {
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => goAssign({ userId: a.user_id, userName: a.user_name })}
+                          onClick={() => goAssign({ userId: a.user_id, userName: a.user_name, currentSeatNo: a.seat_no })}
                           className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
                         >
                           座席を変更する

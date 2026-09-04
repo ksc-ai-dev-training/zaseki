@@ -290,6 +290,10 @@ export default function Availability() {
           setActionError('終了日は開始日以降の日付を指定してください')
           return
         }
+        if (period?.full_end && recurringEndDate > period.full_end) {
+          setActionError(`終了日は予約可能期間の末日（${formatDateJa(period.full_end)}）までにしてください`)
+          return
+        }
         const data = await apiFetch<RecurringReservationResult>('/api/reservations/recurring', {
           method: 'POST',
           body: JSON.stringify({
@@ -1029,12 +1033,12 @@ export default function Availability() {
                     <div className="mt-3 space-y-3 text-sm">
                       <div className="flex gap-4">
                         <label className="inline-flex items-center gap-1">
-                          <input type="radio" checked={recurringType === 'daily'} onChange={() => setRecurringType('daily')} />
-                          毎日
-                        </label>
-                        <label className="inline-flex items-center gap-1">
                           <input type="radio" checked={recurringType === 'weekly'} onChange={() => setRecurringType('weekly')} />
                           毎週（曜日を選択）
+                        </label>
+                        <label className="inline-flex items-center gap-1">
+                          <input type="radio" checked={recurringType === 'daily'} onChange={() => setRecurringType('daily')} />
+                          毎日
                         </label>
                       </div>
                       {recurringType === 'weekly' && (
@@ -1061,6 +1065,7 @@ export default function Availability() {
                         <input
                           type="date"
                           min={reserveTarget.date}
+                          max={period?.full_end}
                           value={recurringEndDate}
                           onChange={(e) => setRecurringEndDate(e.target.value)}
                           className="h-9 w-44 rounded border border-slate-300 px-3"
@@ -1119,6 +1124,11 @@ export default function Availability() {
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{assignFixedSeatTarget.seat.seat_no}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{assignFixedSeatTarget.area}</dd></div>
           </dl>
+          {assignFixedSeatFor.currentSeatNo && (
+            <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              現在の固定座席（{assignFixedSeatFor.currentSeatNo}）は自動的に解除され、この座席に変更されます。先に解除する必要はありません。
+            </p>
+          )}
           <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm">
             <label className="flex items-center gap-2">
               <input

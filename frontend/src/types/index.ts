@@ -106,6 +106,12 @@ export interface FixedSeatCandidate {
 export interface AssignFixedSeatFor {
   userId: number
   userName: string
+  // 既に固定座席を持つ対象者を「座席を変更する」から開いた場合の現在の座席番号。
+  // 指定するとS-02の確認モーダルに「現在の座席は自動的に解除される」旨を表示する
+  // （2026-09-04追加。「座席の変更ボタンの使い方がよくわからない、削除が必要なら
+  // それを案内するモーダルを出してほしい」との要望を受けた。実際には自動で解除されるが、
+  // それが伝わっていなかったため案内を追加した）
+  currentSeatNo?: string
 }
 
 // A-54 GET /reservations/proxy-candidates（S-11 代理予約する対象者検索）

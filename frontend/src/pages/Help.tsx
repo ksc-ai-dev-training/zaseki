@@ -12,8 +12,8 @@ const TABS: { key: Tab; label: string }[] = [
 ]
 
 const CATEGORY_OPTIONS: { key: FeedbackCategory; label: string }[] = [
-  { key: 'bug', label: '不具合報告' },
   { key: 'request', label: '改善要望' },
+  { key: 'bug', label: '不具合報告' },
   { key: 'other', label: 'その他' },
 ]
 
