@@ -344,10 +344,13 @@ export interface MemberSeatAssignFor {
   projectName: string
   // 対象四半期の開始日（YYYY-MM-DD）。フロアマップの初期表示日にする（S-09の座席の島の割当と同じ考え方）
   periodStart: string
-  // 座席の島の範囲（この範囲内の座席のみ選択対象にする）
+  // 座席の島の範囲（この範囲内の座席のみ選択対象にする）。freeSeatモードでは使わない
   allocatedSeatIds: number[]
   // まだ座席が確保されていないメンバー（固定座席保有者は対象外）
   members: { userId: number; name: string }[]
+  // true: 座席の島に限らず、フロアマップで表示中の日に空いているフリー座席から選ぶ
+  // （2026-09-04追加。「複数人の代理予約をS-02のフロアマップからできるようにしたい」との要望を受けた）
+  freeSeat?: boolean
 }
 
 export type ProjectTitle = 'PM' | 'PL' | 'SL' | null

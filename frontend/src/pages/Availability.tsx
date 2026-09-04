@@ -7,11 +7,15 @@ import { useFloorZoom } from '../hooks/useFloorZoom'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePeriodAvailability } from '../hooks/usePeriodAvailability'
 import { useAreas } from '../hooks/useAreas'
+import { useMyProjects } from '../hooks/useMyProjects'
 import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
-import type { AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProxyBookingFor, RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday } from '../types'
+import type {
+  AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
+  RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
+} from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
 const RECURRING_WEEKDAYS: { key: Weekday; label: string }[] = [
@@ -89,6 +93,144 @@ const LEGEND: { status: SeatStatus; label: string }[] = [
   { status: 'project_confirmed', label: 'プロジェクト座席' },
   { status: 'project_pending', label: '未確定（プロジェクト座席）' },
 ]
+
+// S-02から「複数人の代理予約（PJメンバー）」を開始するボタン。対象プロジェクト・メンバーを選ぶと
+// フロアマップが「フリー座席の複数人代理予約モード」に切り替わる（2026-09-04追加。「フリー座席を
+// まとめて確保（代理予約）はS-02でできるようにしたい」との要望を受けた。S-04の日付範囲・自動割当版
+// 〔/free-seat-bookings〕に加え、フロアマップから1人ずつクリックして座席を選べる入口を追加した）。
+// role='admin'またはP-PROXY（プロジェクトの代表者）またはP-SEATASSIGN（席決め権限）を持つプロジェクトが対象
+function FreeSeatProxyBookingButton() {
+  const navigate = useNavigate()
+  const { items: myProjects } = useMyProjects()
+  const [open, setOpen] = useState(false)
+  const [projectId, setProjectId] = useState<number | ''>('')
+  const [plan, setPlan] = useState<ProjectPlanDetail | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [selectedMembers, setSelectedMembers] = useState<Set<number>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.project_title === 'PM' || p.project_title === 'PL') && p.plans.length > 0)
+
+  const openModal = () => {
+    setOpen(true)
+    setProjectId('')
+    setPlan(null)
+    setSelectedMembers(new Set())
+    setError(null)
+  }
+
+  const pickProject = async (id: number) => {
+    setProjectId(id)
+    setPlan(null)
+    setSelectedMembers(new Set())
+    setError(null)
+    const project = myProjects.find((p) => p.project_id === id)
+    const latestPlanId = project?.plans[project.plans.length - 1]?.id
+    if (!latestPlanId) return
+    setPlanLoading(true)
+    try {
+      const data = await apiFetch<ProjectPlanDetail>(`/api/project-quarter-plans/${latestPlanId}`)
+      setPlan(data)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'メンバーの取得に失敗しました')
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
+  const toggleMember = (userId: number) => {
+    setSelectedMembers((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const start = () => {
+    if (!plan || selectedMembers.size === 0) return
+    const members = plan.members
+      .filter((m) => selectedMembers.has(m.user_id))
+      .map((m) => ({ userId: m.user_id, name: m.name }))
+    navigate('/', {
+      replace: true,
+      state: {
+        memberSeatAssignFor: {
+          planId: plan.id, projectName: plan.project_name, periodStart: todayStr(),
+          allocatedSeatIds: [], members, freeSeat: true,
+        },
+      },
+    })
+  }
+
+  const candidates = plan?.members.filter((m) => !m.has_fixed_seat && !m.seat_not_required) ?? []
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openModal}
+        className="ml-auto rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+      >
+        複数人の代理予約（PJメンバー）
+      </button>
+      {open && (
+        <Modal
+          title="複数人の代理予約（フリー座席）"
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button
+                type="button"
+                disabled={!plan || selectedMembers.size === 0}
+                onClick={start}
+                className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                フロアマップで座席を選ぶ
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-xs text-slate-500">対象プロジェクト</span>
+              <select
+                value={projectId}
+                onChange={(e) => pickProject(Number(e.target.value))}
+                className="h-9 w-full rounded border border-slate-300 px-3"
+              >
+                <option value="">選択してください</option>
+                {eligibleProjects.map((p) => (
+                  <option key={p.project_id} value={p.project_id}>{p.project_name}</option>
+                ))}
+              </select>
+            </label>
+            {planLoading && <p className="text-xs text-slate-400">読み込み中...</p>}
+            {plan && (
+              <div>
+                <div className="mb-1 text-xs text-slate-500">対象メンバー</div>
+                <div className="flex flex-wrap gap-3">
+                  {candidates.map((m) => (
+                    <label key={m.member_id} className="inline-flex items-center gap-1">
+                      <input type="checkbox" checked={selectedMembers.has(m.user_id)} onChange={() => toggleMember(m.user_id)} />
+                      {m.name}
+                    </label>
+                  ))}
+                  {candidates.length === 0 && <span className="text-xs text-slate-400">対象にできるメンバーがいません</span>}
+                </div>
+              </div>
+            )}
+            {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+            <p className="text-xs text-slate-400">
+              メンバーを選んで進むと、フロアマップ上で表示中の日に空いているフリー座席をクリックして、1人ずつ割り当てられます。
+            </p>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
 
 // S-02 空き状況・予約。画面モックアップの実際のフロアマップ配置（部屋・柱・ロッカー含む）を再現する
 export default function Availability() {
@@ -232,15 +374,21 @@ export default function Availability() {
     if (!memberSeatAssignFor || Object.keys(memberPicks).length === 0) return
     setSubmitting(true)
     setActionError(null)
+    const assignments = Object.entries(memberPicks).map(([userId, seatId]) => ({
+      member_user_id: Number(userId), seat_id: seatId,
+    }))
     try {
-      await apiFetch(`/api/project-quarter-plans/${memberSeatAssignFor.planId}/seat-assignments`, {
-        method: 'POST',
-        body: JSON.stringify({
-          assignments: Object.entries(memberPicks).map(([userId, seatId]) => ({
-            member_user_id: Number(userId), seat_id: seatId,
-          })),
-        }),
-      })
+      if (memberSeatAssignFor.freeSeat) {
+        await apiFetch(`/api/project-quarter-plans/${memberSeatAssignFor.planId}/free-seat-assignments`, {
+          method: 'POST',
+          body: JSON.stringify({ assignments, date }),
+        })
+      } else {
+        await apiFetch(`/api/project-quarter-plans/${memberSeatAssignFor.planId}/seat-assignments`, {
+          method: 'POST',
+          body: JSON.stringify({ assignments }),
+        })
+      }
       setMemberPicks({})
       navigate('/project-seats', { replace: true })
     } catch (e) {
@@ -414,10 +562,14 @@ export default function Availability() {
     })
   })
   // メンバーへの座席確保モード: 座席の島の範囲内かつ未確定（status='project_pending'）の座席のみ選択可
-  // （2026-08-31追加）。暫定割当済みの座席は、割り当てたメンバーの氏名をタイルにプレビュー表示する
+  // （2026-08-31追加）。暫定割当済みの座席は、割り当てたメンバーの氏名をタイルにプレビュー表示する。
+  // freeSeatモード（2026-09-04追加）は座席の島に限らず、表示中の日に空いているフリー座席（status='free'）
+  // から選べる
   const memberAssignEligibleIds = new Set(
     Object.values(seatByNo)
-      .filter((s) => memberSeatAssignFor?.allocatedSeatIds.includes(s.id) && s.status === 'project_pending')
+      .filter((s) => memberSeatAssignFor?.freeSeat
+        ? s.status === 'free'
+        : memberSeatAssignFor?.allocatedSeatIds.includes(s.id) && s.status === 'project_pending')
       .map((s) => s.id),
   )
   const memberAssignPickedLabels: Record<number, string> = {}
@@ -493,6 +645,9 @@ export default function Availability() {
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">空き状況・予約</h1>
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-02</span>
+        {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
+          <FreeSeatProxyBookingButton />
+        )}
       </header>
 
       {assignFixedSeatFor && (
@@ -555,7 +710,9 @@ export default function Availability() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
           <span>
             <strong>{memberSeatAssignFor.projectName}</strong>のメンバーへの座席を確保中です。
-            座席の島の中から空いている座席をクリックし、割り当てる相手を選んでください。
+            {memberSeatAssignFor.freeSeat
+              ? `${formatDateJa(date)}の空いているフリー座席をクリックし、割り当てる相手を選んでください。`
+              : '座席の島の中から空いている座席をクリックし、割り当てる相手を選んでください。'}
             選択中: {Object.keys(memberPicks).length}/{memberSeatAssignFor.members.length}名
           </span>
           <span className="flex shrink-0 gap-3">
