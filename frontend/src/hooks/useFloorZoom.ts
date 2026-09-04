@@ -44,7 +44,17 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     }
 
     resetPinchZoom()
-    window.addEventListener('resize', resetPinchZoom)
+    // モバイルはスクロール中にアドレスバーの出入りで高さだけが変わるresizeが連発する。
+    // 幅が変わっていないのに毎回リセットするとスクロール位置が巻き戻ってカクつくため、
+    // 幅が実際に変化したときだけ反応させる（2026-09-04追加）。
+    let lastWidth = window.innerWidth
+    const onResize = () => {
+      const width = window.innerWidth
+      if (width === lastWidth) return
+      lastWidth = width
+      resetPinchZoom()
+    }
+    window.addEventListener('resize', onResize)
     const timer = window.setTimeout(resetPinchZoom, 300)
 
     let pinchStartDist = 0
@@ -74,7 +84,7 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     viewport.addEventListener('touchend', onTouchEnd)
 
     return () => {
-      window.removeEventListener('resize', resetPinchZoom)
+      window.removeEventListener('resize', onResize)
       window.clearTimeout(timer)
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
