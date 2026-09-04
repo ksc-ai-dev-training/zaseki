@@ -292,6 +292,9 @@ class ProxyReservationCreate(BaseModel):
     user_id: int
     seat_id: int
     date: Date
+    # true: 対象者が同じ日に既にフリー座席の予約を持っていれば取り消してこの座席に変更する
+    # （RULE-02の例外。A-09と同じ考え方、2026-09-04追加）
+    replace_existing: bool = False
 
 
 @router.post("/proxy")
@@ -321,26 +324,33 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
 
-    duplicate = await pool.fetchval(
-        """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
+    duplicate = await pool.fetchrow(
+        """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
            WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
         body.user_id, body.date,
     )
-    if duplicate:
+    if duplicate and not body.replace_existing:
         raise HTTPException(400, detail="同じ日に複数の座席は予約できません")
 
-    try:
-        row = await pool.fetchrow(
-            """INSERT INTO reservations (seat_id, user_id, date, created_by)
-               VALUES ($1, $2, $3, $4) RETURNING id, date, status""",
-            seat["id"], body.user_id, body.date, admin_user.id,
-        )
-    except asyncpg.UniqueViolationError:
-        raise HTTPException(409, detail="この座席はすでに予約されています")
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            if duplicate:
+                await conn.execute(
+                    "UPDATE reservations SET status = 'cancelled', updated_at = now() WHERE id = $1", duplicate["id"]
+                )
+            try:
+                row = await conn.fetchrow(
+                    """INSERT INTO reservations (seat_id, user_id, date, created_by)
+                       VALUES ($1, $2, $3, $4) RETURNING id, date, status""",
+                    seat["id"], body.user_id, body.date, admin_user.id,
+                )
+            except asyncpg.UniqueViolationError:
+                raise HTTPException(409, detail="この座席はすでに予約されています")
 
     return {
         "id": row["id"], "seat_id": seat["id"], "seat_no": seat["seat_no"],
         "date": row["date"].isoformat(), "status": row["status"],
+        "replaced_seat_no": duplicate["seat_no"] if duplicate else None,
     }
 
 

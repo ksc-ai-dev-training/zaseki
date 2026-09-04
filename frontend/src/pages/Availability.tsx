@@ -413,6 +413,13 @@ export default function Availability() {
     })
   }
 
+  // 表示中の座席と同じ日に、既にフリー座席の予約を持っているか（座席の変更、2026-09-04追加。
+  // 固定座席の「座席を変更する」と同じく、「一度取消が必要なのか分かりにくい」との指摘を受け、
+  // 自動的に取り消して変更されることを案内した上で、実際に自動で変更できるようにした）
+  const existingSameDayReservation = reserveTarget
+    ? upcoming.items.find((r) => r.date === reserveTarget.date && r.seat_no !== reserveTarget.seatNo)
+    : undefined
+
   const confirmReserve = async () => {
     if (!reserveTarget) return
     setSubmitting(true)
@@ -457,7 +464,10 @@ export default function Availability() {
       }
       await apiFetch('/api/reservations', {
         method: 'POST',
-        body: JSON.stringify({ seat_id: reserveTarget.seatId, date: reserveTarget.date }),
+        body: JSON.stringify({
+          seat_id: reserveTarget.seatId, date: reserveTarget.date,
+          replace_existing: Boolean(existingSameDayReservation),
+        }),
       })
       setReserveTarget(null)
       await refreshAll()
@@ -1182,6 +1192,11 @@ export default function Availability() {
                 <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">{recurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
               </dl>
+              {!proxyBookingFor && !recurring && existingSameDayReservation && (
+                <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
+                </p>
+              )}
               {!proxyBookingFor && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <label className="flex items-center gap-1.5 text-sm">

@@ -24,6 +24,11 @@ _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 class ReservationCreate(BaseModel):
     seat_id: int
     date: Date
+    # true: 同じ日に既にフリー座席の予約がある場合、取り消してこの座席に変更する（RULE-02の例外）。
+    # 未指定・falseなら従来どおり400で拒否する（2026-09-04追加。固定座席の「座席を変更する」と同じく、
+    # 「一度取消が必要なのか分かりにくい」との指摘を受け、フリー座席側にも同じ考え方を反映した。
+    # 誤って他の予約を消さないよう、フロント側が明示的に「変更する」と伝えたときだけ有効にする）
+    replace_existing: bool = False
 
 
 @router.post("")
@@ -64,27 +69,34 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない。
     # 詳細設計書6章のとおりRULE-05と異なりP-ADMIN除外の定めがないため、管理部が自分の予約として
     # 登録する場合（A-09は常に本人の予約として登録する）も対象とする。
-    duplicate = await pool.fetchval(
-        """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
+    duplicate = await pool.fetchrow(
+        """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
            WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
         user.id, body.date,
     )
-    if duplicate:
+    if duplicate and not body.replace_existing:
         raise HTTPException(400, detail="同じ日に複数の座席は予約できません")
 
-    try:
-        row = await pool.fetchrow(
-            """INSERT INTO reservations (seat_id, user_id, date, created_by)
-               VALUES ($1, $2, $3, $4) RETURNING id, date, status""",
-            seat["id"], user.id, body.date, user.id,
-        )
-    except asyncpg.UniqueViolationError:
-        # RULE-03: 同一座席・同一日の二重予約禁止
-        raise HTTPException(409, detail="この座席はすでに予約されています")
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            if duplicate:
+                await conn.execute(
+                    "UPDATE reservations SET status = 'cancelled', updated_at = now() WHERE id = $1", duplicate["id"]
+                )
+            try:
+                row = await conn.fetchrow(
+                    """INSERT INTO reservations (seat_id, user_id, date, created_by)
+                       VALUES ($1, $2, $3, $4) RETURNING id, date, status""",
+                    seat["id"], user.id, body.date, user.id,
+                )
+            except asyncpg.UniqueViolationError:
+                # RULE-03: 同一座席・同一日の二重予約禁止
+                raise HTTPException(409, detail="この座席はすでに予約されています")
 
     return {
         "id": row["id"], "seat_id": seat["id"], "seat_no": seat["seat_no"],
         "date": row["date"].isoformat(), "status": row["status"],
+        "replaced_seat_no": duplicate["seat_no"] if duplicate else None,
     }
 
 
