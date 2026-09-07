@@ -9,7 +9,6 @@ interface FloorProps {
   fixedSeatAssignMode?: boolean
   onAssignFixedSeat?: (seat: Seat) => void
   selectedSeatIds?: Set<number>
-  readOnly?: boolean
   memberAssignMode?: boolean
   memberAssignEligibleIds?: Set<number>
   memberAssignPickedLabels?: Record<number, string>

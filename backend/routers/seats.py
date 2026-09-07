@@ -1,4 +1,5 @@
-# A-06・A-07 空き状況・予約（S-02）、A-45 座席状況の履歴照会（S-10）。詳細設計書3.3節・3.10節
+# A-06・A-07 空き状況・予約（S-02）。詳細設計書3.3節
+# A-45 座席状況の履歴照会（S-10）は2026-09-07に廃止（A-06の完全な部分集合でしかなかったため）
 import re
 from collections import Counter
 from datetime import date as Date, timedelta
@@ -6,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from auth_helpers import CurrentUser, require_auth, require_roles
+from auth_helpers import CurrentUser, require_auth
 from database import free_seat_bookable_period, get_pool, get_setting, project_blocked_seats, release_expired_fixed_seats
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
@@ -28,7 +29,7 @@ def _seat_sort_key(seat_no: str) -> tuple[str, int]:
 
 def _is_birthday(birth_month: int | None, birth_day: int | None, target: Date) -> bool:
     """FR-08-4: 誕生日バッジの判定。実行時点の実際の「今日」ではなく、表示中の日付（S-02の
-    日付選択・S-10の照会日付）の月日と一致するかで判定する（2026-08-31追加。過去日・未来日を
+    日付選択）の月日と一致するかで判定する（2026-08-31追加。過去日・未来日を
     表示しているときに、その日を基準に誕生日を確認できるようにするため）。"""
     return birth_month == target.month and birth_day == target.day
 
@@ -41,33 +42,18 @@ async def get_availability(
 ):
     """A-06: 指定日・エリアの座席状況一覧（FR-04-1〜3）。実体は_build_availability参照。
     過去方向はD12（app_settings.seat_history_lookback_days、既定31日）より前は照会できない
-    （A-45と同じ下限。未来方向は予約のため従来どおり無制限。2026-09-04追加。それまでは
-    一般ユーザーでも無制限に過去を遡れてしまっており、管理部専用のA-45〔S-10〕より制限が
-    緩いという逆転が生じていた）。"""
+    （未来方向は予約のため従来どおり無制限。2026-09-04追加。それまでは一般ユーザーでも無制限に
+    過去を遡れてしまっており、当時管理部専用だった座席状況の履歴照会〔旧S-10、A-45〕より制限が
+    緩いという逆転が生じていた）。旧S-10はA-06の完全な部分集合（過去31日のみ・未来は不可）
+    でしかなかったため2026-09-07に廃止し、この画面に一本化した。"""
     lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
     if date < Date.today() - timedelta(days=lookback_days):
         raise HTTPException(400, detail="指定できる日付は直近1か月以内です")
     return await _build_availability(date, area, user)
 
 
-@router.get("/history")
-async def get_seat_history(
-    date: Date,
-    area: Literal["all", "north", "east", "west"] = "all",
-    user: CurrentUser = Depends(require_roles("admin")),
-):
-    """A-45: 座席状況の履歴照会（S-10、FR-04-5）。レスポンス形式はA-06と同じ（_build_availability
-    を共用する）。指定日はD12（app_settings.seat_history_lookback_days、既定31日）の範囲、
-    かつ当日以前のみ照会できる（2026-08-31追加）。"""
-    lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
-    today = Date.today()
-    if date > today or date < today - timedelta(days=lookback_days):
-        raise HTTPException(400, detail="指定できる日付は直近1か月以内です")
-    return await _build_availability(date, area, user)
-
-
 async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
-    """A-06・A-45共通のフロアマップ状況組み立て処理。
+    """A-06のフロアマップ状況組み立て処理。
 
     'fixed'座席はT-04（S-05）の恒久割当で判定し、日次のreservationは参照しない（T-04には
     日次の行が存在しないため）。release_expired_fixed_seats()は実際の本日時点で期限切れの割当のみ

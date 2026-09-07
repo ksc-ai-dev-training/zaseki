@@ -192,7 +192,7 @@ APP_SETTINGS = [
     ("free_seat_open_day", "26", "フリー座席の予約開始日（対象月の前月◯日）"),
     ("reservation_retention_archive_days", "365", "予約日からT-13へ退避するまでの日数（D10）"),
     ("reservation_retention_delete_days", "365", "T-13退避後、論理削除するまでの日数（D10）"),
-    ("seat_history_lookback_days", "31", "座席状況の履歴照会（S-10）で遡れる日数（D12）"),
+    ("seat_history_lookback_days", "31", "空き状況・予約（S-02）で過去に遡れる日数（D12）"),
 ]
 
 # S-09動作確認用のデモプロジェクト（S-08プロジェクト・PM管理タブが未実装のため、

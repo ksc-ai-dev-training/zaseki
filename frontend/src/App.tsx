@@ -11,7 +11,6 @@ import ProjectSeatRequest from './pages/ProjectSeatRequest'
 import ProxyBooking from './pages/ProxyBooking'
 import RoleManagement from './pages/RoleManagement'
 import SeatMaster from './pages/SeatMaster'
-import SeatHistory from './pages/SeatHistory'
 import MyProfile from './pages/MyProfile'
 import Help from './pages/Help'
 import FeedbackList from './pages/FeedbackList'
@@ -39,7 +38,7 @@ export default function App() {
     await mutate()
   }
 
-  // S-05・S-07・S-08・S-09・S-10・S-11は全てrole='admin'必須（詳細設計書5.5節）。
+  // S-05・S-07・S-08・S-09・S-11は全てrole='admin'必須（詳細設計書5.5節）。
   // 一般利用者が直接URLを叩いても弾けるよう、ルート単位でも同じ条件をかけておく
   const requireAdmin = (element: ReactNode) => (me.role === 'admin' ? element : <Navigate to="/" replace />)
   // S-14はrole='admin'ではなくis_system_operator（P-SYSOP、FR-09-3）で判定する（2026-09-01追加。
@@ -60,7 +59,6 @@ export default function App() {
         <Route path="/proxy-booking" element={requireAdmin(<ProxyBooking />)} />
         <Route path="/seat-master" element={requireAdmin(<SeatMaster />)} />
         <Route path="/roles" element={requireAdmin(<RoleManagement />)} />
-        <Route path="/history" element={requireAdmin(<SeatHistory />)} />
         <Route path="/feedback" element={requireSystemOperator(<FeedbackList />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

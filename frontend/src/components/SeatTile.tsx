@@ -21,8 +21,6 @@ interface SeatTileProps {
   /** S-09「座席の島の割当モード」で選択済みの座席id一覧（見た目のハイライトのみに使う。
    * クリック自体は通常の空き座席クリックと同じonReserve経由で、Availability.tsx側で分岐する） */
   selectedSeatIds?: Set<number>
-  /** S-10「座席状況の履歴照会」。参照専用表示とし、状態によらずクリック不可のdivで表示する（2026-08-31追加） */
-  readOnly?: boolean
   /** S-04「メンバーへの座席確保モード」（座席表からメンバーへ座席を選ぶ、2026-08-31追加） */
   memberAssignMode?: boolean
   /** 座席の島の範囲内かつ未確定（クリックして割り当てられる）座席id */
@@ -54,19 +52,11 @@ function SeatContent({ seat }: { seat: Seat }) {
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
 export default function SeatTile({
-  seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, readOnly,
+  seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds,
   memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
 }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
-  }
-
-  if (readOnly) {
-    return (
-      <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
-        <SeatContent seat={seat} />
-      </div>
-    )
   }
 
   if (memberAssignMode) {
