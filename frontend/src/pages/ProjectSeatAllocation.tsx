@@ -11,6 +11,58 @@ const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
 ]
 
+// 座席期間の入力補助（開始月＋か月数→開始日・終了日を自動計算、2026-09-07追加）。
+// 「開始月と何か月、という入力で自動計算の方が使いやすそう」との要望を受けた。期間は必ずしも
+// 月初〜月末に揃うとは限らない（A-65の備考どおり任意の開始日・終了日を指定できる）ため、既存の
+// 開始日・終了日の直接入力は残したまま、これを使うと計算結果をその2つの入力へ反映するだけの
+// 補助部品にする。
+function monthStartDate(month: string): string {
+  return `${month}-01`
+}
+function monthPlusDurationEndDate(month: string, months: number): string {
+  const [y, m] = month.split('-').map(Number)
+  const endMonthIndex = m - 1 + (months - 1)
+  const endYear = y + Math.floor(endMonthIndex / 12)
+  const endMonth = (endMonthIndex % 12) + 1
+  const lastDay = new Date(endYear, endMonth, 0).getDate()
+  return `${endYear}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+}
+function MonthDurationPicker({ onApply }: { onApply: (start: string, end: string) => void }) {
+  const [month, setMonth] = useState('')
+  const [months, setMonths] = useState(3)
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+      <label className="block">
+        <span className="mb-1 block text-xs text-slate-500">開始月</span>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className="h-8 rounded border border-slate-300 px-2 text-sm"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs text-slate-500">期間（か月）</span>
+        <input
+          type="number"
+          min={1}
+          value={months}
+          onChange={(e) => setMonths(Math.max(1, Number(e.target.value) || 1))}
+          className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+        />
+      </label>
+      <button
+        type="button"
+        disabled={!month}
+        onClick={() => onApply(monthStartDate(month), monthPlusDurationEndDate(month, months))}
+        className="h-8 rounded border border-slate-300 px-3 text-xs font-semibold text-slate-600 disabled:opacity-40"
+      >
+        開始日・終了日に反映
+      </button>
+    </div>
+  )
+}
+
 const STATUS_LABEL: Record<QuarterPlanStatus, (p: QuarterPlanItem) => string> = {
   seats_confirmed: () => 'アンケート未送信',
   survey_open: (p) => `アンケート回答受付中（${p.has_response ? '回答済み' : '未回答'}）`,
@@ -389,6 +441,7 @@ export default function ProjectSeatAllocation() {
         >
           <div className="space-y-3 text-sm">
             <p className="text-slate-500">座席の島の割当前（曜日確定前）のみ変更できます。任意の開始日・終了日を指定できます。</p>
+            <MonthDurationPicker onApply={(s, e) => { setPeriodStartValue(s); setPeriodEndValue(e) }} />
             <label className="block">
               <span className="mb-1 block text-slate-500">開始日</span>
               <input
@@ -432,6 +485,7 @@ export default function ProjectSeatAllocation() {
         >
           <div className="space-y-3 text-sm">
             <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください（既定で全て選択済みです）。設定すると即座に出社曜日アンケートが回答可能になります。必要座席数はプロジェクトごとの現状の人数（固定座席保有者・在宅のため不要なメンバーを除く）から自動算出されます。</p>
+            <MonthDurationPicker onApply={(s, e) => { setBulkCreateStartValue(s); setBulkCreateEndValue(e) }} />
             <div className="flex gap-3">
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">開始日</span>
@@ -488,6 +542,7 @@ export default function ProjectSeatAllocation() {
         >
           <div className="space-y-3 text-sm">
             <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください。座席の島の割当前（曜日確定前）のプロジェクトのみ対象です。</p>
+            <MonthDurationPicker onApply={(s, e) => { setBulkPeriodStartValue(s); setBulkPeriodEndValue(e) }} />
             <div className="flex gap-3">
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">開始日</span>

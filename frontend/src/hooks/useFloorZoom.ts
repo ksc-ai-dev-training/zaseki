@@ -22,8 +22,10 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     const currentScale = () =>
       parseFloat(getComputedStyle(overview).getPropertyValue('--pinch-scale')) || 1
 
+    const clampScale = (scale: number) => Math.min(PINCH_MAX, Math.max(PINCH_MIN, scale))
+
     const applyPinchScale = (scale: number) => {
-      const clamped = Math.min(PINCH_MAX, Math.max(PINCH_MIN, scale))
+      const clamped = clampScale(scale)
       overview.style.setProperty('--pinch-scale', String(clamped))
       overview.classList.toggle('zoomed-out', clamped < PINCH_HIDE_TAG_BELOW)
     }
@@ -70,10 +72,30 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
         pinchStartScale = currentScale()
       }
     }
+    // ズームの中心を常に左上ではなく2本指の中間点にする（2026-09-07追加。「必ず左上の部分が
+    // ズームされてしまうのでどの位置でもズームできるようにしてほしい」との報告を受けた）。
+    // zoomプロパティはtransform:scaleと異なりレイアウトサイズ自体を拡縮するため、scrollLeft/Top
+    // も拡縮後の座標系になる。画面上の指の位置（renderedPos）を拡縮前後で一定に保つように、
+    // 「(スクロール位置＋画面上の位置) × 新倍率/旧倍率 − 画面上の位置」でスクロール位置を補正する。
+    // 拡大方向では新しいscrollLeft/Topが拡大前のscrollWidth/Heightの上限を超えるため、先に
+    // scrollを補正してからapplyPinchScaleを呼ぶと補正値がその場でクランプされて効かない
+    // （常に拡大前に表示できていた左上寄りの範囲に戻ってしまう）。必ず拡縮を先に適用し、
+    // レイアウトが更新された後でスクロール位置を補正する順序にする。
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchStartDist > 0) {
         e.preventDefault()
-        applyPinchScale(pinchStartScale * (touchDistance(e.touches) / pinchStartDist))
+        const oldScale = currentScale()
+        const newScale = clampScale(pinchStartScale * (touchDistance(e.touches) / pinchStartDist))
+        if (newScale === oldScale) return
+        const rect = viewport.getBoundingClientRect()
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+        const oldScrollLeft = viewport.scrollLeft
+        const oldScrollTop = viewport.scrollTop
+        const ratio = newScale / oldScale
+        applyPinchScale(newScale)
+        viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
+        viewport.scrollTop = (oldScrollTop + midY) * ratio - midY
       }
     }
     const onTouchEnd = (e: TouchEvent) => {
