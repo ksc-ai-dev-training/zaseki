@@ -170,7 +170,7 @@ function FreeSeatProxyBookingButton() {
       <button
         type="button"
         onClick={openModal}
-        className="ml-auto rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
       >
         複数人の代理予約（PJメンバー）
       </button>
