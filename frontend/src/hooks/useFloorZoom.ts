@@ -67,53 +67,41 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
       return Math.sqrt(dx * dx + dy * dy)
     }
 
-    // ジェスチャー中は毎フレームzoomプロパティ（レイアウトサイズそのものを変える、
-    // transform:scaleと違いGPU合成だけでは済まない）とwindow.scrollToを直接更新するのをやめ、
-    // 指を動かしている間はtransform:scale＋transform-originによる見た目だけのプレビューに
-    // とどめ、指を離した瞬間に一度だけ実際のzoom値とスクロール位置を確定させる方式に変更した
-    // （2026-09-07再修正。rAFで1フレーム1回に間引いても「プルプル震える」報告が直らなかった。
-    // window.scrollToは指がまだ画面に触れている最中に呼ぶとブラウザ本体のタッチ・スクロール
-    // 処理と競合しやすく、震えの実体はこの競合だったと考えられる。transform-originによる
-    // 拡縮はブラウザが指定した点を中心に自動で見た目を維持してくれるため、スクロール位置の
-    // 補正が一切不要になり、この競合そのものが起きなくなる）。
-    let lastMidX = 0
-    let lastMidY = 0
-    let lastTargetScale = 1
+    // ズームの中心を常に左上ではなく2本指の中間点にする（2026-09-07追加）。zoomプロパティは
+    // transform:scaleと異なりレイアウトサイズ自体を拡縮するため、スクロール位置も拡縮後の
+    // 座標系になる。画面上の指の位置（renderedPos）を拡縮前後で一定に保つように、横方向は
+    // viewport（floor-zoom-viewport、幅が画面幅で制限されているため自身がスクロールコンテナに
+    // なる）のscrollLeftを「(スクロール位置＋要素内の位置)×新倍率/旧倍率−要素内の位置」で
+    // 補正する。縦方向はこの要素の高さがコンテンツに合わせて伸びるだけ（overflow-yが実際には
+    // 発生しない）で実際にスクロールしているのはページ全体（window）であり、かつこの要素より
+    // 上にヘッダー・タブなど拡縮されない部分があるため、横方向と同じ式は使えない。「要素の上端
+    // から指の位置までの距離（＝拡縮される範囲内でのローカル位置）」だけを新倍率/旧倍率した
+    // 差分をscrollYに加える（ローカル位置×(新倍率−旧倍率)/旧倍率）。拡大方向では新しいスクロール
+    // 位置が拡大前のスクロール可能範囲の上限を超えるため、必ず拡縮を先に適用してレイアウトを
+    // 更新してからスクロール位置を補正する。
+    //
+    // 適用自体はrequestAnimationFrameで1フレームに1回に間引く（touchmoveは画面の描画より
+    // 高頻度で発火しうるため）。それでも「ズームするときプルプル震える」報告が直らなかった原因は
+    // 別にあり、viewport自体がtouch-action:pan-x pan-yで単指スクロールを許可しているため、
+    // 2本指ジェスチャー中もブラウザ本体がこの要素の（あるいはページ全体の）スクロールを
+    // 独自に処理しようとし、こちらが書き込むscrollLeft/window.scrollYと競合していたと考えられる
+    // （2026-09-07: transform+transform-originによる見た目だけのプレビュー案も試したが、
+    // zoomプロパティと同じ要素にtransformを重ねる組み合わせでズーム中心がずれる副作用が出た
+    // ため不採用）。2本指ジェスチャー中だけviewportのtouch-actionを'none'にしてブラウザ側の
+    // 処理を完全に止め、指を離したら元のpan-x pan-yに戻す。
     let pendingTouch: { x0: number; y0: number; x1: number; y1: number } | null = null
     let rafId: number | null = null
-
-    const applyLivePreview = () => {
+    const applyPendingTouch = () => {
       rafId = null
       if (!pendingTouch || pinchStartDist === 0) return
       const { x0, y0, x1, y1 } = pendingTouch
       const dist = Math.sqrt((x0 - x1) ** 2 + (y0 - y1) ** 2)
-      lastTargetScale = clampScale(pinchStartScale * (dist / pinchStartDist))
-      lastMidX = (x0 + x1) / 2
-      lastMidY = (y0 + y1) / 2
-      const rect = viewport.getBoundingClientRect()
-      // transform-originはoverview自身のボックス内でのローカル座標（zoom適用後のレイアウト
-      // ピクセル）。横は自身がスクロールコンテナ（viewport.scrollLeft分ずれている）、縦は
-      // window側がスクロールしているためrect.topに現在のスクロール位置が反映済み。
-      const localX = viewport.scrollLeft + (lastMidX - rect.left)
-      const localY = lastMidY - rect.top
-      overview.style.transformOrigin = `${localX}px ${localY}px`
-      overview.style.transform = `scale(${lastTargetScale / pinchStartScale})`
-    }
-
-    // ジェスチャー終了時、プレビューで見えていた見た目と同じ位置になるよう実際のzoom値と
-    // スクロール位置を一度だけ確定させる（式はプレビュー導入前の確定処理と同じ考え方）。
-    const commitGesture = () => {
-      if (pinchStartDist === 0) return
-      pinchStartDist = 0
-      overview.style.transform = ''
-      overview.style.transformOrigin = ''
-      overview.style.willChange = ''
-      const oldScale = pinchStartScale
-      const newScale = lastTargetScale
+      const oldScale = currentScale()
+      const newScale = clampScale(pinchStartScale * (dist / pinchStartDist))
       if (newScale === oldScale) return
       const rect = viewport.getBoundingClientRect()
-      const midX = lastMidX - rect.left
-      const midY = lastMidY - rect.top
+      const midX = (x0 + x1) / 2 - rect.left
+      const midY = (y0 + y1) / 2 - rect.top
       const oldScrollLeft = viewport.scrollLeft
       const oldScrollY = window.scrollY
       const ratio = newScale / oldScale
@@ -121,15 +109,11 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
       viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
       window.scrollTo(window.scrollX, oldScrollY + midY * (ratio - 1))
     }
-
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         pinchStartDist = touchDistance(e.touches)
         pinchStartScale = currentScale()
-        lastTargetScale = pinchStartScale
-        lastMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2
-        lastMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2
-        overview.style.willChange = 'transform'
+        viewport.style.touchAction = 'none'
       }
     }
     const onTouchMove = (e: TouchEvent) => {
@@ -139,17 +123,18 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
           x0: e.touches[0].clientX, y0: e.touches[0].clientY,
           x1: e.touches[1].clientX, y1: e.touches[1].clientY,
         }
-        if (rafId === null) rafId = requestAnimationFrame(applyLivePreview)
+        if (rafId === null) rafId = requestAnimationFrame(applyPendingTouch)
       }
     }
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
+        pinchStartDist = 0
         pendingTouch = null
         if (rafId !== null) {
           cancelAnimationFrame(rafId)
           rafId = null
         }
-        commitGesture()
+        viewport.style.touchAction = ''
       }
     }
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
