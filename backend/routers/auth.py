@@ -8,16 +8,22 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from auth_helpers import COOKIE_SECURE, SESSION_COOKIE, CurrentUser, issue_jwt, require_auth
-from database import APP_ENV, get_pool
+from database import APP_ENV, ROOT_ENV, get_pool
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 GOOGLE_CLIENT_ID = google_auth.GOOGLE_CLIENT_ID
 # Google OAuth 未設定時は開発用ログインを有効にする（DEV_AUTH=0 で明示無効化）。
 # ただし APP_ENV=production では DEV_AUTH=1 を指定しても常に無効。
+# リポジトリルートの.envはos.environへ反映されず、database.load_root_env()が読んだROOT_ENVに
+# しか入らない（google_auth.pyのGOOGLE_CLIENT_ID等は既にos.environ→ROOT_ENVの順で見ている）。
+# ここだけos.environしか見ていなかったため、.envにDEV_AUTH=1と書いてもos.environには現れず
+# 常にデフォルト値（GOOGLE_CLIENT_ID設定時は"0"）にフォールバックしてdev-loginが常に無効になる
+# 不具合があった（2026-09-07修正。「ローカルで管理部側の操作もできるようにしてほしい」との
+# 報告を受けて原因を特定した）。
 DEV_AUTH = (
     APP_ENV != "production"
-    and os.environ.get("DEV_AUTH", "0" if GOOGLE_CLIENT_ID else "1") == "1"
+    and (os.environ.get("DEV_AUTH") or ROOT_ENV.get("DEV_AUTH", "0" if GOOGLE_CLIENT_ID else "1")) == "1"
 )
 
 
