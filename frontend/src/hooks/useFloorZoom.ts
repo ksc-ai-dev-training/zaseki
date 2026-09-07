@@ -93,25 +93,52 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     // 位置がずれる。2回目の修正がそれでも直らなかった原因）。かわりに「要素の上端から指の位置
     // までの距離（＝拡縮される範囲内でのローカル位置）」だけを新倍率/旧倍率した差分をscrollYに
     // 加える（ローカル位置×(新倍率−旧倍率)/旧倍率）。
+    //
+    // 拡縮とscrollの適用はrequestAnimationFrameで1フレームに1回だけに間引く（2026-09-07追加。
+    // 「ズームするときすごいプルプル震えている」との報告を受けた）。touchmoveは端末によって
+    // 画面の描画（1フレーム約16ms）より高い頻度で発火することがあり、その都度zoomプロパティの
+    // 変更（フロアマップ全体のレイアウト再計算を伴う、transform:scaleと違いGPU合成だけでは
+    // 済まない）とwindow.scrollToを同期的に行うと1フレームの間に何度も強制レイアウトが走り、
+    // コマ落ちが見た目の震えとして現れる。
+    let pendingTouch: { x0: number; y0: number; x1: number; y1: number } | null = null
+    let rafId: number | null = null
+    const applyPendingTouch = () => {
+      rafId = null
+      if (!pendingTouch || pinchStartDist === 0) return
+      const { x0, y0, x1, y1 } = pendingTouch
+      const dist = Math.sqrt((x0 - x1) ** 2 + (y0 - y1) ** 2)
+      const oldScale = currentScale()
+      const newScale = clampScale(pinchStartScale * (dist / pinchStartDist))
+      if (newScale === oldScale) return
+      const rect = viewport.getBoundingClientRect()
+      const midX = (x0 + x1) / 2 - rect.left
+      const midY = (y0 + y1) / 2 - rect.top
+      const oldScrollLeft = viewport.scrollLeft
+      const oldScrollY = window.scrollY
+      const ratio = newScale / oldScale
+      applyPinchScale(newScale)
+      viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
+      window.scrollTo(window.scrollX, oldScrollY + midY * (ratio - 1))
+    }
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchStartDist > 0) {
         e.preventDefault()
-        const oldScale = currentScale()
-        const newScale = clampScale(pinchStartScale * (touchDistance(e.touches) / pinchStartDist))
-        if (newScale === oldScale) return
-        const rect = viewport.getBoundingClientRect()
-        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
-        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
-        const oldScrollLeft = viewport.scrollLeft
-        const oldScrollY = window.scrollY
-        const ratio = newScale / oldScale
-        applyPinchScale(newScale)
-        viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
-        window.scrollTo(window.scrollX, oldScrollY + midY * (ratio - 1))
+        pendingTouch = {
+          x0: e.touches[0].clientX, y0: e.touches[0].clientY,
+          x1: e.touches[1].clientX, y1: e.touches[1].clientY,
+        }
+        if (rafId === null) rafId = requestAnimationFrame(applyPendingTouch)
       }
     }
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinchStartDist = 0
+      if (e.touches.length < 2) {
+        pinchStartDist = 0
+        pendingTouch = null
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+          rafId = null
+        }
+      }
     }
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
     viewport.addEventListener('touchmove', onTouchMove, { passive: false })
@@ -120,6 +147,7 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     return () => {
       window.removeEventListener('resize', onResize)
       window.clearTimeout(timer)
+      if (rafId !== null) cancelAnimationFrame(rafId)
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
       viewport.removeEventListener('touchend', onTouchEnd)
