@@ -82,10 +82,17 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     // （常に拡大前に表示できていた左上寄りの範囲に戻ってしまう）。必ず拡縮を先に適用し、
     // レイアウトが更新された後でスクロール位置を補正する順序にする。
     // 横方向はviewport（floor-zoom-viewport、幅が画面幅で制限されているため自身がスクロール
-    // コンテナになる）のscrollLeftで補正できるが、縦方向はこの要素の高さがコンテンツに合わせて
-    // 伸びるだけ（overflow-yが実際には発生しない）で、実際にスクロールしているのはページ全体
-    // （window）のため、縦方向はwindow.scrollYを補正する（最初の修正で左上に戻ってしまっていた
-    // 原因はこの縦方向の取り違え）。
+    // コンテナになる）のscrollLeftで補正できる。「(スクロール位置＋要素内の位置)×新倍率/旧倍率
+    // −要素内の位置」という標準式が使えるのは、このコンテナの中身がまるごと.floor-overview
+    // （拡縮対象そのもの）だからで、スクロール量自体も拡縮に応じて丸ごと伸び縮みする。
+    //
+    // 縦方向はこの要素の高さがコンテンツに合わせて伸びるだけ（overflow-yが実際には発生しない）で、
+    // 実際にスクロールしているのはページ全体（window）である。ページにはこの要素より上に
+    // ヘッダー・タブなど拡縮されない部分があるため、横方向と同じ式は使えない（oldScrollYを
+    // そのまま新倍率倍すると、拡縮されないヘッダー分まで一緒に引き伸ばして計算してしまい、
+    // 位置がずれる。2回目の修正がそれでも直らなかった原因）。かわりに「要素の上端から指の位置
+    // までの距離（＝拡縮される範囲内でのローカル位置）」だけを新倍率/旧倍率した差分をscrollYに
+    // 加える（ローカル位置×(新倍率−旧倍率)/旧倍率）。
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchStartDist > 0) {
         e.preventDefault()
@@ -94,13 +101,13 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
         if (newScale === oldScale) return
         const rect = viewport.getBoundingClientRect()
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
-        const midYClient = (e.touches[0].clientY + e.touches[1].clientY) / 2
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
         const oldScrollLeft = viewport.scrollLeft
         const oldScrollY = window.scrollY
         const ratio = newScale / oldScale
         applyPinchScale(newScale)
         viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
-        window.scrollTo(window.scrollX, (oldScrollY + midYClient) * ratio - midYClient)
+        window.scrollTo(window.scrollX, oldScrollY + midY * (ratio - 1))
       }
     }
     const onTouchEnd = (e: TouchEvent) => {
