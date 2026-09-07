@@ -110,6 +110,10 @@ function FreeSeatProxyBookingButton() {
   const [error, setError] = useState<string | null>(null)
 
   const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.project_title === 'PM' || p.project_title === 'PL') && p.plans.length > 0)
+  // 対象プロジェクトを1つも持たない利用者にはボタン自体を表示しない（2026-09-07修正。
+  // 「対象外の人にはボタン自体を表示しないように」との要望を受けた。以前はボタンが
+  // 常に表示され、押した後のモーダル内のプルダウンで初めて対象外と分かる作りだった）
+  if (eligibleProjects.length === 0) return null
 
   const openModal = () => {
     setOpen(true)
