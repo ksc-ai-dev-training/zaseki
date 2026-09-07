@@ -754,9 +754,6 @@ export default function Availability() {
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {viewMode === 'floormap' && (
           <>
-            {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
-              <FreeSeatProxyBookingButton />
-            )}
             <div className="flex items-center justify-between gap-1 sm:justify-start">
               <button
                 type="button"
@@ -791,6 +788,9 @@ export default function Availability() {
               </button>
             </div>
             <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
+            {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
+              <FreeSeatProxyBookingButton />
+            )}
           </>
         )}
         <div className="flex gap-1 sm:ml-auto">
