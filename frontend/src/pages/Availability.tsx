@@ -436,6 +436,15 @@ export default function Availability() {
       )
     : undefined
 
+  // 繰り返し予約は開始日（クリックした日）自体が予約可能期間内でなければ意味がないため、
+  // その場合はチェックボックス自体を選べないようにする（2026-09-07追加。「繰り返し予約は
+  // そもそも予約範囲可能範囲でしか選べないようにしてほしい」との要望を受けた。終了日は既に
+  // period.full_endで上限を設けていたが、開始日側は制限しておらず、範囲外の日を起点にして
+  // 繰り返し予約を試みると、送信後に全日「除外」される結果になっていた）
+  const recurringStartOutOfRange = Boolean(
+    reserveTarget && period && (reserveTarget.date < period.full_start || reserveTarget.date > period.full_end)
+  )
+
   const confirmReserve = async () => {
     if (!reserveTarget) return
     setSubmitting(true)
@@ -453,6 +462,10 @@ export default function Availability() {
         return
       }
       if (recurring) {
+        if (recurringStartOutOfRange) {
+          setActionError('この日は予約可能期間外のため、繰り返し予約は設定できません')
+          return
+        }
         if (recurringType === 'weekly' && recurringWeekdays.size === 0) {
           setActionError('毎週の場合は曜日を1つ以上選択してください')
           return
@@ -1218,10 +1231,20 @@ export default function Availability() {
               {!proxyBookingFor && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <label className="flex items-center gap-1.5 text-sm">
-                    <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={recurring}
+                      disabled={recurringStartOutOfRange}
+                      onChange={(e) => setRecurring(e.target.checked)}
+                    />
                     繰り返し予約にする
                   </label>
-                  {recurring && (
+                  {recurringStartOutOfRange && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      この日は予約可能期間（{formatDateJa(period!.full_start)}〜{formatDateJa(period!.full_end)}）外のため、繰り返し予約は設定できません。
+                    </p>
+                  )}
+                  {recurring && !recurringStartOutOfRange && (
                     <div className="mt-3 space-y-3 text-sm">
                       <div className="flex gap-4">
                         <label className="inline-flex items-center gap-1">
