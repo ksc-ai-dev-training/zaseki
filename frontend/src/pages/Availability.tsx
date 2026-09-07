@@ -663,9 +663,6 @@ export default function Availability() {
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">空き状況・予約</h1>
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-02</span>
-        {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
-          <FreeSeatProxyBookingButton />
-        )}
       </header>
 
       {assignFixedSeatFor && (
@@ -757,6 +754,9 @@ export default function Availability() {
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {viewMode === 'floormap' && (
           <>
+            {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
+              <FreeSeatProxyBookingButton />
+            )}
             <div className="flex items-center justify-between gap-1 sm:justify-start">
               <button
                 type="button"
