@@ -35,7 +35,11 @@ button:disabled {
 .seat-tile .seat-avatar { width: 16px; height: 16px; border-radius: 9999px; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.15); }
 .seat-tile .seat-birthday-badge { position: absolute; top: -7px; right: -7px; font-size: 12px; line-height: 1; }
 button.seat-tile { cursor: pointer; }
-button.seat-tile:hover { box-shadow: 0 2px 8px rgba(26, 29, 33, 0.07); transform: translateY(-1px); }
+/* ホバー時は位置がわずかに動く演出ではなく、色味の変化で分かりやすくする
+   （2026-09-04変更。「ホバーで少し動くより、明るくなる方がわかりやすい」との要望を受けた）。
+   status-freeは背景が白でbrightness()では変化が見えないため、背景色を直接変える */
+button.seat-tile:hover { box-shadow: 0 2px 8px rgba(26, 29, 33, 0.07); filter: brightness(1.08); }
+button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
 
 .status-free { background: #ffffff; color: #475569; border: 1.5px dashed #9ca3af; }
 .status-mine { background: #1e40af; border-color: #1e3a8a; color: #ffffff; }
