@@ -74,13 +74,18 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
     }
     // ズームの中心を常に左上ではなく2本指の中間点にする（2026-09-07追加。「必ず左上の部分が
     // ズームされてしまうのでどの位置でもズームできるようにしてほしい」との報告を受けた）。
-    // zoomプロパティはtransform:scaleと異なりレイアウトサイズ自体を拡縮するため、scrollLeft/Top
+    // zoomプロパティはtransform:scaleと異なりレイアウトサイズ自体を拡縮するため、スクロール位置
     // も拡縮後の座標系になる。画面上の指の位置（renderedPos）を拡縮前後で一定に保つように、
     // 「(スクロール位置＋画面上の位置) × 新倍率/旧倍率 − 画面上の位置」でスクロール位置を補正する。
-    // 拡大方向では新しいscrollLeft/Topが拡大前のscrollWidth/Heightの上限を超えるため、先に
-    // scrollを補正してからapplyPinchScaleを呼ぶと補正値がその場でクランプされて効かない
+    // 拡大方向では新しいスクロール位置が拡大前のスクロール可能範囲の上限を超えるため、先に
+    // スクロールを補正してからapplyPinchScaleを呼ぶと補正値がその場でクランプされて効かない
     // （常に拡大前に表示できていた左上寄りの範囲に戻ってしまう）。必ず拡縮を先に適用し、
     // レイアウトが更新された後でスクロール位置を補正する順序にする。
+    // 横方向はviewport（floor-zoom-viewport、幅が画面幅で制限されているため自身がスクロール
+    // コンテナになる）のscrollLeftで補正できるが、縦方向はこの要素の高さがコンテンツに合わせて
+    // 伸びるだけ（overflow-yが実際には発生しない）で、実際にスクロールしているのはページ全体
+    // （window）のため、縦方向はwindow.scrollYを補正する（最初の修正で左上に戻ってしまっていた
+    // 原因はこの縦方向の取り違え）。
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchStartDist > 0) {
         e.preventDefault()
@@ -89,13 +94,13 @@ export function useFloorZoom(areaFilter: AreaFilter, ready: boolean) {
         if (newScale === oldScale) return
         const rect = viewport.getBoundingClientRect()
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
-        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+        const midYClient = (e.touches[0].clientY + e.touches[1].clientY) / 2
         const oldScrollLeft = viewport.scrollLeft
-        const oldScrollTop = viewport.scrollTop
+        const oldScrollY = window.scrollY
         const ratio = newScale / oldScale
         applyPinchScale(newScale)
         viewport.scrollLeft = (oldScrollLeft + midX) * ratio - midX
-        viewport.scrollTop = (oldScrollTop + midY) * ratio - midY
+        window.scrollTo(window.scrollX, (oldScrollY + midYClient) * ratio - midYClient)
       }
     }
     const onTouchEnd = (e: TouchEvent) => {
