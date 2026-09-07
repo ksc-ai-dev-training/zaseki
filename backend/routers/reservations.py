@@ -59,9 +59,14 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # RULE-07: 固定座席の利用者はフリー座席を予約できない（同一人物が固定座席とフリー座席を
     # 同時に保有する状態を防ぐ）。RULE-02と同様、管理部が自分の予約として登録する場合も対象とする。
     # 有効期限切れの割当を先に解除しておくことで、期限切れ後にこの判定へ誤って引っかからないようにする。
+    # valid_from（開始日）がまだ来ていない予約済みの固定座席割当は対象外とする（2026-09-07追加。
+    # 未来の開始日を指定できるようになったことに伴い、開始日前は従来どおりフリー座席を予約できる
+    # 必要がある）。
     await release_expired_fixed_seats()
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", user.id
+        """SELECT 1 FROM fixed_seat_assignments
+           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
+        user.id,
     )
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")

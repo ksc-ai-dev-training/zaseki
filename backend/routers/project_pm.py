@@ -675,8 +675,12 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         raise HTTPException(404, detail="対象が見つかりません")
     if member["seat_not_required"]:
         raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
+    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。reservations.pyの
+    # A-09と同じ考え方）
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", member_user_id
+        """SELECT 1 FROM fixed_seat_assignments
+           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
+        member_user_id,
     )
     if has_fixed_seat:
         raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")

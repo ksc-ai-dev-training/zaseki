@@ -276,6 +276,9 @@ export default function Availability() {
   const [assignFixedSeatTarget, setAssignFixedSeatTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignIndefinite, setAssignIndefinite] = useState(true)
   const [assignValidUntil, setAssignValidUntil] = useState('')
+  // 固定座席の開始日（2026-09-07追加。「何日から固定座席の指定ができるようにしたい」との
+  // 要望を受けた）。過去日を指定すれば記録の補正、未来日を指定すれば事前の予約設定に使える
+  const [assignValidFrom, setAssignValidFrom] = useState(todayStr())
   const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number } | null>(null)
   const [newSeatNo, setNewSeatNo] = useState('')
   const [newSeatType, setNewSeatType] = useState<SeatType>('free')
@@ -332,6 +335,7 @@ export default function Availability() {
     setActionError(null)
     setAssignIndefinite(true)
     setAssignValidUntil('')
+    setAssignValidFrom(todayStr())
     setAssignFixedSeatTarget({ seat, area })
   }
   // S-04「メンバーへの座席確保モード」: 暫定割当済みの座席を再クリックした場合は割当を解除し、
@@ -507,6 +511,7 @@ export default function Availability() {
 
   const confirmAssignFixedSeat = async () => {
     if (!assignFixedSeatTarget || !assignFixedSeatFor) return
+    if (!assignValidFrom) return
     if (!assignIndefinite && !assignValidUntil) return
     setSubmitting(true)
     setActionError(null)
@@ -516,6 +521,7 @@ export default function Availability() {
         body: JSON.stringify({
           seat_id: assignFixedSeatTarget.seat.id,
           user_id: assignFixedSeatFor.userId,
+          valid_from: assignValidFrom,
           valid_until: assignIndefinite ? null : assignValidUntil,
         }),
       })
@@ -1296,7 +1302,7 @@ export default function Availability() {
               <button type="button" onClick={() => setAssignFixedSeatTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
-                disabled={submitting || (!assignIndefinite && !assignValidUntil)}
+                disabled={submitting || !assignValidFrom || (!assignIndefinite && !assignValidUntil)}
                 onClick={confirmAssignFixedSeat}
                 className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
               >
@@ -1316,6 +1322,15 @@ export default function Availability() {
             </p>
           )}
           <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-slate-500">開始日（過去日を指定すると記録の補正、未来日を指定すると事前の予約設定になります）</span>
+              <input
+                type="date"
+                value={assignValidFrom}
+                onChange={(e) => setAssignValidFrom(e.target.value)}
+                className="h-9 w-full rounded border border-slate-300 px-3"
+              />
+            </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -1331,7 +1346,7 @@ export default function Availability() {
                   type="date"
                   value={assignValidUntil}
                   onChange={(e) => setAssignValidUntil(e.target.value)}
-                  min={shiftDateStr(todayStr(), 1)}
+                  min={shiftDateStr(assignValidFrom || todayStr(), 1)}
                   className="h-9 w-full rounded border border-slate-300 px-3"
                 />
               </label>

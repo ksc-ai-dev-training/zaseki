@@ -70,6 +70,11 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
 class FixedSeatAssign(BaseModel):
     seat_id: int
     user_id: int
+    # 割当の開始日（2026-09-07追加。「何日から固定座席の指定ができるようにしたい」との要望を
+    # 受けた）。未指定は従来どおり本日から。過去日を指定すると「本当は先週から固定だったのに
+    # 登録が今日になった」といった記録の補正に、未来日を指定すると「来週月曜から固定にする」と
+    # いった事前の予約設定に使える。
+    valid_from: Date | None = None
     # 任意の有効期限（FR-01-5、2026-08-28追加）。未指定（None）は従来どおり無期限。
     valid_until: Date | None = None
 
@@ -86,47 +91,71 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
     （A-09・A-18・A-47）では検証済みだったが、既にフリー座席・プロジェクト座席の予約（周期予約含む）
     を持つ利用者へ後から固定座席を指定した場合の逆方向が抜けており、両方の座席を保持できてしまう
     不具合があったため、対象者の他の今後の予約（新しい固定座席自体を除く）もあわせて取り消す
-    （2026-08-28修正）。"""
+    （2026-08-28修正）。
+
+    valid_from対応（2026-09-07追加）:
+    - valid_fromが本日より後（未来予約）の場合、その日が来るまでseat_type・対象者のRULE-07判定は
+      従来どおり（座席はフリー座席のまま、利用者もフリー座席を予約できる）。開始日を迎えた時点で
+      release_expired_fixed_seats()がseat_typeを'fixed'へ切り替える（有効化）。この場合も対象者の
+      既存の固定座席は指定時点ですぐに解除する（1人1固定座席の原則を優先し、開始日までの間は
+      いったん無固定状態になる簡易な仕様。切れ目のない引き継ぎまでは対応しない）。
+    - valid_from・valid_untilが両方とも本日以前（＝完全に過去で終わった履歴の補正）の場合は、
+      現在の状態（対象者の現在の固定座席・座席のseat_type・今後の予約）には一切手を付けず、
+      ended_on済みの履歴行だけを追加する。
+    - どちらの場合も、指定期間がこの座席の他の割当（履歴・現在有効なものを含む）と重ならないことを
+      確認する（重なりを許すと同じ座席が同じ日に複数人の固定座席として二重に表示されてしまうため）。"""
     pool = get_pool()
-    if body.valid_until is not None and body.valid_until <= Date.today():
-        raise HTTPException(400, detail="有効期限は明日以降の日付を指定してください")
+    today = Date.today()
+    valid_from = body.valid_from or today
+    if body.valid_until is not None and body.valid_until <= valid_from:
+        raise HTTPException(400, detail="有効期限は開始日より後の日付を指定してください")
     seat = await pool.fetchrow("SELECT id, seat_type, status FROM seats WHERE id = $1", body.seat_id)
     if seat is None or seat["status"] != "active":
         raise HTTPException(404, detail="対象が見つかりません")
-    if seat["seat_type"] == "fixed":
-        already = await pool.fetchval(
-            "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1 AND ended_on IS NULL", body.seat_id
-        )
-        if already:
-            raise HTTPException(409, detail="この座席は既に割り当てられています")
+    overlap = await pool.fetchval(
+        """SELECT 1 FROM fixed_seat_assignments
+           WHERE seat_id = $1
+             AND valid_from <= COALESCE($3::date, 'infinity'::date)
+             AND COALESCE(ended_on, valid_until, 'infinity'::date) >= $2::date""",
+        body.seat_id, valid_from, body.valid_until,
+    )
+    if overlap:
+        raise HTTPException(409, detail="指定した期間が、この座席の他の割当（履歴を含む）と重なっています")
     target = await pool.fetchrow("SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL", body.user_id)
     if target is None:
         raise HTTPException(404, detail="対象が見つかりません")
 
+    # 開始日・有効期限がどちらも本日以前＝すでに完全に終わった履歴の補正。現在の状態には触れない
+    is_past_only = body.valid_until is not None and body.valid_until <= today
+    ended_on = body.valid_until if is_past_only else None
+
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # 対象者が既に別の固定座席を持つ場合、履歴を残したままその割当を終了させる
-            # （物理DELETEはしない。close_fixed_seat_assignment参照）
-            old_seat_id = await close_fixed_seat_assignment(conn, user_id=body.user_id)
-            if old_seat_id is not None and old_seat_id != body.seat_id:
-                # 座席を変更する場合、元の座席をfixedのまま放置すると誰にも使えない座席として
-                # 残ってしまうため、通常のフリー座席に戻す
-                await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", old_seat_id)
-            await conn.execute("UPDATE seats SET seat_type = 'fixed' WHERE id = $1", body.seat_id)
+            if not is_past_only:
+                # 対象者が既に別の固定座席を持つ場合、履歴を残したままその割当を終了させる
+                # （物理DELETEはしない。close_fixed_seat_assignment参照）
+                old_seat_id = await close_fixed_seat_assignment(conn, user_id=body.user_id)
+                if old_seat_id is not None and old_seat_id != body.seat_id:
+                    # 座席を変更する場合、元の座席をfixedのまま放置すると誰にも使えない座席として
+                    # 残ってしまうため、通常のフリー座席に戻す
+                    await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", old_seat_id)
+                if valid_from <= today:
+                    await conn.execute("UPDATE seats SET seat_type = 'fixed' WHERE id = $1", body.seat_id)
+                cancel_from = max(valid_from, today)
+                await conn.execute(
+                    """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                       WHERE seat_id = $1 AND status = 'active' AND date >= $2""",
+                    body.seat_id, cancel_from,
+                )
+                await conn.execute(
+                    """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                       WHERE user_id = $1 AND seat_id != $2 AND status = 'active' AND date >= $3""",
+                    body.user_id, body.seat_id, cancel_from,
+                )
             await conn.execute(
-                """UPDATE reservations SET status = 'cancelled', updated_at = now()
-                   WHERE seat_id = $1 AND status = 'active' AND date >= CURRENT_DATE""",
-                body.seat_id,
-            )
-            await conn.execute(
-                """UPDATE reservations SET status = 'cancelled', updated_at = now()
-                   WHERE user_id = $1 AND seat_id != $2 AND status = 'active' AND date >= CURRENT_DATE""",
-                body.user_id, body.seat_id,
-            )
-            await conn.execute(
-                """INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_from, valid_until)
-                   VALUES ($1, $2, $3, CURRENT_DATE, $4)""",
-                body.seat_id, body.user_id, user.id, body.valid_until,
+                """INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_from, valid_until, ended_on)
+                   VALUES ($1, $2, $3, $4, $5, $6)""",
+                body.seat_id, body.user_id, user.id, valid_from, body.valid_until, ended_on,
             )
     return {"detail": "固定座席を指定しました"}
 

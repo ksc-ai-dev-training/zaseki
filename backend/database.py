@@ -319,11 +319,15 @@ async def free_seat_bookable_period() -> tuple[Date, Date]:
 
 async def release_expired_fixed_seats() -> None:
     """有効期限（valid_until）を過ぎた固定座席の割当を自動解除し、座席をフリー座席に戻す（FR-01-5）。
+    あわせて、開始日（valid_from）を本日以降に指定して事前登録しておいた割当（2026-09-07追加、
+    「何日から固定座席の指定ができるようにしたい」との要望を受けた）のうち、開始日を迎えたものを
+    実際にseat_type='fixed'へ切り替える（有効化）。行自体はassign()の時点で挿入済みで、
+    ended_on IS NULLのまま開始日を待っている状態のため、ここでは座席側のフラグを追従させるだけでよい。
 
     詳細設計書3.12節の「バッチ処理」は本来夜間バッチとして定義しているが、本プロジェクトの
     スコープでは実際のスケジューラ基盤の実装は対象外（同節参照）。そのため、固定座席の状態が
     実際に参照される主要な箇所（A-06空き状況取得・A-19固定座席一覧・A-09予約登録のRULE-07判定）
-    の先頭でこの関数を呼び、遅延評価で同等の結果（期限切れ翌日には必ずフリー座席として扱われる）
+    の先頭でこの関数を呼び、遅延評価で同等の結果（期限切れ翌日・開始日当日には必ず正しい状態になる）
     を得る。"""
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -332,16 +336,25 @@ async def release_expired_fixed_seats() -> None:
                 """SELECT seat_id FROM fixed_seat_assignments
                    WHERE ended_on IS NULL AND valid_until IS NOT NULL AND valid_until < CURRENT_DATE"""
             )
-            if not expired:
-                return
-            seat_ids = [r["seat_id"] for r in expired]
-            await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = ANY($1::bigint[])", seat_ids)
-            # 過去日照会（A-06・A-07・A-45）から参照できるよう、行は消さずvalid_untilの日で終了させる
-            await conn.execute(
-                """UPDATE fixed_seat_assignments SET ended_on = valid_until
-                   WHERE ended_on IS NULL AND seat_id = ANY($1::bigint[])""",
-                seat_ids,
+            if expired:
+                seat_ids = [r["seat_id"] for r in expired]
+                await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = ANY($1::bigint[])", seat_ids)
+                # 過去日照会（A-06・A-07・A-45）から参照できるよう、行は消さずvalid_untilの日で終了させる
+                await conn.execute(
+                    """UPDATE fixed_seat_assignments SET ended_on = valid_until
+                       WHERE ended_on IS NULL AND seat_id = ANY($1::bigint[])""",
+                    seat_ids,
+                )
+
+            to_activate = await conn.fetch(
+                """SELECT fsa.seat_id FROM fixed_seat_assignments fsa JOIN seats s ON s.id = fsa.seat_id
+                   WHERE fsa.ended_on IS NULL AND fsa.valid_from <= CURRENT_DATE AND s.seat_type != 'fixed'"""
             )
+            if to_activate:
+                await conn.execute(
+                    "UPDATE seats SET seat_type = 'fixed' WHERE id = ANY($1::bigint[])",
+                    [r["seat_id"] for r in to_activate],
+                )
 
 
 async def close_fixed_seat_assignment(conn, *, user_id: int | None = None, seat_id: int | None = None) -> int | None:
@@ -440,8 +453,12 @@ async def generate_recurring_reservations(
     pool = get_pool()
     weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
 
+    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。開始日前は
+    # 従来どおりフリー座席を予約できる必要がある）
     has_fixed_seat = await pool.fetchval(
-        "SELECT 1 FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL", target_user_id
+        """SELECT 1 FROM fixed_seat_assignments
+           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
+        target_user_id,
     )
 
     rule_id = await pool.fetchval(
@@ -537,9 +554,11 @@ async def generate_bulk_free_seat_reservations(
     pool = get_pool()
     weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
 
+    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加）
     fixed_user_ids = {
         r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL",
+            """SELECT user_id FROM fixed_seat_assignments
+               WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
             member_user_ids,
         )
     }
