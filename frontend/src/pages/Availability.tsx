@@ -415,9 +415,17 @@ export default function Availability() {
 
   // 表示中の座席と同じ日に、既にフリー座席の予約を持っているか（座席の変更、2026-09-04追加。
   // 固定座席の「座席を変更する」と同じく、「一度取消が必要なのか分かりにくい」との指摘を受け、
-  // 自動的に取り消して変更されることを案内した上で、実際に自動で変更できるようにした）
+  // 自動的に取り消して変更されることを案内した上で、実際に自動で変更できるようにした）。
+  // seat_type==='project'（PM/PLが決めた座席の島の割当による確定済みプロジェクト座席）は対象から
+  // 除外する（2026-09-07修正。除外していないと、プロジェクト座席を確定済みの日に別のフリー座席を
+  // クリックしただけで、汎用の案内文だけで確定済みのプロジェクト座席が自動的に取り消されてしまう
+  // 不具合があった。除外した場合はreplace_existing=falseのまま送信され、バックエンドの通常の
+  // 重複チェックで「同じ日に複数の座席は予約できません」と拒否されるため、プロジェクト座席を
+  // 手放すには一覧から明示的に取消してもらう形になる）
   const existingSameDayReservation = reserveTarget
-    ? upcoming.items.find((r) => r.date === reserveTarget.date && r.seat_no !== reserveTarget.seatNo)
+    ? upcoming.items.find(
+        (r) => r.date === reserveTarget.date && r.seat_no !== reserveTarget.seatNo && r.seat_type !== 'project'
+      )
     : undefined
 
   const confirmReserve = async () => {

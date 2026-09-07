@@ -126,16 +126,28 @@ async def delete_seat(id: int, _: CurrentUser = Depends(require_roles("admin")))
     """A-53: 座席の完全削除。廃止（A-24のstatus='retired'）とは別の操作で、予約履歴を残さず
     座席データそのものを消す（2026-08-28追加）。固定座席の割当（T-04）や予約履歴（T-08、
     キャンセル済みを含む）が残っている座席はFK制約上も削除できないため、事前チェックして
-    分かりやすいメッセージで拒否する。"""
+    分かりやすいメッセージで拒否する。
+
+    固定座席の割当は2026-09-04より履歴を残す方式（ended_on）に変更したため、「現在有効な割当が
+    ある」場合と「過去に割当があった（既に解除済み）」場合を分けてチェックする（2026-09-07修正。
+    分けずにseat_id一致だけで判定すると、既に解除済みの座席でも履歴行が残っている限り常に
+    「先にS-05で解除してください」と案内してしまうが、解除するものが何もなく手詰まりになる
+    不具合があった。過去の履歴だけが残っている場合はFK制約上いずれにせよ物理削除できないため、
+    予約履歴と同じく廃止をご利用いただく案内にする）。"""
     pool = get_pool()
     existing = await pool.fetchrow("SELECT id FROM seats WHERE id = $1", id)
     if existing is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    has_fixed_assignment = await pool.fetchval(
+    has_active_fixed_assignment = await pool.fetchval(
+        "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1 AND ended_on IS NULL", id
+    )
+    if has_active_fixed_assignment:
+        raise HTTPException(409, detail="固定座席の割当があるため削除できません。先に固定座席の指定（S-05）で解除してください")
+    has_fixed_assignment_history = await pool.fetchval(
         "SELECT 1 FROM fixed_seat_assignments WHERE seat_id = $1", id
     )
-    if has_fixed_assignment:
-        raise HTTPException(409, detail="固定座席の割当があるため削除できません。先に固定座席の指定（S-05）で解除してください")
+    if has_fixed_assignment_history:
+        raise HTTPException(409, detail="この座席には過去の固定座席割当履歴があるため削除できません。廃止をご利用ください")
     has_reservation = await pool.fetchval("SELECT 1 FROM reservations WHERE seat_id = $1", id)
     if has_reservation:
         raise HTTPException(409, detail="この座席の予約履歴があるため削除できません。廃止をご利用ください")
