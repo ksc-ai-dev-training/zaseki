@@ -145,12 +145,13 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
 .free-placed-seat { position: absolute; transform: translate(-50%, -50%); z-index: 5; }
 .placement-mode-active { cursor: crosshair; }
 
-/* スマホ対応（FR-02-1）: フロアマップのみ2本指ピンチで拡大・縮小できるようにする
-   （画面モックアップのS-02_availability.html・mock.cssをそのまま移植。JS本体は
-   frontend/src/hooks/useFloorZoom.ts）。zoomプロパティはtransform:scaleと異なり
-   専有サイズごと縮小するため、縮小後に下の要素との間に余白が残らない。 */
+/* スマホ対応（FR-02-1）: フロアマップ全体が収まる縮小率で表示する（画面モックアップの
+   S-02_availability.html・mock.cssをそのまま移植。JS本体はfrontend/src/hooks/useFloorZoom.ts）。
+   zoomプロパティはtransform:scaleと異なり専有サイズごと縮小するため、縮小後に下の要素との
+   間に余白が残らない。独自の2本指ピンチズームは2026-09-07に撤去した（「震える」「常に
+   左上に寄る」という報告が複数の方式を試しても解消しなかったため）。touch-actionを制限
+   しない（ブラウザ標準のピンチズームが使えるようにする）ことでズーム手段自体は残す。 */
 .floor-zoom-viewport {
-  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 @media (max-width: 640px) {
@@ -169,7 +170,9 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   .floor-overview .floor-block {
     border-width: 2px;
   }
-  .floor-overview.zoomed-out .seat-tile .seat-tag {
+  /* 縮小率が固定（0.45）で常に小さいため、席番号タグは常に非表示にする
+     （ブラウザ標準のピンチズームで拡大すればタグごと大きく見えるようになる） */
+  .floor-overview .seat-tile .seat-tag {
     display: none;
   }
 }
