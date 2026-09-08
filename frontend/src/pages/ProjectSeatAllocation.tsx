@@ -4,7 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import Modal from '../components/Modal'
-import type { QuarterPlanItem, QuarterPlanStatus, Weekday } from '../types'
+import type { QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
@@ -813,6 +813,14 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { items: fixedAssignments } = useFixedSeatAssignments()
+  // AI提案（FR-03-11、2026-09-08追加）: aiSuggestedはAIが埋めた「未編集の」セルのみを保持し、
+  // エリア責任者がセルを直接編集する（toggle）とそのセルだけ取り除く（バッジが消え、通常の
+  // 確定操作対象になる）。aiReasoningはプロジェクトごとの判断理由（グループ単位で生成するため、
+  // 生成のたびにそのグループのプロジェクト分だけ上書きされる）。
+  const [aiSuggested, setAiSuggested] = useState<Record<number, Set<Weekday>>>({})
+  const [aiReasoning, setAiReasoning] = useState<Record<number, string>>({})
+  const [aiLoadingGroup, setAiLoadingGroup] = useState<string | null>(null)
+  const [aiErrorByGroup, setAiErrorByGroup] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
@@ -832,6 +840,14 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
       const next = new Set(prev[planId] ?? [])
       if (next.has(day)) next.delete(day)
       else next.add(day)
+      return { ...prev, [planId]: next }
+    })
+    // 手動で編集したセルはAI提案のバッジを外す（検討資料「プロジェクト座席・曜日調整フロー改善案」
+    // 3.3節「仮/確定の区別」の方針どおり、以降は通常の確定操作対象として扱う）
+    setAiSuggested((prev) => {
+      if (!prev[planId]?.has(day)) return prev
+      const next = new Set(prev[planId])
+      next.delete(day)
       return { ...prev, [planId]: next }
     })
   }
@@ -860,11 +876,58 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
     { key: 'EAST_WEST', label: 'EAST・WESTエリア', matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST', matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST' },
     { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => false },
   ]
-  const groups = AREA_GROUPS.map((g) => ({
-    ...g,
-    plans: plans.filter(g.matchPlan),
-    fixedSeatCount: fixedAssignments.filter(g.matchFixed).length,
-  })).filter((g) => g.plans.length > 0)
+  const groups = AREA_GROUPS.map((g) => {
+    const groupPlans = plans.filter(g.matchPlan)
+    const fixedSeatCount = fixedAssignments.filter(g.matchFixed).length
+    return {
+      ...g, plans: groupPlans, fixedSeatCount,
+      totalRequired: groupPlans.reduce((sum, p) => sum + p.required_seats, 0) + fixedSeatCount,
+    }
+  }).filter((g) => g.plans.length > 0)
+
+  // AI提案の生成（A-74、FR-03-11、2026-09-08追加）。グループ単位で、そのグループの全プロジェクトの
+  // 第一・第二希望・備考と「曜日ごとの合計」（座席容量、既存ロジックのtotalRequiredをそのまま使う）を
+  // サーバーへ送り、仮の曜日案を受け取ってそのままcheckedへ反映する（既存の内容は上書きする）。
+  // 失敗時は該当グループを変更せずエラーを表示する（検討資料3.3節「失敗時」の方針）。
+  const generateAiSuggestions = async (group: (typeof groups)[number]) => {
+    setAiLoadingGroup(group.key)
+    setAiErrorByGroup((prev) => ({ ...prev, [group.key]: '' }))
+    try {
+      const capacity = Object.fromEntries(WEEKDAYS.map((w) => [w.key, group.totalRequired])) as Record<Weekday, number>
+      const data = await apiFetch<{ suggestions: WeekdayAiSuggestion[] }>(
+        '/api/project-quarter-plans/weekday-ai-suggestions',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            plans: group.plans.map((p) => ({
+              plan_id: p.id, project_name: p.project_name,
+              choice1_weekdays: p.choice1_weekdays, choice2_weekdays: p.choice2_weekdays, note: p.note,
+            })),
+            weekday_capacity: capacity,
+          }),
+        },
+      )
+      setChecked((prev) => {
+        const next = { ...prev }
+        data.suggestions.forEach((s) => { next[s.plan_id] = new Set(s.weekdays) })
+        return next
+      })
+      setAiSuggested((prev) => {
+        const next = { ...prev }
+        data.suggestions.forEach((s) => { next[s.plan_id] = new Set(s.weekdays) })
+        return next
+      })
+      setAiReasoning((prev) => {
+        const next = { ...prev }
+        data.suggestions.forEach((s) => { next[s.plan_id] = s.reasoning })
+        return next
+      })
+    } catch (e) {
+      setAiErrorByGroup((prev) => ({ ...prev, [group.key]: e instanceof ApiError ? e.message : 'AI提案の生成に失敗しました' }))
+    } finally {
+      setAiLoadingGroup(null)
+    }
+  }
 
   const confirmWeekdays = async () => {
     setSubmitting(true)
@@ -891,12 +954,25 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
       </div>
       <div className="space-y-6 p-4">
         {groups.map((g) => {
-          const totalRequired = g.plans.reduce((sum, p) => sum + p.required_seats, 0) + g.fixedSeatCount
+          const totalRequired = g.totalRequired
           const dayTotal = (day: Weekday) =>
             g.plans.reduce((sum, p) => sum + (checked[p.id]?.has(day) ? p.required_seats : 0), 0) + g.fixedSeatCount
           return (
             <div key={g.key} className="overflow-x-auto">
-              <div className="mb-2 text-sm font-semibold text-slate-600">{g.label}</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-slate-600">{g.label}</div>
+                <button
+                  type="button"
+                  disabled={aiLoadingGroup === g.key}
+                  onClick={() => generateAiSuggestions(g)}
+                  className="shrink-0 rounded border border-purple-300 px-3 py-1 text-xs text-purple-700 hover:bg-purple-50 disabled:opacity-50"
+                >
+                  {aiLoadingGroup === g.key ? 'AI提案を生成中...' : 'AI提案を生成する'}
+                </button>
+              </div>
+              {aiErrorByGroup[g.key] && (
+                <p className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">{aiErrorByGroup[g.key]}</p>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -910,6 +986,14 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
                     <tr key={p.id} className="border-b border-slate-100">
                       <td className="py-2 pr-3 font-semibold">
                         {p.project_name}
+                        {aiReasoning[p.id] && (
+                          <span
+                            className="ml-1 cursor-help rounded bg-purple-50 px-1 text-[10px] font-normal text-purple-600"
+                            title={`AI提案の理由: ${aiReasoning[p.id]}`}
+                          >
+                            AI提案の理由
+                          </span>
+                        )}
                         <div className="text-xs font-normal text-slate-400">{p.period_start} 〜 {p.period_end}</div>
                         {p.note && <div className="text-xs font-normal text-slate-400">備考: {p.note}</div>}
                       </td>
@@ -917,9 +1001,13 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
                       {WEEKDAYS.map((w) => {
                         const badge = badgeFor(p, w.key)
                         const isChecked = checked[p.id]?.has(w.key) ?? false
+                        const isAiSuggested = aiSuggested[p.id]?.has(w.key) ?? false
                         return (
                           <td key={w.key} className="px-2 py-2 text-center">
                             <label className="inline-flex flex-col items-center gap-0.5">
+                              {isAiSuggested && (
+                                <span className="rounded bg-purple-50 px-1 text-[9px] text-purple-600">AI提案</span>
+                              )}
                               <input type="checkbox" checked={isChecked} onChange={() => toggle(p.id, w.key)} />
                               {badge && (
                                 <span className={`rounded px-1 text-[10px] ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>

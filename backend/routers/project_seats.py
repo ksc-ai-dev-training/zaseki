@@ -1,4 +1,4 @@
-# A-27〜A-29 プロジェクト・PM管理（S-08）、A-38〜A-44 プロジェクト座席・エリア担当側（S-09）。
+# A-27〜A-29 プロジェクト・PM管理（S-08）、A-38〜A-44・A-74 プロジェクト座席・エリア担当側（S-09）。
 # 詳細設計書3.8節・3.9節
 import json
 import re
@@ -9,6 +9,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+import ai_weekday
 from auth_helpers import CurrentUser, require_roles
 from database import get_pool
 from slack import (
@@ -550,6 +551,42 @@ async def send_survey_reminder(id: int, _: CurrentUser = Depends(require_roles("
     )
     await send_slack_notification(message)
     return {"detail": "リマインドを送信しました"}
+
+
+class WeekdayAiSuggestPlan(BaseModel):
+    plan_id: int
+    project_name: str
+    choice1_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
+    choice2_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
+    note: str | None = None
+
+
+class WeekdayAiSuggestBody(BaseModel):
+    plans: list[WeekdayAiSuggestPlan]
+    weekday_capacity: dict[Literal["mon", "tue", "wed", "thu", "fri"], int]
+
+
+@router.post("/project-quarter-plans/weekday-ai-suggestions")
+async def suggest_weekdays_ai(body: WeekdayAiSuggestBody, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-74: 出社曜日の調整表（WeekdayMatrix、S-09）の仮案を生成AI（LLM）に生成させる（FR-03-11、
+    2026-09-08追加。検討資料「プロジェクト座席・曜日調整フロー改善案」変更C）。DBへの書き込みは
+    行わない（提案のみ）。WeekdayMatrixはNORTH／EAST・WEST（統合）／前回の割当エリアなしの3グループに
+    分かれて表示されるため、フロントエンドはグループ単位で本APIを呼ぶ（1回の呼び出し＝1グループ分）。
+    plansの各フィールドはA-38のレスポンスをフロントエンドがそのまま渡す（バックエンド側でDBを
+    読み直さない）。weekday_capacityは「曜日ごとの合計」（v2.32・v2.33実装済み、固定座席の人数＋
+    各プロジェクトのrequired_seatsの合計）と同じ値をそのグループ分だけフロントエンドが算出して渡す。
+    実際のLLM呼び出しはai_weekday.suggest_weekdays()に委譲する（OpenAI Chat Completions APIを
+    httpxで直接呼ぶ、専用SDKは追加していない）。呼び出しに失敗した場合は502を返し、フロントエンドは
+    対象グループのマトリクス表を変更しない（検討資料3.3節「失敗時」の方針）。"""
+    if not body.plans:
+        raise HTTPException(400, detail="対象のプロジェクトを1件以上指定してください")
+    try:
+        suggestions = await ai_weekday.suggest_weekdays(
+            [p.model_dump() for p in body.plans], dict(body.weekday_capacity),
+        )
+    except ai_weekday.WeekdayAiSuggestionError as e:
+        raise HTTPException(502, detail="AI提案の生成に失敗しました。しばらくしてから再度お試しください") from e
+    return {"suggestions": suggestions}
 
 
 class WeekdayFinalizeItem(BaseModel):

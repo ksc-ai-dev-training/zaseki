@@ -317,6 +317,14 @@ export interface QuarterPlanItem {
   previous_area: 'NORTH' | 'EAST' | 'WEST' | null
 }
 
+// A-74 POST /project-quarter-plans/weekday-ai-suggestions（S-09 出社曜日の調整表のAI提案、
+// FR-03-11、2026-09-08追加）
+export interface WeekdayAiSuggestion {
+  plan_id: number
+  weekdays: Weekday[]
+  reasoning: string
+}
+
 // S-02をS-09から「座席の島の割当モード」で開く際にreact-routerのlocation.stateへ積む値
 export interface SeatBlockFor {
   planId: number
