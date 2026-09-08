@@ -517,28 +517,37 @@ class FreeSeatAssignmentPattern(BaseModel):
     weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
 
 
-class FreeSeatAssignmentsBody(BaseModel):
-    assignments: list[SeatAssignmentItem]
+class FreeSeatAssignmentItem(BaseModel):
+    member_user_id: int
+    seat_id: int
     start_date: Date
     end_date: Date
     pattern: FreeSeatAssignmentPattern
 
 
+class FreeSeatAssignmentsBody(BaseModel):
+    assignments: list[FreeSeatAssignmentItem]
+
+
 @router.post("/project-quarter-plans/{id}/free-seat-assignments")
 async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody, user: CurrentUser = Depends(require_auth)):
-    """複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、指定した期間・繰り返し
-    パターン（毎日／毎週）でフリー座席として一括予約する（2026-09-04追加、2026-09-07に単発日付のみの
-    対応から日付範囲・繰り返しパターン対応へ拡張。「席を選択して曜日などを決めれるようにしたい」との
-    要望を受けた）。/free-seat-bookings（エリア指定で自動割当、座席は日によって変わり得る）と異なり、
-    こちらは呼び出し元が指定した特定の座席にメンバーを固定して繰り返し予約する。日ごとのRULE-02・
-    RULE-05・RULE-07・座席専有チェックはA-10・A-18と共通のgenerate_recurring_reservationsに委譲する
-    （メンバー・座席1組につき1件のrecurring_rulesを作成）。"""
+    """複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、それぞれ指定した期間・
+    繰り返しパターン（毎日／毎週）でフリー座席として一括予約する（2026-09-04追加、2026-09-07に
+    単発日付のみの対応から日付範囲・繰り返しパターン対応へ拡張。さらに同日、期間・パターンを全員
+    共通の1つから、座席をクリックするたびにその場のモーダルで1人分ずつ確認・確定する方式に変更した。
+    「フリー座席と同じ席の取り方（座席をクリックするたびにモーダルで確認・確定）をしてほしい」との
+    要望を受けた。これにより人によって異なる期間・パターンを指定できる）。/free-seat-bookings（エリア
+    指定で自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
+    メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・RULE-07・座席専有チェックは
+    A-10・A-18と共通のgenerate_recurring_reservationsに委譲する（メンバー・座席1組につき1件の
+    recurring_rulesを作成）。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
-    if body.start_date > body.end_date:
-        raise HTTPException(400, detail="開始日は終了日以前を指定してください")
-    if body.pattern.type == "weekly" and not body.pattern.weekdays:
-        raise HTTPException(400, detail="毎週の場合は曜日を1つ以上選択してください")
+    for a in body.assignments:
+        if a.start_date > a.end_date:
+            raise HTTPException(400, detail="開始日は終了日以前を指定してください")
+        if a.pattern.type == "weekly" and not a.pattern.weekdays:
+            raise HTTPException(400, detail="毎週の場合は曜日を1つ以上選択してください")
 
     pool = get_pool()
     plan = await pool.fetchrow(
@@ -570,7 +579,6 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     )
     seat_by_id = {s["id"]: s for s in seats}
     enforce_rule05 = user.role != "admin"
-    pattern = body.pattern.model_dump(exclude_none=True)
 
     seat_counts: dict[int, int] = {}
     for a in body.assignments:
@@ -594,7 +602,7 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
                              "status": "excluded", "reason": reason, "created_days": 0, "excluded_days": 0})
             continue
         gen = await generate_recurring_reservations(
-            a.seat_id, a.member_user_id, pattern, body.start_date, body.end_date, user.id,
+            a.seat_id, a.member_user_id, a.pattern.model_dump(exclude_none=True), a.start_date, a.end_date, user.id,
             enforce_rule05=enforce_rule05, check_project_block=True,
         )
         created = [r for r in gen["results"] if r["status"] == "created"]
