@@ -84,12 +84,14 @@ class UserUpdate(BaseModel):
 
 
 @router.put("/users/{id}")
-async def update_user(id: int, body: UserUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+async def update_user(id: int, body: UserUpdate, user: CurrentUser = Depends(require_roles("admin"))):
     """A-26: 利用者の編集（氏名訂正、雇用形態、role、エリア責任者・副責任者の指定、在籍状況、
     システム運用担当）。area_manager_roleはrole='admin'の利用者のみ設定可（2026-08-27追加）。
     is_system_operatorはroleを問わず設定可（P-SYSOP、FR-09-3、2026-09-01追加。フィードバック
     一覧〔A-60〕へのアクセスに使う、role='admin'とは独立した属性）。employment_status='retired'
-    への変更でRULE-06を実行：deleted_at設定、固定座席解除、今後の予約取消。"""
+    への変更でRULE-06を実行：deleted_at設定、固定座席解除、今後の予約取消。
+    自分自身が最後の管理部ユーザーである場合、自分のroleを'admin'から外す・自分を退職済みにする
+    操作は拒否する（誰も管理画面に入れなくなりDB操作でしか復旧できなくなるのを防ぐ、2026-09-08追加）。"""
     last_name = body.last_name.strip()
     first_name = body.first_name.strip()
     if not last_name or not first_name:
@@ -98,9 +100,18 @@ async def update_user(id: int, body: UserUpdate, _: CurrentUser = Depends(requir
         raise HTTPException(400, detail="エリア担当は管理部ロールの利用者のみ設定できます")
 
     pool = get_pool()
-    existing = await pool.fetchrow("SELECT id, employment_status FROM users WHERE id = $1", id)
+    existing = await pool.fetchrow("SELECT id, role, employment_status FROM users WHERE id = $1", id)
     if existing is None:
         raise HTTPException(404, detail="対象が見つかりません")
+
+    if id == user.id and existing["role"] == "admin":
+        losing_admin = body.role != "admin" or body.employment_status == "retired"
+        if losing_admin:
+            other_admins = await pool.fetchval(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL AND id != $1", id
+            )
+            if other_admins == 0:
+                raise HTTPException(400, detail="自分が最後の管理部ユーザーです。自分自身の管理部権限を外したり退職済みにしたりすることはできません")
 
     async with pool.acquire() as conn:
         async with conn.transaction():

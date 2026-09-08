@@ -125,7 +125,9 @@ export interface ProxyCandidate {
 }
 
 // A-46 GET /reservations/search（S-11 予約・割当単位の一覧）
-export type ProxyRowKind = 'reservation' | 'fixed'
+// 'fixed_absent': A-69の期間ビューのみで使う。T-18により1日だけ解除された固定座席のセル
+// （まだ誰にも予約されていない）を表す。解除の取り消し（元に戻す）操作の対象になる（2026-09-08追加）
+export type ProxyRowKind = 'reservation' | 'fixed' | 'fixed_absent'
 
 export interface ProxyRow {
   kind: ProxyRowKind
@@ -179,7 +181,7 @@ export interface PeriodAvailabilityResponse {
 // A-69 GET /reservations/period-grid（S-11 期間ビュー）。A-07と同じ座席×日付のマトリクス形式だが、
 // 管理部が代理で取消・変更するため氏名の匿名化を行わず、対象者と操作対象のIDを常に返す
 // （2026-09-03追加。「S-11をS-02の期間ビューのような画面にしたい」との要望を受けた）
-export type PeriodGridCellStatus = 'free' | 'reserved' | 'fixed'
+export type PeriodGridCellStatus = 'free' | 'reserved' | 'fixed' | 'fixed_absent'
 
 export interface PeriodGridCell {
   status: PeriodGridCellStatus

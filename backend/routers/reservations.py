@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
 from database import (
+    fixed_seat_absent_on,
     free_seat_open_date,
     generate_recurring_reservations,
     get_pool,
@@ -43,7 +44,11 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     if seat is None or seat["status"] != "active":
         raise HTTPException(404, detail="対象が見つかりません")
     if seat["seat_type"] != "free":
-        raise HTTPException(400, detail="この座席はフリー座席ではないため予約できません")
+        # 固定座席でもT-18により対象日だけ解除（絶対欠席）指定されていれば、その日に限り
+        # フリー座席同様に予約を受け付ける（2026-09-08追加。従来はここで一律拒否していたため、
+        # フロアマップ上は空席に見えるのに実際には誰も予約できない不具合があった）。
+        if seat["seat_type"] != "fixed" or not await fixed_seat_absent_on(seat["id"], body.date):
+            raise HTTPException(400, detail="この座席はフリー座席ではないため予約できません")
 
     blocked = await project_blocked_seats(body.date)
     if seat["id"] in blocked:
@@ -61,14 +66,16 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # 有効期限切れの割当を先に解除しておくことで、期限切れ後にこの判定へ誤って引っかからないようにする。
     # valid_from（開始日）がまだ来ていない予約済みの固定座席割当は対象外とする（2026-09-07追加。
     # 未来の開始日を指定できるようになったことに伴い、開始日前は従来どおりフリー座席を予約できる
-    # 必要がある）。
+    # 必要がある）。予約したい日（body.date）が、自分の固定座席のT-18解除（絶対欠席）指定日と
+    # 一致する場合は対象外とする（2026-09-08追加。「その日だけ固定座席を空けて自分は別の
+    # フリー座席を使いたい」を成立させるため）。
     await release_expired_fixed_seats()
-    has_fixed_seat = await pool.fetchval(
-        """SELECT 1 FROM fixed_seat_assignments
+    own_fixed_seat_id = await pool.fetchval(
+        """SELECT seat_id FROM fixed_seat_assignments
            WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
         user.id,
     )
-    if has_fixed_seat:
+    if own_fixed_seat_id is not None and not await fixed_seat_absent_on(own_fixed_seat_id, body.date):
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
 
     # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない。

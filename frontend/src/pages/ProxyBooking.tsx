@@ -7,7 +7,7 @@ import { usePeriodGrid } from '../hooks/usePeriodGrid'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { AreaFilter } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
-import type { AssignFixedSeatFor, ProxyBookingFor, ProxyRow, SeatType } from '../types'
+import type { AssignFixedSeatFor, ProxyBookingFor, ProxyRow, ProxyRowKind, SeatType } from '../types'
 
 const SEAT_TYPE_OPTIONS: { key: ProxySeatTypeFilter; label: string }[] = [
   { key: 'all', label: 'すべて' },
@@ -91,7 +91,7 @@ export default function ProxyBooking() {
   // 期間ビューのセル（予約・固定座席の割当）をクリックして取消・変更の対象にする
   // （'free'のセルは操作対象がないため何もしない）
   const openGridCell = (seat: { seat_no: string; area: 'NORTH' | 'EAST' | 'WEST'; seat_type: SeatType }, date: string, cell: {
-    status: string; kind: 'reservation' | 'fixed' | null; id: number | null; user_id: number | null
+    status: string; kind: ProxyRowKind | null; id: number | null; user_id: number | null
     user_name: string | null; project_name: string | null
   }) => {
     if (cell.kind === null || cell.id === null || cell.user_id === null || cell.user_name === null) return
@@ -135,6 +135,23 @@ export default function ProxyBooking() {
       await Promise.all([refreshRows(), refreshGrid()])
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '取消に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 1日だけの解除（A-73）を取り消して、固定座席に戻す（2026-09-08追加。従来は一度解除すると
+  // 元に戻す手段がなかった）
+  const confirmUndoOneDay = async () => {
+    if (!cancelTarget || cancelTarget.kind !== 'fixed_absent' || !cancelTarget.date) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch(`/api/fixed-seat-assignments/${cancelTarget.id}/absences/${cancelTarget.date}`, { method: 'DELETE' })
+      setCancelTarget(null)
+      await Promise.all([refreshRows(), refreshGrid()])
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '取り消しに失敗しました')
     } finally {
       setSubmitting(false)
     }
@@ -378,12 +395,16 @@ export default function ProxyBooking() {
                                   <button
                                     type="button"
                                     onClick={() => openGridCell(seat, d, cell)}
-                                    title="クリックして取消・変更"
+                                    title={status === 'fixed_absent' ? 'クリックして元に戻す' : 'クリックして取消・変更'}
                                     className={`whitespace-nowrap text-[11px] underline decoration-dotted hover:opacity-70 ${
-                                      status === 'fixed' ? 'text-violet-700' : cell?.project_name ? 'text-amber-700' : 'text-slate-600'
+                                      status === 'fixed'
+                                        ? 'text-violet-700'
+                                        : status === 'fixed_absent'
+                                          ? 'text-emerald-700'
+                                          : cell?.project_name ? 'text-amber-700' : 'text-slate-600'
                                     }`}
                                   >
-                                    {cell?.user_name}
+                                    {status === 'fixed_absent' ? `${cell?.user_name}（解除中）` : cell?.user_name}
                                   </button>
                                 )}
                               </td>
@@ -446,23 +467,38 @@ export default function ProxyBooking() {
 
       {cancelTarget && (
         <Modal
-          title={cancelTarget.kind === 'fixed' ? '座席の解除・変更（代理）' : '予約の取消・変更（代理）'}
+          title={
+            cancelTarget.kind === 'fixed_absent'
+              ? '1日だけの解除の取り消し（代理）'
+              : cancelTarget.kind === 'fixed'
+                ? '座席の解除・変更（代理）'
+                : '予約の取消・変更（代理）'
+          }
           onClose={() => setCancelTarget(null)}
           footer={
-            <>
-              <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={submitting} onClick={confirmChange} className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-800 disabled:opacity-50">
-                変更する（座席を選び直す）
-              </button>
-              {cancelTarget.kind === 'fixed' && cancelTarget.date && (
-                <button type="button" disabled={submitting} onClick={confirmCancelOneDay} className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-700 disabled:opacity-50">
-                  この日だけ取り消す
+            cancelTarget.kind === 'fixed_absent' ? (
+              <>
+                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" disabled={submitting} onClick={confirmUndoOneDay} className="rounded bg-blue-700 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+                  元に戻す（固定座席に戻す）
                 </button>
-              )}
-              <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-                {cancelTarget.kind === 'fixed' ? '割当を解除する（全期間）' : '取消する'}
-              </button>
-            </>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" disabled={submitting} onClick={confirmChange} className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-800 disabled:opacity-50">
+                  変更する（座席を選び直す）
+                </button>
+                {cancelTarget.kind === 'fixed' && cancelTarget.date && (
+                  <button type="button" disabled={submitting} onClick={confirmCancelOneDay} className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-700 disabled:opacity-50">
+                    この日だけ取り消す
+                  </button>
+                )}
+                <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+                  {cancelTarget.kind === 'fixed' ? '割当を解除する（全期間）' : '取消する'}
+                </button>
+              </>
+            )
           }
         >
           <dl className="space-y-1.5 text-sm">
@@ -472,9 +508,11 @@ export default function ProxyBooking() {
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{cancelTarget.seat_no}{cancelTarget.project_name && `（${cancelTarget.project_name}）`}</dd></div>
           </dl>
           <p className="mt-3 text-sm text-slate-600">
-            {cancelTarget.kind === 'fixed'
-              ? '「この日だけ取り消す」を選ぶと、固定座席の割当自体は残したまま、この日だけ空席にします（翌日以降は元どおり固定座席として表示されます）。「割当を解除する（全期間）」を選ぶと、この固定座席の割当を完全に解除します。「変更する」を選ぶと、解除したうえで続けて別の固定座席を指定できます。'
-              : 'この予約を取り消します。「変更する」を選ぶと、取り消したうえで続けて別の座席を代理予約できます。'}
+            {cancelTarget.kind === 'fixed_absent'
+              ? 'この日は1日だけ固定座席の利用を取り消しています。「元に戻す」を選ぶと、この日も通常どおり固定座席として使えるようにします。'
+              : cancelTarget.kind === 'fixed'
+                ? '「この日だけ取り消す」を選ぶと、固定座席の割当自体は残したまま、この日だけ空席にします（翌日以降は元どおり固定座席として表示されます）。「割当を解除する（全期間）」を選ぶと、この固定座席の割当を完全に解除します。「変更する」を選ぶと、解除したうえで続けて別の固定座席を指定できます。'
+                : 'この予約を取り消します。「変更する」を選ぶと、取り消したうえで続けて別の座席を代理予約できます。'}
           </p>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
         </Modal>

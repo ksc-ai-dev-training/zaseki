@@ -607,9 +607,9 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
     に戻してから全プロジェクト共通の調整表で再確定させる方式〔A-61〕だったが、「表から丸ごと取り消しではなく
     変更にしてほしい」との指摘を受け、対象プロジェクトを個別に直接上書きできるこの方式に改めた。A-61は廃止し、
     本APIに統合した）。status='seats_allocated'（座席の島の割当後）の計画も含められる（2026-09-08追加。
-    「曜日変更はいつでもできるようにしてほしい。座席が割り当てている状態でも」との要望を受けた）。この場合も
-    他のstatusと同じくstatus→'weekdays_finalized'に戻る（下記UPDATE文はstatusを問わず一律で
-    'weekdays_finalized'を設定する）ため、座席の島の割当（A-44）からのやり直しが必要になる。既存の
+    「曜日変更はいつでもできるようにしてほしい。座席が割り当てている状態でも」との要望を受けた）。曜日が
+    実際に変化した場合のみstatus→'weekdays_finalized'に戻る（変化していなければstatus='seats_allocated'
+    のまま何もしない。詳細は下記の説明を参照）ため、座席の島の割当（A-44）からのやり直しが必要になる。既存の
     allocated_seatsはクリアしない（PJ席決担当がS-02の座席の島の割当画面を開いたとき、以前選んでいた
     座席が初期選択状態のまま表示され、変更が不要ならそのまま再確定できるようにするため）。座席の島の
     割当・メンバーへの個別の座席確保（A-18生成分）自体は、この時点では取り消さない。A-44を再度呼び出した
@@ -617,14 +617,18 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
     取り消す）により整理される。確定自体を取り消してアンケート回答受付中に戻す操作は、本APIではなく
     別途のunfinalize_weekdays（A-62、こちらはstatus='seats_allocated'は引き続き対象外）で行う。通知の
     先頭行（見出し）は通知設定タブ（S-08）で編集できる（2026-09-02追加）。プロジェクトごとの結果一覧
-    （「・「プロジェクト名」: 曜日」の行）は編集対象外の固定フォーマットとする。"""
+    （「・「プロジェクト名」: 曜日」の行）は編集対象外の固定フォーマットとする。
+    status='seats_allocated'の計画は、送信された曜日が確定済みの曜日から実際に変化している場合のみ
+    'weekdays_finalized'へ差し戻す。フロント（S-09の「確定した出社曜日」表）は表内の全行をまとめて
+    一括送信する作りのため、この判定をしないと曜日を編集していない他の座席割当済みプロジェクトまで
+    巻き込んで座席の島の割当が巻き戻ってしまう不具合があった（2026-09-08修正）。"""
     pool = get_pool()
     notified_lines = []
     async with pool.acquire() as conn:
         async with conn.transaction():
             for item in body.plans:
                 plan = await conn.fetchrow(
-                    """SELECT pqp.id, pqp.status, p.name AS project_name
+                    """SELECT pqp.id, pqp.status, pqp.weekdays_finalized, p.name AS project_name
                        FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
                        WHERE pqp.id = $1""",
                     item.plan_id,
@@ -633,6 +637,10 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                     raise HTTPException(404, detail="対象が見つかりません")
                 if plan["status"] not in ("survey_open", "weekdays_finalized", "seats_allocated"):
                     raise HTTPException(400, detail="この状態では曜日を確定できません")
+                current_weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
+                unchanged = set(current_weekdays) == set(item.weekdays_finalized)
+                if plan["status"] == "seats_allocated" and unchanged:
+                    continue
                 await conn.execute(
                     """UPDATE project_quarter_plans
                        SET weekdays_finalized = $1, status = 'weekdays_finalized', decided_by = $2, updated_at = now()

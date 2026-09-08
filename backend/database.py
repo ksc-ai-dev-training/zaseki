@@ -317,6 +317,16 @@ async def fixed_seat_absences_in_range(start: Date, end: Date) -> set[tuple[int,
     return {(r["seat_id"], r["date"]) for r in rows}
 
 
+async def fixed_seat_absent_on(seat_id: int, date: Date) -> bool:
+    """T-18 fixed_seat_absences: 指定した固定座席がその日だけ解除（絶対欠席）指定されているか。
+    A-09・A-47が、その日に限りフリー座席同様に予約を受け付けてよいかを判定するのに使う
+    （2026-09-08追加。従来はseats.seat_typeが'fixed'のままのため、フロアマップ上は空席に
+    見えても実際には誰も予約できない不具合があった）。"""
+    return await get_pool().fetchval(
+        "SELECT 1 FROM fixed_seat_absences WHERE seat_id = $1 AND date = $2", seat_id, date
+    ) is not None
+
+
 async def free_seat_open_date(target: Date) -> Date:
     """RULE-05: フリー座席は対象日が属する月の前月26日以降でなければ予約できない。
     A-09（単発予約登録）・A-07（期間ビュー）の両方が使う共通ルールのためここに置く。"""
@@ -403,6 +413,11 @@ async def close_fixed_seat_assignment(conn, *, user_id: int | None = None, seat_
             "UPDATE fixed_seat_assignments SET ended_on = $2 WHERE seat_id = $1 AND ended_on IS NULL",
             row["seat_id"], today - timedelta(days=1),
         )
+    # 割当終了後、今後の日付分のT-18（1日だけの解除指定）が残っていても意味を持たない
+    # （割当が終わればその座席は毎日フリー座席として扱われるため）だけでなく、この座席が
+    # 別の利用者に再割当された場合に、旧割当時代の解除指定が新しい割当に誤って適用されて
+    # しまう不具合の原因になっていた。割当終了と同時に掃除する（2026-09-08追加）。
+    await conn.execute("DELETE FROM fixed_seat_absences WHERE seat_id = $1 AND date >= $2", row["seat_id"], today)
     return row["seat_id"]
 
 

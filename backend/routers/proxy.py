@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from auth_helpers import CurrentUser, require_roles
 from database import (
     fixed_seat_absences_in_range,
+    fixed_seat_absent_on,
     free_seat_bookable_period,
     get_pool,
     project_blocked_seats,
@@ -276,6 +277,16 @@ async def get_period_grid(
                     "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",
                     "project_name": None,
                 }
+            elif match is not None and seat["days"].get(d.isoformat()) is None:
+                # 1日だけ解除（T-18）されているが、まだ誰にも予約されていない日。'fixed_absent'として
+                # 返し、管理部が解除の取り消し（元に戻す）操作をできるようにする（2026-09-08追加）。
+                # 既に誰かがこの日その座席を予約している場合はreservationsループが設定した
+                # 'reserved'を優先し、ここでは上書きしない（元に戻す操作を提供しないようにするため）。
+                seat["days"][d.isoformat()] = {
+                    "status": "fixed_absent", "kind": "fixed_absent", "id": match["seat_id"],
+                    "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",
+                    "project_name": None,
+                }
             d += timedelta(days=1)
 
     dates = []
@@ -314,7 +325,10 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
     if seat is None or seat["status"] != "active":
         raise HTTPException(404, detail="対象が見つかりません")
     if seat["seat_type"] != "free":
-        raise HTTPException(400, detail="この座席はフリー座席ではないため予約できません")
+        # T-18で対象日だけ解除（絶対欠席）指定されている固定座席は、その日に限りフリー座席同様に
+        # 代理予約を受け付ける（2026-09-08追加。reservations.pyのA-09と同じ考え方）。
+        if seat["seat_type"] != "fixed" or not await fixed_seat_absent_on(seat["id"], body.date):
+            raise HTTPException(400, detail="この座席はフリー座席ではないため予約できません")
     blocked = await project_blocked_seats(body.date)
     if seat["id"] in blocked:
         raise HTTPException(400, detail=f"この座席は{blocked[seat['id']]}のプロジェクト座席として確保されているため予約できません")
@@ -323,13 +337,14 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
         raise HTTPException(404, detail="対象が見つかりません")
 
     # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。reservations.pyの
-    # A-09と同じ考え方）
-    has_fixed_seat = await pool.fetchval(
-        """SELECT 1 FROM fixed_seat_assignments
+    # A-09と同じ考え方）。対象者の固定座席がbody.date当日にT-18解除（絶対欠席）指定されている
+    # 場合も対象外とする（2026-09-08追加）。
+    own_fixed_seat_id = await pool.fetchval(
+        """SELECT seat_id FROM fixed_seat_assignments
            WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
         body.user_id,
     )
-    if has_fixed_seat:
+    if own_fixed_seat_id is not None and not await fixed_seat_absent_on(own_fixed_seat_id, body.date):
         raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
 
     duplicate = await pool.fetchrow(

@@ -193,3 +193,23 @@ async def unassign(seat_id: int, date: Date | None = None, user: CurrentUser = D
                 raise HTTPException(404, detail="対象が見つかりません")
             await conn.execute("UPDATE seats SET seat_type = 'free' WHERE id = $1", seat_id)
     return {"detail": "固定座席の割当を解除しました"}
+
+
+@router.delete("/{seat_id}/absences/{date}")
+async def undo_one_day_absence(seat_id: int, date: Date, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-73の取り消し操作: 誤って1日分の解除（T-18）を登録してしまった場合に元に戻す
+    （2026-09-08追加。従来は一度1日だけ解除すると元に戻す手段がなかった）。対象日の予約が
+    既に他の利用者によって行われていた場合は、元の固定座席利用者に予約が戻せなくなるため
+    取り消しを拒否する。"""
+    pool = get_pool()
+    booked = await pool.fetchval(
+        "SELECT 1 FROM reservations WHERE seat_id = $1 AND date = $2 AND status = 'active'", seat_id, date
+    )
+    if booked:
+        raise HTTPException(409, detail="この日は既に他の予約が入っているため、解除の取り消しはできません")
+    result = await pool.execute(
+        "DELETE FROM fixed_seat_absences WHERE seat_id = $1 AND date = $2", seat_id, date
+    )
+    if result == "DELETE 0":
+        raise HTTPException(404, detail="対象が見つかりません")
+    return {"detail": "1日分の解除を取り消し、固定座席に戻しました"}
