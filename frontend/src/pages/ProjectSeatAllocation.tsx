@@ -607,15 +607,26 @@ function weekdayBadge(p: QuarterPlanItem, day: Weekday, confirmed: Set<Weekday>)
 // 変更する方式を試みたが、「表から丸ごと取り消しではなく変更にしてほしい」「この表から一括で変更する
 // ようにしたい。チェックしていたものはそのまま残してある状態で」との指摘を受け、この表自体を
 // チェック状態が確定内容で初期化済みの編集可能なグリッドにする方式に落ち着いた）。座席の島の割当後
-// （status='seats_allocated'）の行は、座席の島の割当時に前提となった出社曜日を後から変えられると
-// 座席数の整合が崩れるため、従来どおりチェックボックスを持たない参照専用表示のままとする。
+// （status='seats_allocated'）の行も、2026-09-08から編集可能に含めた（「曜日変更はいつでもできる
+// ようにしてほしい。座席が割り当てている状態でも。座席割り当て済みで変更があった場合、再度座席を
+// 割り当てるようにしたい」との要望を受けた）。この場合、保存すると座席の島の割当前の状態
+// （status='weekdays_finalized'）に戻り、「座席の島を割り当てる」ボタンが再度必要になる（A-43参照。
+// 割当済みだった座席自体〔allocated_seats〕はクリアしないため、割当画面を開くと以前の選択が
+// 初期状態のまま表示される）。
 // 確定の取り消し（A-62）は、行ごとに即時実行する「取り消す」ボタン → 先頭列のチェックボックスで
 // 選んでから一括実行、と試したが、「プロジェクトの確定を取り消すを押した後、どのプロジェクトにするか
 // 選択するようにしてほしい」との要望を受け、まず「プロジェクトの確定を取り消す」ボタンを押し、
-// 開いたモーダルで対象プロジェクトを選んでから実行する順序に変更した（2026-09-02）。
+// 開いたモーダルで対象プロジェクトを選んでから実行する順序に変更した（2026-09-02）。A-62自体は
+// status='seats_allocated'を引き続き対象外とするため（座席割当後の「取り消し」はA-44の「座席を編集」
+// で行う別の操作のまま）、その選択候補（unfinalizeCandidates）は下記editablePlansとは別に絞り込む。
 function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]; onChanged: () => void }) {
-  const editablePlans = useMemo(() => plans.filter((p) => p.status === 'weekdays_finalized'), [plans])
+  const editablePlans = useMemo(
+    () => plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated'),
+    [plans]
+  )
+  const unfinalizeCandidates = useMemo(() => plans.filter((p) => p.status === 'weekdays_finalized'), [plans])
   const editableIds = editablePlans.map((p) => p.id).join(',')
+  const hasSeatsAllocatedEdit = editablePlans.some((p) => p.status === 'seats_allocated')
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -709,7 +720,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           </thead>
           <tbody>
             {plans.map((p) => {
-              const editable = p.status === 'weekdays_finalized'
+              const editable = p.status === 'weekdays_finalized' || p.status === 'seats_allocated'
               const confirmed = editable ? (checked[p.id] ?? new Set<Weekday>()) : new Set(p.weekdays_finalized ?? [])
               return (
                 <tr key={p.id} className="border-b border-slate-100">
@@ -717,7 +728,9 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
                     {p.project_name}
                     <div className="text-xs font-normal text-slate-400">{p.period_start} 〜 {p.period_end}</div>
                     {p.note && <div className="text-xs font-normal text-slate-400">備考: {p.note}</div>}
-                    {!editable && <div className="text-[10px] font-normal text-slate-400">座席割当済み（参照のみ）</div>}
+                    {p.status === 'seats_allocated' && (
+                      <div className="text-[10px] font-normal text-amber-600">座席割当済み（変更すると座席の再割当が必要）</div>
+                    )}
                   </td>
                   {WEEKDAYS.map((w) => {
                     const badge = weekdayBadge(p, w.key, confirmed)
@@ -757,15 +770,22 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
         </table>
       </div>
       {error && <p className="mx-4 mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {hasSeatsAllocatedEdit && (
+        <p className="mx-4 mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          座席割当済みのプロジェクトが含まれています。「この内容で変更する」を押すと、該当プロジェクトは座席の島の割当前の状態に戻り、「座席の島を割り当てる」からの再割当が必要になります（割り当て済みだった座席は初期選択状態のまま残ります）。
+        </p>
+      )}
       {editablePlans.length > 0 && (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-4">
-          <button
-            type="button"
-            onClick={openCancelModal}
-            className="rounded bg-red-600 px-4 py-1.5 text-sm text-white hover:bg-red-700"
-          >
-            プロジェクトの確定を取り消す
-          </button>
+          {unfinalizeCandidates.length > 0 && (
+            <button
+              type="button"
+              onClick={openCancelModal}
+              className="rounded bg-red-600 px-4 py-1.5 text-sm text-white hover:bg-red-700"
+            >
+              プロジェクトの確定を取り消す
+            </button>
+          )}
           <button type="button" disabled={submitting} onClick={submitChanges} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
             この内容で変更する
           </button>
@@ -793,7 +813,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           <div className="space-y-3 text-sm">
             <p className="text-slate-500">取り消すプロジェクトを選択してください。アンケート回答受付中の状態に戻り、出社曜日の調整表で再度確定できます。</p>
             <div className="max-h-72 space-y-1 overflow-y-auto">
-              {editablePlans.map((p) => (
+              {unfinalizeCandidates.map((p) => (
                 <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50">
                   <input type="checkbox" checked={cancelSelected.has(p.id)} onChange={() => toggleCancelSelect(p.id)} />
                   <span>{p.project_name}</span>

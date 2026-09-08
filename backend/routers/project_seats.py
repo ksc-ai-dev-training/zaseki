@@ -606,11 +606,18 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
     確定押してしまったときの変更ボタンが欲しい」との要望を受けた。当初は一度確定した計画をアンケート回答受付中
     に戻してから全プロジェクト共通の調整表で再確定させる方式〔A-61〕だったが、「表から丸ごと取り消しではなく
     変更にしてほしい」との指摘を受け、対象プロジェクトを個別に直接上書きできるこの方式に改めた。A-61は廃止し、
-    本APIに統合した）。座席の島の割当（A-44）後のstatus='seats_allocated'は対象外のまま（そちらは既存の
-    「座席を編集」で対応する別の操作のため）。確定自体を取り消してアンケート回答受付中に戻す操作は、
-    本APIではなく別途のunfinalize_weekdays（A-62）で行う。通知の先頭行（見出し）は通知設定タブ
-    （S-08）で編集できる（2026-09-02追加）。プロジェクトごとの結果一覧（「・「プロジェクト名」: 曜日」の
-    行）は編集対象外の固定フォーマットとする。"""
+    本APIに統合した）。status='seats_allocated'（座席の島の割当後）の計画も含められる（2026-09-08追加。
+    「曜日変更はいつでもできるようにしてほしい。座席が割り当てている状態でも」との要望を受けた）。この場合も
+    他のstatusと同じくstatus→'weekdays_finalized'に戻る（下記UPDATE文はstatusを問わず一律で
+    'weekdays_finalized'を設定する）ため、座席の島の割当（A-44）からのやり直しが必要になる。既存の
+    allocated_seatsはクリアしない（PJ席決担当がS-02の座席の島の割当画面を開いたとき、以前選んでいた
+    座席が初期選択状態のまま表示され、変更が不要ならそのまま再確定できるようにするため）。座席の島の
+    割当・メンバーへの個別の座席確保（A-18生成分）自体は、この時点では取り消さない。A-44を再度呼び出した
+    時点で、その既存のA-44自身の重複排除ロジック（旧・新いずれの割当座席についてもその期間中の通常予約を
+    取り消す）により整理される。確定自体を取り消してアンケート回答受付中に戻す操作は、本APIではなく
+    別途のunfinalize_weekdays（A-62、こちらはstatus='seats_allocated'は引き続き対象外）で行う。通知の
+    先頭行（見出し）は通知設定タブ（S-08）で編集できる（2026-09-02追加）。プロジェクトごとの結果一覧
+    （「・「プロジェクト名」: 曜日」の行）は編集対象外の固定フォーマットとする。"""
     pool = get_pool()
     notified_lines = []
     async with pool.acquire() as conn:
@@ -624,7 +631,7 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                 )
                 if plan is None:
                     raise HTTPException(404, detail="対象が見つかりません")
-                if plan["status"] not in ("survey_open", "weekdays_finalized"):
+                if plan["status"] not in ("survey_open", "weekdays_finalized", "seats_allocated"):
                     raise HTTPException(400, detail="この状態では曜日を確定できません")
                 await conn.execute(
                     """UPDATE project_quarter_plans
