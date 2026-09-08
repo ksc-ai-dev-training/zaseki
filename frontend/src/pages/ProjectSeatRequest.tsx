@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
+import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import type {
   FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
-  SeatAssignmentResult, Weekday,
+  RetrySeatAssignmentResult, SeatAssignmentResult, Weekday,
 } from '../types'
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
@@ -450,6 +451,70 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
   )
 }
 
+// 座席の島の割当の除外日振替（BulkSeatAssign専用）。ExcludedDatesRetryと異なり、座席は
+// 座席番号のテキスト入力ではなく、島の範囲内の座席idから選ぶ（PM/PLは既にplan.allocated_seatsを
+// 持っているため、A-22座席一覧なしで選択肢を作れる、2026-09-07追加）
+function SeatIslandExcludedRetry({
+  excludedDates, seatOptions, onRetry, onRetried,
+}: {
+  excludedDates: { date: string; reason: string }[]
+  seatOptions: { id: number; seat_no: string }[]
+  onRetry: (dates: string[], seatId: number) => Promise<RetrySeatAssignmentResult>
+  onRetried: (result: RetrySeatAssignmentResult) => void
+}) {
+  const [seatId, setSeatId] = useState<number | ''>('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (excludedDates.length === 0) return null
+
+  const submit = async () => {
+    if (!seatId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await onRetry(excludedDates.map((d) => d.date), seatId)
+      onRetried(result)
+      setSeatId('')
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '振り替えに失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
+      <ul className="mb-1.5 space-y-0.5">
+        {excludedDates.map((d, i) => (
+          <li key={i} className="text-xs text-amber-800">{d.date}: {d.reason}</li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={seatId}
+          onChange={(e) => setSeatId(e.target.value ? Number(e.target.value) : '')}
+          className="h-7 rounded border border-slate-300 px-2 text-xs"
+        >
+          <option value="">座席を選択</option>
+          {seatOptions.map((s) => (
+            <option key={s.id} value={s.id}>{s.seat_no}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={submitting || !seatId}
+          onClick={submit}
+          className="h-7 rounded bg-blue-800 px-2 text-xs text-white hover:bg-blue-900 disabled:opacity-50"
+        >
+          この座席に変更
+        </button>
+        {error && <span className="text-xs text-red-700">{error}</span>}
+      </div>
+    </div>
+  )
+}
+
 function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChanged: () => void }) {
   const navigate = useNavigate()
   const [picks, setPicks] = useState<Record<number, number | ''>>({})
@@ -571,6 +636,34 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
     }
   }
 
+  // 座席の島の割当（A-18）の結果で除外となった日だけを、同じ島の範囲内の別の座席に振り替える
+  // （2026-09-07追加。「席を取って結果で除外が出てきたとき、除外部分だけ別の席に変更できる機能が
+  // 欲しい」との要望を受けた）
+  const retrySeatAssignment = async (memberUserId: number, dates: string[], seatId: number) =>
+    apiFetch<RetrySeatAssignmentResult>(`/api/project-quarter-plans/${plan.id}/seat-assignments/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ member_user_id: memberUserId, seat_id: seatId, dates }),
+    })
+  const applySeatAssignmentRetryResult = (memberUserId: number, retriedDates: string[], result: RetrySeatAssignmentResult) => {
+    setResults((prev) => {
+      if (!prev) return prev
+      const next = prev.map((r) =>
+        r.member_user_id === memberUserId
+          ? { ...r, excluded_dates: (r.excluded_dates ?? []).filter((d) => !retriedDates.includes(d.date)) }
+          : r,
+      )
+      if (result.created_days > 0) {
+        next.push({
+          member_user_id: memberUserId, seat_id: result.seat_id, seat_no: result.seat_no,
+          status: 'assigned', created_days: result.created_days, excluded_days: result.excluded_days,
+          excluded_dates: result.excluded_dates,
+        })
+      }
+      return next
+    })
+    onChanged()
+  }
+
   return (
     <div className="rounded border border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-4 py-3 font-semibold">メンバーへの座席確保</div>
@@ -682,19 +775,33 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                 {results.map((r, i) => {
                   const member = plan.members.find((m) => m.user_id === r.member_user_id)
                   return (
-                    <tr key={i} className="border-b border-slate-100">
-                      <td className="py-2 pr-3">{member?.name ?? r.member_user_id}</td>
-                      <td className="py-2 pr-3">{r.seat_no}</td>
-                      <td className="py-2">
-                        {r.status === 'assigned' ? (
-                          <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                            確保済み{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
-                          </span>
-                        ) : (
-                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-2 pr-3">{member?.name ?? r.member_user_id}</td>
+                        <td className="py-2 pr-3">{r.seat_no}</td>
+                        <td className="py-2">
+                          {r.status === 'assigned' ? (
+                            <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                              確保済み{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
+                            </span>
+                          ) : (
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                          )}
+                        </td>
+                      </tr>
+                      {r.excluded_dates && r.excluded_dates.length > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td colSpan={3} className="py-1">
+                            <SeatIslandExcludedRetry
+                              excludedDates={r.excluded_dates}
+                              seatOptions={seatOptions.filter((s) => s.id !== r.seat_id)}
+                              onRetry={(dates, seatId) => retrySeatAssignment(r.member_user_id, dates, seatId)}
+                              onRetried={(result) => applySeatAssignmentRetryResult(r.member_user_id, r.excluded_dates!.map((d) => d.date), result)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -778,6 +885,32 @@ function BulkFreeSeatBooking({ plan }: { plan: ProjectPlanDetail }) {
     }
   }
 
+  // 除外日だけを別の座席に振り替える（2026-09-07追加。「席を取って結果で除外が出てきたとき、
+  // 除外部分だけ別の席に変更できる機能が欲しい」との要望を受けた。自動割当版〔free-seat-bookings〕
+  // 由来の除外でも、振替先はA-71〔free-seat-assignments/retry〕で1つの座席にまとめて指定する）
+  const retryFreeSeat = async (userId: number, dates: string[], seatNo: string) =>
+    apiFetch<RetrySeatAssignmentResult>(`/api/project-quarter-plans/${plan.id}/free-seat-assignments/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ member_user_id: userId, seat_no: seatNo, dates }),
+    })
+  const applyFreeSeatRetryResult = (userId: number, retriedDates: string[], result: RetrySeatAssignmentResult) => {
+    setResults((prev) => {
+      if (!prev) return prev
+      const next = prev.map((r) =>
+        r.user_id === userId
+          ? { ...r, excluded_dates: (r.excluded_dates ?? []).filter((d) => !retriedDates.includes(d.date)) }
+          : r,
+      )
+      if (result.created_days > 0) {
+        next.push({
+          user_id: userId, status: 'assigned', created_days: result.created_days,
+          excluded_days: result.excluded_days, excluded_dates: result.excluded_dates,
+        })
+      }
+      return next
+    })
+  }
+
   return (
     <div className="rounded border border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-4 py-3 font-semibold">フリー座席をまとめて確保（代理予約）</div>
@@ -858,21 +991,34 @@ function BulkFreeSeatBooking({ plan }: { plan: ProjectPlanDetail }) {
                 </tr>
               </thead>
               <tbody>
-                {results.map((r) => {
+                {results.map((r, i) => {
                   const member = plan.members.find((m) => m.user_id === r.user_id)
                   return (
-                    <tr key={r.user_id} className="border-b border-slate-100">
-                      <td className="py-2 pr-3">{member?.name ?? r.user_id}</td>
-                      <td className="py-2">
-                        {r.status === 'assigned' ? (
-                          <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                            {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
-                          </span>
-                        ) : (
-                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-2 pr-3">{member?.name ?? r.user_id}</td>
+                        <td className="py-2">
+                          {r.status === 'assigned' ? (
+                            <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                              {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
+                            </span>
+                          ) : (
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                          )}
+                        </td>
+                      </tr>
+                      {r.excluded_dates && r.excluded_dates.length > 0 && (
+                        <tr className="border-b border-slate-100">
+                          <td colSpan={2} className="py-1">
+                            <ExcludedDatesRetry
+                              excludedDates={r.excluded_dates}
+                              onRetry={(dates, seatNo) => retryFreeSeat(r.user_id, dates, seatNo)}
+                              onRetried={(result) => applyFreeSeatRetryResult(r.user_id, r.excluded_dates!.map((d) => d.date), result)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>

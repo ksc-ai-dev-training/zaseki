@@ -433,6 +433,52 @@ async def users_with_current_project_seat() -> set[int]:
 _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
+async def _check_and_book_day(
+    seat_id: int, target_user_id: int, d: Date, created_by: int, *,
+    enforce_rule05: bool, check_project_block: bool, has_fixed_seat: bool, rule_id: int | None,
+) -> dict:
+    """1日分のRULE-02・RULE-05・RULE-07・座席専有チェック→問題なければreservationsへ1件挿入する
+    （generate_recurring_reservationsとretry_excluded_datesが共通で使う下請け、2026-09-07切り出し。
+    「除外部分だけ別の座席に変更したい」との要望を受け、パターン・連続期間ではなく明示的な日付ずつの
+    予約〔retry_excluded_dates〕にも同じ判定ロジックを使い回せるようにした）。rule_idはT-09
+    recurring_rulesの行を持つ場合のみ（振替時は単発予約としてNULLのまま登録する）。"""
+    pool = get_pool()
+    reason = None
+    if has_fixed_seat:
+        reason = "固定座席が割り当てられているため、フリー座席は予約できません"
+    elif enforce_rule05:
+        if d < Date.today():
+            reason = "過去の日付は予約できません"
+        else:
+            open_date = await free_seat_open_date(d)
+            if Date.today() < open_date:
+                reason = f"この座席は{open_date.month}月{open_date.day}日から予約できます"
+    if reason is None and check_project_block:
+        blocked = await project_blocked_seats(d)
+        if seat_id in blocked:
+            reason = f"この座席は{blocked[seat_id]}のプロジェクト座席として確保されているため予約できません"
+    if reason is None:
+        duplicate = await pool.fetchval(
+            """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
+               WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
+            target_user_id, d,
+        )
+        if duplicate:
+            reason = "同じ日に複数の座席は予約できません"
+
+    if reason is not None:
+        return {"date": d.isoformat(), "status": "excluded", "reason": reason}
+    try:
+        await pool.execute(
+            """INSERT INTO reservations (seat_id, user_id, date, created_by, recurring_rule_id)
+               VALUES ($1, $2, $3, $4, $5)""",
+            seat_id, target_user_id, d, created_by, rule_id,
+        )
+        return {"date": d.isoformat(), "status": "created", "reason": None}
+    except asyncpg.UniqueViolationError:
+        return {"date": d.isoformat(), "status": "excluded", "reason": "この座席はすでに予約されています"}
+
+
 async def generate_recurring_reservations(
     seat_id: int, target_user_id: int, pattern: dict, start_date: Date, end_date: Date, created_by: int,
     *, enforce_rule05: bool, check_project_block: bool,
@@ -455,11 +501,11 @@ async def generate_recurring_reservations(
 
     # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。開始日前は
     # 従来どおりフリー座席を予約できる必要がある）
-    has_fixed_seat = await pool.fetchval(
+    has_fixed_seat = bool(await pool.fetchval(
         """SELECT 1 FROM fixed_seat_assignments
            WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
         target_user_id,
-    )
+    ))
 
     rule_id = await pool.fetchval(
         """INSERT INTO recurring_rules (seat_id, user_id, pattern, start_date, end_date, created_by)
@@ -473,46 +519,39 @@ async def generate_recurring_reservations(
         if weekdays is not None and _WEEKDAY_CODES[d.weekday()] not in weekdays:
             d += timedelta(days=1)
             continue
-
-        reason = None
-        if has_fixed_seat:
-            reason = "固定座席が割り当てられているため、フリー座席は予約できません"
-        elif enforce_rule05:
-            if d < Date.today():
-                reason = "過去の日付は予約できません"
-            else:
-                open_date = await free_seat_open_date(d)
-                if Date.today() < open_date:
-                    reason = f"この座席は{open_date.month}月{open_date.day}日から予約できます"
-        if reason is None and check_project_block:
-            blocked = await project_blocked_seats(d)
-            if seat_id in blocked:
-                reason = f"この座席は{blocked[seat_id]}のプロジェクト座席として確保されているため予約できません"
-        if reason is None:
-            duplicate = await pool.fetchval(
-                """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
-                   WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
-                target_user_id, d,
-            )
-            if duplicate:
-                reason = "同じ日に複数の座席は予約できません"
-
-        if reason is not None:
-            results.append({"date": d.isoformat(), "status": "excluded", "reason": reason})
-            d += timedelta(days=1)
-            continue
-        try:
-            await pool.execute(
-                """INSERT INTO reservations (seat_id, user_id, date, created_by, recurring_rule_id)
-                   VALUES ($1, $2, $3, $4, $5)""",
-                seat_id, target_user_id, d, created_by, rule_id,
-            )
-            results.append({"date": d.isoformat(), "status": "created", "reason": None})
-        except asyncpg.UniqueViolationError:
-            results.append({"date": d.isoformat(), "status": "excluded", "reason": "この座席はすでに予約されています"})
+        results.append(await _check_and_book_day(
+            seat_id, target_user_id, d, created_by,
+            enforce_rule05=enforce_rule05, check_project_block=check_project_block,
+            has_fixed_seat=has_fixed_seat, rule_id=rule_id,
+        ))
         d += timedelta(days=1)
 
     return {"rule_id": rule_id, "results": results}
+
+
+async def retry_excluded_dates(
+    seat_id: int, target_user_id: int, dates: list[Date], created_by: int,
+    *, enforce_rule05: bool, check_project_block: bool,
+) -> list[dict]:
+    """一括予約の結果で「除外」となった日だけを、指定した別の座席で振り替える（2026-09-07追加。
+    「席を取って結果で除外が出てきたとき、除外部分だけ別の席に変更できる機能が欲しい」との要望を
+    受けた）。generate_recurring_reservationsと異なり、連続した期間・パターンではなく明示的な
+    日付のリストを対象にする（元の予約で成功していた日はそのまま、除外された日だけをやり直すため）。
+    振替分はrecurring_rulesを持たない単発予約として登録する（A-09と同じ形）。"""
+    pool = get_pool()
+    has_fixed_seat = bool(await pool.fetchval(
+        """SELECT 1 FROM fixed_seat_assignments
+           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
+        target_user_id,
+    ))
+    return [
+        await _check_and_book_day(
+            seat_id, target_user_id, d, created_by,
+            enforce_rule05=enforce_rule05, check_project_block=check_project_block,
+            has_fixed_seat=has_fixed_seat, rule_id=None,
+        )
+        for d in sorted(dates)
+    ]
 
 
 async def _available_free_seats(pool, area: str, target_date: Date) -> list:

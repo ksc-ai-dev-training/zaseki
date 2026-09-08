@@ -11,6 +11,7 @@ from database import (
     generate_bulk_free_seat_reservations,
     generate_recurring_reservations,
     get_pool,
+    retry_excluded_dates,
 )
 from routers.project_seats import _format_seat_range
 
@@ -411,13 +412,87 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         )
         created = sum(1 for r in gen["results"] if r["status"] == "created")
         excluded = [r for r in gen["results"] if r["status"] == "excluded"]
+        excluded_dates = [{"date": r["date"], "reason": r["reason"]} for r in excluded]
         if created == 0:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": excluded[0]["reason"] if excluded else "確保できる日がありません"})
+                             "status": "excluded", "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
+                             "excluded_dates": excluded_dates})
         else:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "assigned", "created_days": created, "excluded_days": len(excluded)})
+                             "status": "assigned", "created_days": created, "excluded_days": len(excluded),
+                             "excluded_dates": excluded_dates})
     return {"results": results}
+
+
+class RetrySeatAssignmentBody(BaseModel):
+    member_user_id: int
+    seat_id: int
+    dates: list[Date]
+
+
+@router.post("/project-quarter-plans/{id}/seat-assignments/retry")
+async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: CurrentUser = Depends(require_auth)):
+    """A-72: メンバーへの座席の島の割当（A-18）の結果で「除外」となった日だけを、同じ座席の島の
+    範囲内の別の座席に振り替える（2026-09-07追加。A-71〔free-seat-assignments/retry〕のプロジェクト
+    座席版）。A-18と同じくRULE-05・座席専有チェックはスキップし（enforce_rule05=False・
+    check_project_block=False）、対象期間もA-18と同じ（本日以降〜plan.period_end）。"""
+    if not body.dates:
+        raise HTTPException(400, detail="振り替える日付を1つ以上指定してください")
+
+    pool = get_pool()
+    plan = await pool.fetchrow(
+        """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.id = $1""",
+        id,
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if plan["status"] != "seats_allocated":
+        raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
+
+    my_member = await _member_row(pool, plan["project_id"], user.id)
+    can_manage = (
+        user.role == "admin"
+        or plan["proxy_user_id"] == user.id
+        or (my_member is not None and my_member["can_assign_seats"])
+    )
+    if not can_manage:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+
+    allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
+    if body.seat_id not in allocated_seat_ids:
+        raise HTTPException(400, detail="座席の島の範囲外の座席です")
+
+    member_rows = await pool.fetch(
+        "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
+    )
+    member_user_ids = {r["user_id"] for r in member_rows}
+    seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
+    if body.member_user_id not in member_user_ids:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if body.member_user_id in seat_not_required_user_ids:
+        raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
+    fixed_seat_user_ids = {
+        r["user_id"] for r in await pool.fetch(
+            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE",
+            body.member_user_id,
+        )
+    }
+    if body.member_user_id in fixed_seat_user_ids:
+        raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")
+
+    seat_no_by_id = await _seat_labels(pool, [body.seat_id])
+    results = await retry_excluded_dates(
+        body.seat_id, body.member_user_id, body.dates, user.id,
+        enforce_rule05=False, check_project_block=False,
+    )
+    created = [r for r in results if r["status"] == "created"]
+    excluded = [r for r in results if r["status"] == "excluded"]
+    return {
+        "seat_id": body.seat_id, "seat_no": seat_no_by_id.get(body.seat_id, "?"),
+        "created_days": len(created), "excluded_days": len(excluded),
+        "excluded_dates": [{"date": r["date"], "reason": r["reason"]} for r in excluded],
+    }
 
 
 class FreeSeatBookingBody(BaseModel):
@@ -498,16 +573,20 @@ async def bulk_book_free_seats(id: int, body: FreeSeatBookingBody, user: Current
             continue
         created = [r for r in rows if r["status"] == "created"]
         excluded = [r for r in rows if r["status"] == "excluded"]
+        # excluded_dates: 除外日を別の座席（1つ）に振り替えられるよう明細で返す（2026-09-07追加。
+        # /free-seat-assignments/retryで振り替える。自動割当のため成功した日の座席は日によって
+        # 異なり得るが、除外日の振替先は呼び出し元が指定する1つの座席になる）
+        excluded_dates = [{"date": r["date"], "reason": r["reason"]} for r in excluded]
         if not created:
             results.append({
                 "user_id": uid, "status": "excluded",
                 "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
-                "created_days": 0, "excluded_days": len(excluded),
+                "created_days": 0, "excluded_days": len(excluded), "excluded_dates": excluded_dates,
             })
         else:
             results.append({
                 "user_id": uid, "status": "assigned",
-                "created_days": len(created), "excluded_days": len(excluded),
+                "created_days": len(created), "excluded_days": len(excluded), "excluded_dates": excluded_dates,
             })
     return {"results": results}
 
@@ -607,18 +686,85 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
         )
         created = [r for r in gen["results"] if r["status"] == "created"]
         excluded = [r for r in gen["results"] if r["status"] == "excluded"]
+        # excluded_dates: 除外された日だけを別の座席に振り替えられるよう、日付・理由を明細で返す
+        # （2026-09-07追加、A-71参照）
+        excluded_dates = [{"date": r["date"], "reason": r["reason"]} for r in excluded]
         if not created:
             results.append({
                 "member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                 "status": "excluded", "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
-                "created_days": 0, "excluded_days": len(excluded),
+                "created_days": 0, "excluded_days": len(excluded), "excluded_dates": excluded_dates,
             })
         else:
             results.append({
                 "member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                 "status": "assigned", "created_days": len(created), "excluded_days": len(excluded),
+                "excluded_dates": excluded_dates,
             })
     return {"results": results}
+
+
+class RetryFreeSeatAssignmentBody(BaseModel):
+    member_user_id: int
+    seat_no: str
+    dates: list[Date]
+
+
+@router.post("/project-quarter-plans/{id}/free-seat-assignments/retry")
+async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody, user: CurrentUser = Depends(require_auth)):
+    """A-71: 複数人のフリー座席一括確保（S-02の座席クリック版・A-70のエリア自動割当版のどちらも）の
+    結果で「除外」となった日だけを、指定した別の座席に振り替える（2026-09-07追加。「席を取って結果で
+    除外が出てきたとき、除外部分だけ別の席に変更できる機能が欲しい」との要望を受けた）。権限・除外
+    理由の考え方はA-58（bulk_assign_free_seats_by_seat）と同じ。振替はdatesで明示的に指定された日付
+    だけを対象にする（元々成功していた日には触れない）。座席はidではなく座席番号（seat_no）で指定する
+    （A-22座席一覧は管理部専用のため、管理部以外の呼び出し元〔PJ席決担当〕が座席idの一覧を取得する
+    手段がなく、フロアマップ上で見えている座席番号をそのまま入力できるようにするため）。"""
+    if not body.dates:
+        raise HTTPException(400, detail="振り替える日付を1つ以上指定してください")
+
+    pool = get_pool()
+    plan = await pool.fetchrow(
+        """SELECT pqp.id, pqp.project_id, p.proxy_user_id FROM project_quarter_plans pqp
+           JOIN projects p ON p.id = pqp.project_id WHERE pqp.id = $1""",
+        id,
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+
+    my_member = await _member_row(pool, plan["project_id"], user.id)
+    can_manage = (
+        user.role == "admin"
+        or plan["proxy_user_id"] == user.id
+        or (my_member is not None and my_member["can_assign_seats"])
+    )
+    if not can_manage:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
+
+    member_rows = await pool.fetch(
+        "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
+    )
+    member_user_ids_in_project = {r["user_id"] for r in member_rows}
+    seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
+    if body.member_user_id not in member_user_ids_in_project:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if body.member_user_id in seat_not_required_user_ids:
+        raise HTTPException(400, detail="在宅勤務のため座席は不要に設定されています")
+
+    seat = await pool.fetchrow("SELECT id, seat_no, seat_type, status FROM seats WHERE seat_no = $1", body.seat_no)
+    if seat is None or seat["status"] != "active" or seat["seat_type"] != "free":
+        raise HTTPException(400, detail="この座席番号は存在しないか、フリー座席として予約できません")
+
+    results = await retry_excluded_dates(
+        seat["id"], body.member_user_id, body.dates, user.id,
+        enforce_rule05=(user.role != "admin"), check_project_block=True,
+    )
+    created = [r for r in results if r["status"] == "created"]
+    excluded = [r for r in results if r["status"] == "excluded"]
+    return {
+        "seat_id": seat["id"], "seat_no": seat["seat_no"],
+        "created_days": len(created), "excluded_days": len(excluded),
+        "excluded_dates": [{"date": r["date"], "reason": r["reason"]} for r in excluded],
+    }
 
 
 class SeatChangeBody(BaseModel):

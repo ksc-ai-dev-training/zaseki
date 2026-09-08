@@ -443,6 +443,13 @@ export interface RecurringReservationResult {
   results: RecurringReservationDayResult[]
 }
 
+// 一括予約の結果で除外された日（2026-09-07追加）。「席を取って結果で除外が出てきたとき、
+// 除外部分だけ別の席に変更できる機能が欲しい」との要望を受け、A-71・A-72で日付単位に振り替えられる
+export interface ExcludedDate {
+  date: string
+  reason: string
+}
+
 // A-18 POST /project-quarter-plans/{id}/seat-assignments（S-04）
 export interface SeatAssignmentResult {
   member_user_id: number
@@ -452,6 +459,7 @@ export interface SeatAssignmentResult {
   reason?: string
   created_days?: number
   excluded_days?: number
+  excluded_dates?: ExcludedDate[]
 }
 
 // POST /project-quarter-plans/{id}/free-seat-bookings（S-04。「代理予約を複数名まとめて、PJの
@@ -463,6 +471,16 @@ export interface FreeSeatBookingResult {
   reason?: string
   created_days: number
   excluded_days: number
+  excluded_dates?: ExcludedDate[]
+}
+
+// A-71・A-72の振替結果（除外日を別の座席に変更した後の再集計）
+export interface RetrySeatAssignmentResult {
+  seat_id: number
+  seat_no: string
+  created_days: number
+  excluded_days: number
+  excluded_dates: ExcludedDate[]
 }
 
 // フィードバック（S-13「フィードバック」タブ・S-14一覧、FR-09-2・FR-09-3、2026-09-01追加）

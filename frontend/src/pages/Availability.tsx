@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from 'react'
+import { Fragment, useRef, useState, type MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
@@ -11,10 +11,11 @@ import { useMyProjects } from '../hooks/useMyProjects'
 import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
+import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
 import type {
   AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
-  RecurringReservationResult, SeatAssignmentResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
+  RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
 } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
@@ -447,6 +448,35 @@ export default function Availability() {
     }
   }
 
+  // 一括確保の結果で「除外」となった日だけを、別の座席に振り替える（2026-09-07追加。「席を取って
+  // 結果で除外が出てきたとき、除外部分だけ別の席に変更できる機能が欲しい」との要望を受けた）。
+  // 振替に成功した分は、元の行とは別の座席として新しい行を追加する（1人が期間の途中で座席が
+  // 変わったことを分かりやすくするため。元の行のexcluded_datesは振替後の残り〔なお除外の場合〕に
+  // 更新する）
+  const retryMemberFreeSeat = async (memberUserId: number, dates: string[], seatNo: string) =>
+    apiFetch<RetrySeatAssignmentResult>(`/api/project-quarter-plans/${memberSeatAssignFor!.planId}/free-seat-assignments/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ member_user_id: memberUserId, seat_no: seatNo, dates }),
+    })
+  const applyRetryResult = (memberUserId: number, retriedDates: string[], result: RetrySeatAssignmentResult) => {
+    setMemberAssignResult((prev) => {
+      if (!prev) return prev
+      const next = prev.map((r) =>
+        r.member_user_id === memberUserId
+          ? { ...r, excluded_dates: (r.excluded_dates ?? []).filter((d) => !retriedDates.includes(d.date)) }
+          : r,
+      )
+      if (result.created_days > 0) {
+        next.push({
+          member_user_id: memberUserId, seat_id: result.seat_id, seat_no: result.seat_no,
+          status: 'assigned', created_days: result.created_days, excluded_days: result.excluded_days,
+          excluded_dates: result.excluded_dates,
+        })
+      }
+      return next
+    })
+  }
+
   // 座席配置モード中、パネルの本当に何もない背景をクリックした場合のみ配置を開始する
   // （既存の座席タイル・部屋・柱等の上のクリックはそれぞれの本来の動作に任せる）
   const handlePanelClick = (e: MouseEvent<HTMLDivElement>, area: 'NORTH' | 'EAST' | 'WEST') => {
@@ -805,19 +835,33 @@ export default function Availability() {
               {memberAssignResult.map((r, i) => {
                 const member = memberSeatAssignFor.members.find((m) => m.userId === r.member_user_id)
                 return (
-                  <tr key={i} className="border-b border-blue-100">
-                    <td className="py-1 pr-3">{member?.name ?? r.member_user_id}</td>
-                    <td className="py-1 pr-3">{r.seat_no}</td>
-                    <td className="py-1">
-                      {r.status === 'assigned' ? (
-                        <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                          {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={i}>
+                    <tr className="border-b border-blue-100">
+                      <td className="py-1 pr-3">{member?.name ?? r.member_user_id}</td>
+                      <td className="py-1 pr-3">{r.seat_no}</td>
+                      <td className="py-1">
+                        {r.status === 'assigned' ? (
+                          <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                            {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
+                          </span>
+                        ) : (
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                        )}
+                      </td>
+                    </tr>
+                    {r.excluded_dates && r.excluded_dates.length > 0 && (
+                      <tr className="border-b border-blue-100">
+                        <td className="py-1 pr-3"></td>
+                        <td colSpan={2} className="py-1">
+                          <ExcludedDatesRetry
+                            excludedDates={r.excluded_dates}
+                            onRetry={(dates, seatNo) => retryMemberFreeSeat(r.member_user_id, dates, seatNo)}
+                            onRetried={(result) => applyRetryResult(r.member_user_id, r.excluded_dates!.map((d) => d.date), result)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>
