@@ -615,8 +615,14 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     単発日付のみの対応から日付範囲・繰り返しパターン対応へ拡張。さらに同日、期間・パターンを全員
     共通の1つから、座席をクリックするたびにその場のモーダルで1人分ずつ確認・確定する方式に変更した。
     「フリー座席と同じ席の取り方（座席をクリックするたびにモーダルで確認・確定）をしてほしい」との
-    要望を受けた。これにより人によって異なる期間・パターンを指定できる）。/free-seat-bookings（エリア
-    指定で自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
+    要望を受けた）。2026-09-08、フロントエンドの入力方式を「開始日＋繰り返しパターン」から
+    「日にちを検索してその日の座席表を見ながら、日付ごとに座席をクリックして選ぶ」方式へ変更した
+    （「複数日選択した後、フリー座席を決定する予約方法にしたい。日付ごとに別の座席を選べるように
+    したい」との要望を受けた）ことに伴い、1回のクリック＝1件のassignment（start_date=end_date、
+    pattern.type='daily'固定）として送られてくるようになったが、APIのBody形状・処理自体は変更して
+    いない（1人のメンバーが複数の日付・座席を別々のassignmentとして持てるだけで、以前から
+    assignments一覧の各要素は独立して処理していたため）。/free-seat-bookings（エリア指定で
+    自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
     メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・RULE-07・座席専有チェックは
     A-10・A-18と共通のgenerate_recurring_reservationsに委譲する（メンバー・座席1組につき1件の
     recurring_rulesを作成）。"""
@@ -659,10 +665,15 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     seat_by_id = {s["id"]: s for s in seats}
     enforce_rule05 = user.role != "admin"
 
-    seat_counts: dict[int, int] = {}
-    for a in body.assignments:
-        seat_counts[a.seat_id] = seat_counts.get(a.seat_id, 0) + 1
-
+    # 座席の重複（同じ座席を複数人に割り当てようとした場合）は、ここで一律に弾かず
+    # generate_recurring_reservations側の日単位の重複チェック（UNIQUE制約）に委ねる
+    # （2026-09-08修正。以前はリクエスト内で同じseat_idが2回以上出現した時点で全件を
+    # 「他のメンバーと座席が重複しています」として除外していたが、「日にちを検索してその日の
+    # 座席表を見ながら、複数日をそれぞれ別の座席で確保したい」との要望を受け、1人のメンバーが
+    # 複数の日付・座席を個別に指定できるようにしたところ、日付が重ならない限り同じ座席番号を
+    # 別の日に複数回使うのは本来問題ないにもかかわらず誤って全件除外されてしまう不具合になった。
+    # 各assignmentは順番にawaitされるため、本当に同じ座席・同じ日が重複した場合は後続の
+    # INSERTがUNIQUE制約違反となり、その日だけ正しく除外される）
     results = []
     for a in body.assignments:
         seat = seat_by_id.get(a.seat_id)
@@ -674,8 +685,6 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
             reason = "在宅勤務のため座席は不要に設定されています"
         elif seat is None or seat["status"] != "active" or seat["seat_type"] != "free":
             reason = "この座席はフリー座席として予約できません"
-        elif seat_counts[a.seat_id] > 1:
-            reason = "他のメンバーと座席が重複しています"
         if reason is not None:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "excluded", "reason": reason, "created_days": 0, "excluded_days": 0})
