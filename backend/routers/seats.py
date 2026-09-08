@@ -8,7 +8,14 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth_helpers import CurrentUser, require_auth
-from database import free_seat_bookable_period, get_pool, get_setting, project_blocked_seats, release_expired_fixed_seats
+from database import (
+    fixed_seat_absences_in_range,
+    free_seat_bookable_period,
+    get_pool,
+    get_setting,
+    project_blocked_seats,
+    release_expired_fixed_seats,
+)
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -67,7 +74,8 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     プロジェクト座席のうち、指定dateに実際の予約（S-04 A-18の周期予約〔T-09〕から生成されたT-08行）
     があれば'project_confirmed'（個人確定済み、display_nameはその利用者の姓）、なければ
     'project_pending'（未確定、display_nameはプロジェクト名）とする（2026-08-28、A-10・S-04実装に
-    伴い区別を追加）。
+    伴い区別を追加）。指定dateがfixed_seat_absences（T-18）に該当する場合は割当自体は残っていても
+    その日だけ固定表示を外す（A-21の1日分の解除、2026-09-08追加）。
     """
     await release_expired_fixed_seats()
     lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
@@ -91,6 +99,9 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
                ON fsa.seat_id = s.id AND fsa.valid_from <= $1
                   AND (fsa.ended_on IS NULL OR $1 <= fsa.ended_on)
                   AND (fsa.valid_until IS NULL OR $1 <= fsa.valid_until)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM fixed_seat_absences fab WHERE fab.seat_id = s.id AND fab.date = $1
+                  )
            LEFT JOIN users fu ON fu.id = fsa.user_id
            WHERE s.status = 'active'
              AND ($2 = 'all' OR lower(a.name) = $2)
@@ -274,6 +285,7 @@ async def get_availability_period(
     fixed_by_seat_id: dict[int, list] = {}
     for r in fixed_rows:
         fixed_by_seat_id.setdefault(r["seat_id"], []).append(r)
+    absences = await fixed_seat_absences_in_range(range_start, range_end)
     for seat in seats.values():
         rows_for_seat = fixed_by_seat_id.get(seat["id"])
         if not rows_for_seat:
@@ -290,7 +302,7 @@ async def get_availability_period(
                 ),
                 None,
             )
-            if match is not None:
+            if match is not None and (seat["id"], d) not in absences:
                 display_name = match["last_name"] if match["assignment_id"] != last_shown_assignment_id else "-"
                 last_shown_assignment_id = match["assignment_id"]
                 seat["days"][d.isoformat()] = {

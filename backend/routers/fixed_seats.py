@@ -1,4 +1,4 @@
-# A-19, A-20, A-21, A-52 固定座席の指定（S-05）。詳細設計書3.5節
+# A-19, A-20, A-21, A-52, A-73 固定座席の指定（S-05）。詳細設計書3.5節
 from datetime import date as Date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -161,11 +161,31 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
 
 
 @router.delete("/{seat_id}")
-async def unassign(seat_id: int, _: CurrentUser = Depends(require_roles("admin"))):
+async def unassign(seat_id: int, date: Date | None = None, user: CurrentUser = Depends(require_roles("admin"))):
     """A-21: 固定座席の割当を解除。解除後は通常のフリー座席に戻す（seat_type='free'、2026-08-27訂正。
     座席タイプを問わず指定できるようになったことに伴う対応）。過去日の空き状況照会から参照できるよう
-    行自体は残す（物理DELETEはしない、2026-09-04変更。close_fixed_seat_assignment参照）。"""
+    行自体は残す（物理DELETEはしない、2026-09-04変更。close_fixed_seat_assignment参照）。
+
+    dateを指定した場合はA-73（1日分の解除）として動作し、割当（T-04）自体には触れず、その1日だけを
+    fixed_seat_absences（T-18）に記録する（2026-09-08追加。「S-11で固定座席の取消をすると割当ごと
+    削除されてしまう、1日分だけ取り消したい」との要望を受けた）。割当は解除されないため、翌日以降は
+    従来どおり固定座席として表示される。"""
     pool = get_pool()
+    if date is not None:
+        assignment = await pool.fetchrow(
+            """SELECT id FROM fixed_seat_assignments
+               WHERE seat_id = $1 AND ended_on IS NULL
+                 AND valid_from <= $2 AND (valid_until IS NULL OR $2 <= valid_until)""",
+            seat_id, date,
+        )
+        if assignment is None:
+            raise HTTPException(404, detail="対象が見つかりません")
+        await pool.execute(
+            """INSERT INTO fixed_seat_absences (seat_id, date, created_by) VALUES ($1, $2, $3)
+               ON CONFLICT (seat_id, date) DO NOTHING""",
+            seat_id, date, user.id,
+        )
+        return {"detail": "指定した日だけ固定座席の割当を取り消しました"}
     async with pool.acquire() as conn:
         async with conn.transaction():
             freed_seat_id = await close_fixed_seat_assignment(conn, seat_id=seat_id)

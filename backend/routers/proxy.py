@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import (
+    fixed_seat_absences_in_range,
     free_seat_bookable_period,
     get_pool,
     project_blocked_seats,
@@ -192,7 +193,9 @@ async def get_period_grid(
     reservation_idを隠す）は行わず、対象者の氏名・ユーザーIDと操作対象のID（reservation_idまたは
     seats.id）を常に返す（2026-09-03追加。「座席の予約・割当を代理で取り消すをS-02の期間ビューの
     ような画面にしたい」との要望を受けた）。固定座席もA-07のような「初日のみ氏名表示」の圧縮は
-    行わず、どの日をクリックしても同じ固定座席の解除・変更操作ができるよう毎日氏名を返す。"""
+    行わず、どの日をクリックしても同じ固定座席の解除・変更操作ができるよう毎日氏名を返す。
+    fixed_seat_absences（T-18）に記録された1日分の解除（A-73）がある日は'fixed'を返さない
+    （2026-09-08追加）。"""
     await release_expired_fixed_seats()
     pool = get_pool()
     full_start, full_end = await free_seat_bookable_period()
@@ -251,6 +254,7 @@ async def get_period_grid(
     fixed_by_seat_id: dict[int, list] = {}
     for fr in fixed_rows:
         fixed_by_seat_id.setdefault(fr["seat_id"], []).append(fr)
+    absences = await fixed_seat_absences_in_range(range_start, range_end)
     for seat_id, rows_for_seat in fixed_by_seat_id.items():
         seat = seats.get(seat_id)
         if seat is None:
@@ -266,7 +270,7 @@ async def get_period_grid(
                 ),
                 None,
             )
-            if match is not None:
+            if match is not None and (seat_id, d) not in absences:
                 seat["days"][d.isoformat()] = {
                     "status": "fixed", "kind": "fixed", "id": match["seat_id"],
                     "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",

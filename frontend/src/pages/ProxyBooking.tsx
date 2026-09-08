@@ -98,7 +98,7 @@ export default function ProxyBooking() {
     setActionError(null)
     setCancelTarget({
       kind: cell.kind, id: cell.id, user_id: cell.user_id, user_name: cell.user_name,
-      seat_type: seat.seat_type, date: cell.kind === 'fixed' ? null : date,
+      seat_type: seat.seat_type, date,
       seat_no: seat.seat_no, area: seat.area, project_name: cell.project_name,
     })
   }
@@ -117,6 +117,24 @@ export default function ProxyBooking() {
       await Promise.all([refreshRows(), refreshGrid()])
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : (cancelTarget.kind === 'fixed' ? '解除に失敗しました' : '取消に失敗しました'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 固定座席の割当はそのままに、クリックした1日だけ取り消す（A-73、2026-09-08追加。「取消をすると
+  // 割当ごと削除されてしまう、1日分だけ取り消したい」との要望を受けた）。翌日以降は従来どおり
+  // 固定座席として表示される
+  const confirmCancelOneDay = async () => {
+    if (!cancelTarget || cancelTarget.kind !== 'fixed' || !cancelTarget.date) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch(`/api/fixed-seat-assignments/${cancelTarget.id}?date=${cancelTarget.date}`, { method: 'DELETE' })
+      setCancelTarget(null)
+      await Promise.all([refreshRows(), refreshGrid()])
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '取消に失敗しました')
     } finally {
       setSubmitting(false)
     }
@@ -436,8 +454,13 @@ export default function ProxyBooking() {
               <button type="button" disabled={submitting} onClick={confirmChange} className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-800 disabled:opacity-50">
                 変更する（座席を選び直す）
               </button>
+              {cancelTarget.kind === 'fixed' && cancelTarget.date && (
+                <button type="button" disabled={submitting} onClick={confirmCancelOneDay} className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-700 disabled:opacity-50">
+                  この日だけ取り消す
+                </button>
+              )}
               <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-                {cancelTarget.kind === 'fixed' ? '解除する' : '取消する'}
+                {cancelTarget.kind === 'fixed' ? '割当を解除する（全期間）' : '取消する'}
               </button>
             </>
           }
@@ -450,7 +473,7 @@ export default function ProxyBooking() {
           </dl>
           <p className="mt-3 text-sm text-slate-600">
             {cancelTarget.kind === 'fixed'
-              ? 'この固定座席の割当を解除します。「変更する」を選ぶと、解除したうえで続けて別の固定座席を指定できます。'
+              ? '「この日だけ取り消す」を選ぶと、固定座席の割当自体は残したまま、この日だけ空席にします（翌日以降は元どおり固定座席として表示されます）。「割当を解除する（全期間）」を選ぶと、この固定座席の割当を完全に解除します。「変更する」を選ぶと、解除したうえで続けて別の固定座席を指定できます。'
               : 'この予約を取り消します。「変更する」を選ぶと、取り消したうえで続けて別の座席を代理予約できます。'}
           </p>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}

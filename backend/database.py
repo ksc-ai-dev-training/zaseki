@@ -138,6 +138,19 @@ ALTER TABLE fixed_seat_assignments DROP CONSTRAINT IF EXISTS fixed_seat_assignme
 CREATE UNIQUE INDEX IF NOT EXISTS fixed_seat_assignments_active_seat
     ON fixed_seat_assignments (seat_id) WHERE ended_on IS NULL;
 
+-- T-18 fixed_seat_absences（2026-09-08追加）。固定座席の割当（T-04）自体は解除せず、特定の1日だけ
+-- その座席を空ける（「S-11の取消が割当ごと削除されてしまう、1日分だけ取り消したい」との要望を
+-- 受けた。A-21のDELETE /fixed-seat-assignments/{seat_id}にdateを指定すると、この行が1件追加される
+-- だけでfixed_seat_assignments行には触れない。指定日以外は従来どおり固定座席として表示される）。
+CREATE TABLE IF NOT EXISTS fixed_seat_absences (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    seat_id     BIGINT NOT NULL REFERENCES seats(id),
+    date        DATE NOT NULL,
+    created_by  BIGINT NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (seat_id, date)
+);
+
 -- T-08 reservations
 CREATE TABLE IF NOT EXISTS reservations (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -292,6 +305,16 @@ def get_pool() -> asyncpg.Pool:
 async def get_setting(key: str) -> str | None:
     """T-16 app_settingsから設定値を取得する"""
     return await get_pool().fetchval("SELECT value FROM app_settings WHERE key = $1", key)
+
+
+async def fixed_seat_absences_in_range(start: Date, end: Date) -> set[tuple[int, Date]]:
+    """T-18 fixed_seat_absences: 指定期間内に1日だけ解除されている(seat_id, date)の組の集合。
+    A-06・A-07・A-69が固定座席の占有日を組み立てる際、この集合に含まれる日だけ「固定」表示を外す
+    （2026-09-08追加）。"""
+    rows = await get_pool().fetch(
+        "SELECT seat_id, date FROM fixed_seat_absences WHERE date BETWEEN $1 AND $2", start, end
+    )
+    return {(r["seat_id"], r["date"]) for r in rows}
 
 
 async def free_seat_open_date(target: Date) -> Date:
