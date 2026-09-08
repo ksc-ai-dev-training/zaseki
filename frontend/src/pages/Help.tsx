@@ -34,6 +34,20 @@ function Note({ children }: { children: ReactNode }) {
   )
 }
 
+// 操作手順の画面キャプチャ（2026-09-08追加。「予約方法のやり方を写真付きで作成してほしい」との
+// 要望を受けた。実際にログインして操作した画面のスクリーンショットを frontend/public/help/ に
+// 配置し、ここから参照する）
+function Screenshot({ src, caption }: { src: string; caption: string }) {
+  return (
+    <figure className="overflow-hidden rounded border border-slate-200">
+      <img src={src} alt={caption} className="block w-full" />
+      <figcaption className="border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+        {caption}
+      </figcaption>
+    </figure>
+  )
+}
+
 // フィードバックの送信フォーム（A-59、FR-09-2）。分類＋自由記述のみのシンプルな構成。
 // 送信されたフィードバックは管理部向け一覧画面（S-14、A-60）で確認する
 function FeedbackForm() {
@@ -159,20 +173,35 @@ export default function Help() {
             <Section title="マイプロフィールの設定">
               <p>サイドバーの「マイプロフィール」から、自分のアイコン画像・生年月日（月日のみ）を登録できます（任意項目）。</p>
               <ul className="list-disc space-y-1 pl-5">
-                <li>アイコンを設定すると、座席表や履歴照会の座席タイルに氏名とあわせて表示されます。未設定の間は氏名の頭文字のアバターが表示されます。</li>
+                <li>アイコンを設定すると、座席表の座席タイルに氏名とあわせて表示されます。未設定の間は氏名の頭文字のアバターが表示されます。</li>
                 <li>生年月日（月日）が本日と一致する日は、自分が使用している座席タイルに誕生日バッジ（🎂）が表示されます。</li>
                 <li>いずれもいつでも変更・削除できます。</li>
               </ul>
             </Section>
 
             <Section title="座席の予約・取消（フロアマップ表示）">
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>サイドバーの「空き状況・予約」（トップ画面）を開きます。</li>
-                <li>上部の日付選択（前日／翌日／今日ボタン、または直接入力）で予約したい日を選びます。</li>
-                <li>表示モードタブ（全体表示／NORTH／EAST／WEST）でエリアを切り替えます。</li>
-                <li>空いている座席（オレンジ系の「空き」表示）をクリックすると予約確認ダイアログが開きます。</li>
-                <li>複数日を確保したい場合は「繰り返し予約にする」にチェックし、繰り返しパターンと適用終了日を指定します。</li>
-                <li>自分の予約をクリックすると取消確認ダイアログに切り替わります。</li>
+              <ol className="list-decimal space-y-3 pl-5">
+                <li>サイドバーの「空き状況・予約」（トップ画面）を開きます。上部の日付選択（前日／翌日／今日ボタン、または直接入力）で予約したい日を、表示モードタブ（全体表示／NORTH／EAST／WEST）でエリアを選びます。
+                  <div className="mt-2 max-w-md">
+                    <Screenshot src="/help/reserve-01-floormap.png" caption="空き状況・予約画面。白い枠の座席が空き、色付きの座席は使用中・固定座席など" />
+                  </div>
+                </li>
+                <li>空いている（白い枠の）座席をクリックすると、予約確認ダイアログが開きます。日付を確認し「予約する」を押します。
+                  <div className="mt-2 max-w-md">
+                    <Screenshot src="/help/reserve-02-modal.png" caption="座席をクリックすると開く予約確認ダイアログ" />
+                  </div>
+                </li>
+                <li>予約が完了すると、その座席が自分の色（濃い青）に変わり「（自分）」と表示されます。
+                  <div className="mt-2 max-w-md">
+                    <Screenshot src="/help/reserve-03-done.png" caption="予約完了後、座席が自分の予約として表示される" />
+                  </div>
+                </li>
+                <li>複数日を確保したい場合は、予約確認ダイアログで「繰り返し予約にする」にチェックし、繰り返しパターンと適用終了日を指定します。</li>
+                <li>予約した内容は、座席表の下にある「自分の予約」一覧（今後の予約／過去の予約）からいつでも確認できます。「変更」（該当日のフロアマップへ移動）・「取消」ボタンで操作します。自分の予約の座席を直接クリックしても取消確認ダイアログに切り替わります。
+                  <div className="mt-2 max-w-md">
+                    <Screenshot src="/help/reserve-04-mylist.png" caption="座席状況の凡例と「自分の予約」一覧" />
+                  </div>
+                </li>
               </ol>
               <Note>
                 使用中・固定座席・自分の予約・プロジェクト座席（個人確定済み）は座席番号ではなく姓を表示します。同じフロア・同じ日に同じ姓の人が複数いるときだけ「姓（名の頭文字）」形式で自動的に区別されます（例: 岩崎（遼）・岩崎（弘））。
@@ -276,9 +305,6 @@ export default function Help() {
               </ul>
             </Section>
 
-            <Section title="座席状況の履歴照会">
-              <p>日付を指定すると、その日の座席状況を参照専用のフロアマップ形式で確認できます。照会できる範囲は直近1か月以内です。</p>
-            </Section>
           </>
         )}
 
