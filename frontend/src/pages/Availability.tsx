@@ -299,6 +299,13 @@ export default function Availability() {
   const [recurringWeekdays, setRecurringWeekdays] = useState<Set<Weekday>>(new Set())
   const [recurringEndDate, setRecurringEndDate] = useState('')
   const [recurringResult, setRecurringResult] = useState<RecurringReservationResult | null>(null)
+  // 「同じ日に複数の座席は予約できません」で拒否された場合、その場で「変更する」を選べるようにする
+  // （2026-09-08追加。「同じ日に複数の座席は予約できませんと出てきたら変更するボタンが欲しい」との
+  // 要望を受けた。existingSameDayReservation〔下記〕は誤ってプロジェクト座席を巻き込んで自動変更
+  // しないよう事前の案内対象からは除外しているが、実際にサーバー側で拒否された後は、利用者の
+  // 明示的なクリックを経て初めてreplace_existing=trueで再送信するため、対象をプロジェクト座席に
+  // 広げても2026-09-07に修正した不具合〔確定済みプロジェクト座席の意図しない自動取消〕は再発しない）
+  const [duplicateSeatError, setDuplicateSeatError] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignFixedSeatTarget, setAssignFixedSeatTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignIndefinite, setAssignIndefinite] = useState(true)
@@ -364,6 +371,7 @@ export default function Availability() {
     setRecurringWeekdays(new Set())
     setRecurringEndDate('')
     setRecurringResult(null)
+    setDuplicateSeatError(false)
   }
   const openCancel = (seat: Seat, area: string) => {
     setActionError(null)
@@ -539,6 +547,12 @@ export default function Availability() {
       )
     : undefined
 
+  // duplicateSeatErrorの表示専用（プロジェクト座席も含める、上記duplicateSeatErrorのコメント参照）。
+  // 「同じ日に複数の座席は予約できません」で拒否された後、どの座席が競合しているかを示すために使う
+  const anySameDayReservation = reserveTarget
+    ? upcoming.items.find((r) => r.date === reserveTarget.date && r.seat_no !== reserveTarget.seatNo)
+    : undefined
+
   // 繰り返し予約は開始日（クリックした日）自体が予約可能期間内でなければ意味がないため、
   // その場合はチェックボックス自体を選べないようにする（2026-09-07追加。「繰り返し予約は
   // そもそも予約範囲可能範囲でしか選べないようにしてほしい」との要望を受けた。終了日は既に
@@ -552,6 +566,7 @@ export default function Availability() {
     if (!reserveTarget) return
     setSubmitting(true)
     setActionError(null)
+    setDuplicateSeatError(false)
     try {
       if (proxyBookingFor) {
         // S-11「代理予約モード」: 対象者の代理でA-47を呼び、完了後はS-11に戻る（4.11節）。
@@ -602,6 +617,31 @@ export default function Availability() {
         }),
       })
       setReserveTarget(null)
+      await refreshAll()
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : '予約に失敗しました'
+      setActionError(message)
+      if (!proxyBookingFor && !recurring && message === '同じ日に複数の座席は予約できません') {
+        setDuplicateSeatError(true)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 「同じ日に複数の座席は予約できません」で拒否された直後、利用者が明示的に「変更する」を押した
+  // 場合のみreplace_existing=trueで再送信する（2026-09-08追加）
+  const confirmReserveReplace = async () => {
+    if (!reserveTarget) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch('/api/reservations', {
+        method: 'POST',
+        body: JSON.stringify({ seat_id: reserveTarget.seatId, date: reserveTarget.date, replace_existing: true }),
+      })
+      setReserveTarget(null)
+      setDuplicateSeatError(false)
       await refreshAll()
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '予約に失敗しました')
@@ -1482,7 +1522,28 @@ export default function Availability() {
                   )}
                 </div>
               )}
-              {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+              {actionError && (
+                <div className="mt-3 space-y-2">
+                  <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
+                  {duplicateSeatError && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      <p>
+                        {anySameDayReservation
+                          ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？`
+                          : 'この日の他の予約を取り消して、この座席に変更しますか？'}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={confirmReserveReplace}
+                        className="mt-2 rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-800 disabled:opacity-50"
+                      >
+                        変更する
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </Modal>
