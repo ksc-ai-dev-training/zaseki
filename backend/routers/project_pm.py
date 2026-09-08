@@ -3,17 +3,14 @@ import json
 from datetime import date as Date
 from typing import Literal
 
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
 from database import (
-    free_seat_open_date,
     generate_bulk_free_seat_reservations,
     generate_recurring_reservations,
     get_pool,
-    project_blocked_seats,
 )
 from routers.project_seats import _format_seat_range
 
@@ -515,20 +512,33 @@ async def bulk_book_free_seats(id: int, body: FreeSeatBookingBody, user: Current
     return {"results": results}
 
 
+class FreeSeatAssignmentPattern(BaseModel):
+    type: Literal["daily", "weekly"]
+    weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
+
+
 class FreeSeatAssignmentsBody(BaseModel):
     assignments: list[SeatAssignmentItem]
-    date: Date
+    start_date: Date
+    end_date: Date
+    pattern: FreeSeatAssignmentPattern
 
 
 @router.post("/project-quarter-plans/{id}/free-seat-assignments")
 async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody, user: CurrentUser = Depends(require_auth)):
-    """複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、指定日のフリー座席として
-    一括予約する（2026-09-04追加。/free-seat-bookings〔エリア指定で自動割当〕に加えて、「フロアマップ
-    から座席を選べるようにしたい」との要望を受けて追加した、同じ目的の別の入口）。権限・除外理由は
-    generate_bulk_free_seat_reservationsと同じ考え方だが、座席は呼び出し元が指定済みのため自動選択は
-    行わない（単発の日付のみ対応。日付範囲・繰り返しは/free-seat-bookings側を使う）。"""
+    """複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、指定した期間・繰り返し
+    パターン（毎日／毎週）でフリー座席として一括予約する（2026-09-04追加、2026-09-07に単発日付のみの
+    対応から日付範囲・繰り返しパターン対応へ拡張。「席を選択して曜日などを決めれるようにしたい」との
+    要望を受けた）。/free-seat-bookings（エリア指定で自動割当、座席は日によって変わり得る）と異なり、
+    こちらは呼び出し元が指定した特定の座席にメンバーを固定して繰り返し予約する。日ごとのRULE-02・
+    RULE-05・RULE-07・座席専有チェックはA-10・A-18と共通のgenerate_recurring_reservationsに委譲する
+    （メンバー・座席1組につき1件のrecurring_rulesを作成）。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
+    if body.start_date > body.end_date:
+        raise HTTPException(400, detail="開始日は終了日以前を指定してください")
+    if body.pattern.type == "weekly" and not body.pattern.weekdays:
+        raise HTTPException(400, detail="毎週の場合は曜日を1つ以上選択してください")
 
     pool = get_pool()
     plan = await pool.fetchrow(
@@ -553,20 +563,14 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     )
     member_user_ids_in_project = {r["user_id"] for r in member_rows}
     seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
-    fixed_user_ids = {
-        r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL",
-            [a.member_user_id for a in body.assignments],
-        )
-    }
 
     seats = await pool.fetch(
         "SELECT id, seat_no, seat_type, status FROM seats WHERE id = ANY($1::bigint[])",
         [a.seat_id for a in body.assignments],
     )
     seat_by_id = {s["id"]: s for s in seats}
-    blocked = await project_blocked_seats(body.date)
     enforce_rule05 = user.role != "admin"
+    pattern = body.pattern.model_dump(exclude_none=True)
 
     seat_counts: dict[int, int] = {}
     for a in body.assignments:
@@ -581,42 +585,31 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
             reason = "このプロジェクトのメンバーではありません"
         elif a.member_user_id in seat_not_required_user_ids:
             reason = "在宅勤務のため座席は不要に設定されています"
-        elif a.member_user_id in fixed_user_ids:
-            reason = "固定座席が割り当てられているため、フリー座席は予約できません"
         elif seat is None or seat["status"] != "active" or seat["seat_type"] != "free":
             reason = "この座席はフリー座席として予約できません"
         elif seat_counts[a.seat_id] > 1:
             reason = "他のメンバーと座席が重複しています"
-        elif a.seat_id in blocked:
-            reason = f"この座席は{blocked[a.seat_id]}のプロジェクト座席として確保されているため予約できません"
-        elif enforce_rule05:
-            if body.date < Date.today():
-                reason = "過去の日付は予約できません"
-            else:
-                open_date = await free_seat_open_date(body.date)
-                if Date.today() < open_date:
-                    reason = f"この座席は{open_date.month}月{open_date.day}日から予約できます"
-        if reason is None:
-            duplicate = await pool.fetchval(
-                """SELECT 1 FROM reservations r JOIN seats s ON s.id = r.seat_id
-                   WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
-                a.member_user_id, body.date,
-            )
-            if duplicate:
-                reason = "同じ日に複数の座席は予約できません"
         if reason is not None:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": reason})
+                             "status": "excluded", "reason": reason, "created_days": 0, "excluded_days": 0})
             continue
-        try:
-            await pool.execute(
-                "INSERT INTO reservations (seat_id, user_id, date, created_by) VALUES ($1, $2, $3, $4)",
-                a.seat_id, a.member_user_id, body.date, user.id,
-            )
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no, "status": "assigned"})
-        except asyncpg.UniqueViolationError:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": "この座席はすでに予約されています"})
+        gen = await generate_recurring_reservations(
+            a.seat_id, a.member_user_id, pattern, body.start_date, body.end_date, user.id,
+            enforce_rule05=enforce_rule05, check_project_block=True,
+        )
+        created = [r for r in gen["results"] if r["status"] == "created"]
+        excluded = [r for r in gen["results"] if r["status"] == "excluded"]
+        if not created:
+            results.append({
+                "member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+                "status": "excluded", "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
+                "created_days": 0, "excluded_days": len(excluded),
+            })
+        else:
+            results.append({
+                "member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+                "status": "assigned", "created_days": len(created), "excluded_days": len(excluded),
+            })
     return {"results": results}
 
 

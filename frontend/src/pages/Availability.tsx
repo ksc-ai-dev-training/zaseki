@@ -14,7 +14,7 @@ import SeatTile from '../components/SeatTile'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
 import type {
   AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
-  RecurringReservationResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
+  RecurringReservationResult, SeatAssignmentResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
 } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
@@ -98,9 +98,10 @@ const LEGEND: { status: SeatStatus; label: string }[] = [
 // フロアマップが「フリー座席の複数人代理予約モード」に切り替わる（2026-09-04追加。「フリー座席を
 // まとめて確保（代理予約）はS-02でできるようにしたい」との要望を受けた。S-04の日付範囲・自動割当版
 // 〔/free-seat-bookings〕に加え、フロアマップから1人ずつクリックして座席を選べる入口を追加した）。
-// role='admin'またはP-PROXY（プロジェクトの代表者）またはP-SEATASSIGN（席決め権限）を持つプロジェクトが対象
-function FreeSeatProxyBookingButton() {
-  const navigate = useNavigate()
+// role='admin'またはP-PROXY（プロジェクトの代表者）またはP-SEATASSIGN（席決め権限）を持つプロジェクトが対象。
+// 既にS-02上にいるため、モード開始はnavigateを使わず親（Availability）にコールバックで伝える
+// （2026-09-07修正。「画面遷移はされずにS-02で予約される」ようにしてほしいとの要望を受けた）
+function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeatAssignFor) => void }) {
   const { items: myProjects } = useMyProjects()
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<number | ''>('')
@@ -156,15 +157,11 @@ function FreeSeatProxyBookingButton() {
     const members = plan.members
       .filter((m) => selectedMembers.has(m.user_id))
       .map((m) => ({ userId: m.user_id, name: m.name }))
-    navigate('/', {
-      replace: true,
-      state: {
-        memberSeatAssignFor: {
-          planId: plan.id, projectName: plan.project_name, periodStart: todayStr(),
-          allocatedSeatIds: [], members, freeSeat: true,
-        },
-      },
+    onStart({
+      planId: plan.id, projectName: plan.project_name, periodStart: todayStr(),
+      allocatedSeatIds: [], members, freeSeat: true,
     })
+    setOpen(false)
   }
 
   const candidates = plan?.members.filter((m) => !m.has_fixed_seat && !m.seat_not_required) ?? []
@@ -250,7 +247,13 @@ export default function Availability() {
   const seatBlockFor = (location.state as { seatBlockFor?: SeatBlockFor } | null)?.seatBlockFor
   // S-04から「座席表から選ぶ」で遷移した場合、location.stateに対象計画が積まれる
   // （メンバーへの座席確保モード、2026-08-31追加）
-  const memberSeatAssignFor = (location.state as { memberSeatAssignFor?: MemberSeatAssignFor } | null)?.memberSeatAssignFor
+  const memberSeatAssignFromNav = (location.state as { memberSeatAssignFor?: MemberSeatAssignFor } | null)?.memberSeatAssignFor
+  // S-02の「複数人の代理予約（PJメンバー）」ボタンは既にこの画面上にいるため、画面遷移
+  // （navigate呼び出し）を挟まずローカルのstateだけでモードに入る（2026-09-07修正。
+  // 「画面遷移はされずにS-02で予約される」ようにしてほしいとの要望を受けた。以前はnavigate('/')を
+  // 使っており、URLは変わらないもののルーターの再描画で画面がちらつく／リセットされる見た目になっていた）
+  const [memberSeatAssignOverride, setMemberSeatAssignOverride] = useState<MemberSeatAssignFor | null>(null)
+  const memberSeatAssignFor = memberSeatAssignOverride ?? memberSeatAssignFromNav
 
   const topRef = useRef<HTMLDivElement>(null)
   // 座席の島の割当モード・メンバーへの座席確保モードでは、操作時点（今日）ではなく対象四半期の
@@ -289,6 +292,13 @@ export default function Availability() {
   // メンバーへの座席確保モード（2026-08-31追加）: userId → seatIdの暫定割当。送信するまでサーバーには反映しない
   const [memberPicks, setMemberPicks] = useState<Record<number, number>>({})
   const [pickMemberTarget, setPickMemberTarget] = useState<{ seatId: number; seatNo: string } | null>(null)
+  // メンバーへのフリー座席確保（freeSeat）の繰り返しパターン・終了日（2026-09-07追加。
+  // 「席を選択して曜日などを決めれるようにしたい」との要望を受け、単発の表示中の日だけでなく
+  // 期間・繰り返しパターンを指定できるようにした。開始日は表示中のdateをそのまま使う）
+  const [memberAssignPatternType, setMemberAssignPatternType] = useState<'daily' | 'weekly'>('weekly')
+  const [memberAssignWeekdays, setMemberAssignWeekdays] = useState<Set<Weekday>>(new Set())
+  const [memberAssignEndDate, setMemberAssignEndDate] = useState('')
+  const [memberAssignResult, setMemberAssignResult] = useState<SeatAssignmentResult[] | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -376,29 +386,63 @@ export default function Availability() {
     }
   }
   const exitProxyBookingMode = () => navigate('.', { replace: true, state: null })
-  const exitMemberSeatAssignMode = () => { setMemberPicks({}); navigate('.', { replace: true, state: null }) }
+  // S-04から遷移してきた場合（座席の島の割当）は従来どおりURLを戻す。S-02のボタンから
+  // ローカルstateだけで入った場合（freeSeat）は画面遷移せず、そのstateを消すだけにする
+  // （2026-09-07修正、上のmemberSeatAssignOverride参照）
+  const exitMemberSeatAssignMode = () => {
+    setMemberPicks({})
+    setMemberAssignResult(null)
+    setMemberAssignWeekdays(new Set())
+    setMemberAssignEndDate('')
+    if (memberSeatAssignFromNav) navigate('.', { replace: true, state: null })
+    else setMemberSeatAssignOverride(null)
+  }
 
   const confirmMemberSeatAssign = async () => {
     if (!memberSeatAssignFor || Object.keys(memberPicks).length === 0) return
-    setSubmitting(true)
-    setActionError(null)
     const assignments = Object.entries(memberPicks).map(([userId, seatId]) => ({
       member_user_id: Number(userId), seat_id: seatId,
     }))
+    if (memberSeatAssignFor.freeSeat) {
+      if (memberAssignPatternType === 'weekly' && memberAssignWeekdays.size === 0) {
+        setActionError('毎週の場合は曜日を1つ以上選択してください')
+        return
+      }
+      if (!memberAssignEndDate || memberAssignEndDate < date) {
+        setActionError('終了日は開始日（表示中の日付）以降を指定してください')
+        return
+      }
+    }
+    setSubmitting(true)
+    setActionError(null)
     try {
       if (memberSeatAssignFor.freeSeat) {
-        await apiFetch(`/api/project-quarter-plans/${memberSeatAssignFor.planId}/free-seat-assignments`, {
-          method: 'POST',
-          body: JSON.stringify({ assignments, date }),
-        })
+        const data = await apiFetch<{ results: SeatAssignmentResult[] }>(
+          `/api/project-quarter-plans/${memberSeatAssignFor.planId}/free-seat-assignments`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              assignments,
+              start_date: date,
+              end_date: memberAssignEndDate,
+              pattern: {
+                type: memberAssignPatternType,
+                weekdays: memberAssignPatternType === 'weekly' ? [...memberAssignWeekdays] : undefined,
+              },
+            }),
+          },
+        )
+        setMemberAssignResult(data.results)
+        setMemberPicks({})
+        await refreshAll()
       } else {
         await apiFetch(`/api/project-quarter-plans/${memberSeatAssignFor.planId}/seat-assignments`, {
           method: 'POST',
           body: JSON.stringify({ assignments }),
         })
+        setMemberPicks({})
+        navigate('/project-seats', { replace: true })
       }
-      setMemberPicks({})
-      navigate('/project-seats', { replace: true })
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '座席の確保に失敗しました')
     } finally {
@@ -744,28 +788,113 @@ export default function Availability() {
         <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
-      {memberSeatAssignFor && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
-          <span>
-            <strong>{memberSeatAssignFor.projectName}</strong>のメンバーへの座席を確保中です。
-            {memberSeatAssignFor.freeSeat
-              ? `${formatDateJa(date)}の空いているフリー座席をクリックし、割り当てる相手を選んでください。`
-              : '座席の島の中から空いている座席をクリックし、割り当てる相手を選んでください。'}
-            選択中: {Object.keys(memberPicks).length}/{memberSeatAssignFor.members.length}名
-          </span>
-          <span className="flex shrink-0 gap-3">
-            <button
-              type="button"
-              disabled={submitting || Object.keys(memberPicks).length === 0}
-              onClick={confirmMemberSeatAssign}
-              className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
-            >
-              この内容で確保する
+      {memberSeatAssignFor && memberAssignResult && (
+        <div className="border-b border-blue-200 bg-blue-50 px-8 py-3 text-sm text-blue-900">
+          <div className="mb-2 flex items-center justify-between">
+            <strong>{memberSeatAssignFor.projectName}への座席確保結果</strong>
+            <button type="button" onClick={exitMemberSeatAssignMode} className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900">
+              閉じる
             </button>
-            <button type="button" onClick={exitMemberSeatAssignMode} className="text-blue-700 underline hover:text-blue-900">
-              キャンセル
-            </button>
-          </span>
+          </div>
+          <table className="w-full max-w-2xl text-sm">
+            <thead>
+              <tr className="border-b border-blue-200 text-left text-blue-700">
+                <th className="pb-1 pr-3">氏名</th>
+                <th className="pb-1 pr-3">座席</th>
+                <th className="pb-1">結果</th>
+              </tr>
+            </thead>
+            <tbody>
+              {memberAssignResult.map((r, i) => {
+                const member = memberSeatAssignFor.members.find((m) => m.userId === r.member_user_id)
+                return (
+                  <tr key={i} className="border-b border-blue-100">
+                    <td className="py-1 pr-3">{member?.name ?? r.member_user_id}</td>
+                    <td className="py-1 pr-3">{r.seat_no}</td>
+                    <td className="py-1">
+                      {r.status === 'assigned' ? (
+                        <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                          {r.created_days}日確保{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {memberSeatAssignFor && !memberAssignResult && (
+        <div className="border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <strong>{memberSeatAssignFor.projectName}</strong>のメンバーへの座席を確保中です。
+              {memberSeatAssignFor.freeSeat
+                ? '空いているフリー座席をクリックし、割り当てる相手を選んでください。'
+                : '座席の島の中から空いている座席をクリックし、割り当てる相手を選んでください。'}
+              選択中: {Object.keys(memberPicks).length}/{memberSeatAssignFor.members.length}名
+            </span>
+            <span className="flex shrink-0 gap-3">
+              <button
+                type="button"
+                disabled={submitting || Object.keys(memberPicks).length === 0}
+                onClick={confirmMemberSeatAssign}
+                className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
+              >
+                この内容で確保する
+              </button>
+              <button type="button" onClick={exitMemberSeatAssignMode} className="text-blue-700 underline hover:text-blue-900">
+                キャンセル
+              </button>
+            </span>
+          </div>
+          {memberSeatAssignFor.freeSeat && (
+            <div className="mt-2 flex flex-wrap items-center gap-4 border-t border-blue-200 pt-2 text-xs">
+              <span className="text-blue-700">クリックした座席に、{formatDateJa(date)}を開始日として次のパターンで確保します:</span>
+              <div className="flex gap-3">
+                <label className="inline-flex items-center gap-1">
+                  <input type="radio" checked={memberAssignPatternType === 'weekly'} onChange={() => setMemberAssignPatternType('weekly')} />
+                  毎週
+                </label>
+                <label className="inline-flex items-center gap-1">
+                  <input type="radio" checked={memberAssignPatternType === 'daily'} onChange={() => setMemberAssignPatternType('daily')} />
+                  毎日
+                </label>
+              </div>
+              {memberAssignPatternType === 'weekly' && (
+                <div className="flex gap-2">
+                  {RECURRING_WEEKDAYS.map((w) => (
+                    <label key={w.key} className="inline-flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={memberAssignWeekdays.has(w.key)}
+                        onChange={(e) => {
+                          const next = new Set(memberAssignWeekdays)
+                          if (e.target.checked) next.add(w.key)
+                          else next.delete(w.key)
+                          setMemberAssignWeekdays(next)
+                        }}
+                      />
+                      {w.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <label className="inline-flex items-center gap-1.5">
+                終了日
+                <input
+                  type="date"
+                  min={date}
+                  value={memberAssignEndDate}
+                  onChange={(e) => setMemberAssignEndDate(e.target.value)}
+                  className="h-7 rounded border border-slate-300 px-2"
+                />
+              </label>
+            </div>
+          )}
         </div>
       )}
       {memberSeatAssignFor && actionError && (
@@ -812,7 +941,17 @@ export default function Availability() {
             </div>
             <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
             {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
-              <FreeSeatProxyBookingButton />
+              <FreeSeatProxyBookingButton
+                onStart={(payload) => {
+                  setActionError(null)
+                  setMemberPicks({})
+                  setMemberAssignResult(null)
+                  setMemberAssignPatternType('weekly')
+                  setMemberAssignWeekdays(new Set())
+                  setMemberAssignEndDate('')
+                  setMemberSeatAssignOverride(payload)
+                }}
+              />
             )}
           </>
         )}
