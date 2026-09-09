@@ -916,7 +916,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
       ...g, plans: groupPlans, fixedSeatCount,
       totalRequired: groupPlans.reduce((sum, p) => sum + p.required_seats, 0) + fixedSeatCount,
     }
-  }).filter((g) => g.plans.length > 0)
+  }).filter((g) => g.plans.length > 0 || g.fixedSeatCount > 0)
 
   // AI提案の生成（A-74、FR-03-11、2026-09-08追加）。グループ単位で、そのグループの全プロジェクトの
   // 第一・第二希望・備考と「曜日ごとの合計」（座席容量、既存ロジックのtotalRequiredをそのまま使う）を
@@ -1009,14 +1009,16 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                     <span className="ml-1.5 text-xs font-normal text-slate-400">（座席総数{g.seatCapacity}席）</span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  disabled={aiLoadingGroup === g.key}
-                  onClick={() => generateAiSuggestions(g)}
-                  className="shrink-0 rounded border border-purple-300 px-3 py-1 text-xs text-purple-700 hover:bg-purple-50 disabled:opacity-50"
-                >
-                  {aiLoadingGroup === g.key ? 'AI提案を生成中...' : 'AI提案を生成する'}
-                </button>
+                {g.plans.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={aiLoadingGroup === g.key}
+                    onClick={() => generateAiSuggestions(g)}
+                    className="shrink-0 rounded border border-purple-300 px-3 py-1 text-xs text-purple-700 hover:bg-purple-50 disabled:opacity-50"
+                  >
+                    {aiLoadingGroup === g.key ? 'AI提案を生成中...' : 'AI提案を生成する'}
+                  </button>
+                )}
               </div>
               {aiErrorByGroup[g.key] && (
                 <p className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">{aiErrorByGroup[g.key]}</p>
@@ -1071,6 +1073,9 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                       })}
                     </tr>
                   ))}
+                  {g.plans.length === 0 && (
+                    <tr><td colSpan={2 + WEEKDAYS.length} className="py-4 text-center text-slate-400">曜日調整が必要なプロジェクトはありません（固定座席のみ）</td></tr>
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 font-semibold">
