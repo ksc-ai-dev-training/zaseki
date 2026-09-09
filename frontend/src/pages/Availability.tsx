@@ -157,11 +157,12 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
   const [error, setError] = useState<string | null>(null)
 
   // 実際の権限判定（バックエンドのcan_manage、project_pm.py参照）はcan_assign_seats or
-  // proxy_user_id==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
+  // created_by==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
   // project_title==='PM'/'PL'もOR条件に含めていたため、権限のないPM/PLにもボタンが表示され、
   // 対象メンバー選択・座席クリックまで操作した最後にAPIの403で初めて拒否される不具合があった
-  // （2026-09-09修正）。
-  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_seat_proxy) && p.plans.length > 0)
+  // （2026-09-09修正。同日中に千田さんの案でcan_manageの基準がproxy_user_idからcreated_byへ
+  // 変わったことに伴い、ここもis_seat_proxy→is_project_creatorに追従した）。
+  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_project_creator) && p.plans.length > 0)
   // 対象プロジェクトを1つも持たない利用者にはボタン自体を表示しない（2026-09-07修正。
   // 「対象外の人にはボタン自体を表示しないように」との要望を受けた。以前はボタンが
   // 常に表示され、押した後のモーダル内のプルダウンで初めて対象外と分かる作りだった）

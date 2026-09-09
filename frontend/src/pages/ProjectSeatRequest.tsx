@@ -5,6 +5,7 @@ import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
+import Modal from '../components/Modal'
 import type {
   FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
   RetrySeatAssignmentResult, SeatAssignmentResult, Weekday,
@@ -62,7 +63,8 @@ function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value
 
 // S-04 プロジェクト座席（PM側）。詳細設計書3.4節・4.3節
 export default function ProjectSeatRequest() {
-  const { items, error, isLoading } = useMyProjects()
+  const { items, error, isLoading, refresh } = useMyProjects()
+  const [showCreate, setShowCreate] = useState(false)
 
   // 対象四半期タブ（S-09と同様の考え方）。自分が所属する全プロジェクトのplansに現れる
   // period_startの和集合をタブとし、初期表示は最も新しいもの（＝次の期間）を自動選択する
@@ -88,7 +90,24 @@ export default function ProjectSeatRequest() {
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">プロジェクト座席</h1>
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-04</span>
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="ml-auto rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900"
+        >
+          ＋ 新しいプロジェクトを作成
+        </button>
       </header>
+
+      {showCreate && (
+        <CreateProjectModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false)
+            refresh()
+          }}
+        />
+      )}
 
       <div className="p-6">
         {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
@@ -121,6 +140,62 @@ export default function ProjectSeatRequest() {
         </div>
       </div>
     </div>
+  )
+}
+
+// プロジェクトの自己申告作成（A-78、2026-09-09追加）。千田さんの案によるワークフロー変更
+// （「プロジェクト作成は誰でも、アンケート回答・席決めは作成した人が行う」）を受けた。作成者は
+// このプロジェクトのPMとして自動登録され、アンケート回答・席決めの実権限（is_project_creator）を持つ。
+function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!name.trim()) {
+      setError('プロジェクト名を入力してください')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      await apiFetch('/api/projects/mine', { method: 'POST', body: JSON.stringify({ name }) })
+      onCreated()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '作成に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      title="新しいプロジェクトを作成"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+          <button type="button" disabled={submitting} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+            作成する
+          </button>
+        </>
+      }
+    >
+      <label className="block">
+        <span className="mb-1 block text-xs text-slate-500">プロジェクト名</span>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
+          autoFocus
+        />
+      </label>
+      <p className="mt-3 text-xs text-slate-500">
+        作成すると、あなたがこのプロジェクトのPMとして登録され、出社曜日アンケートの回答・メンバーへの座席確保をあなたが行えるようになります。
+      </p>
+      {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+    </Modal>
   )
 }
 
@@ -231,11 +306,11 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
         </div>
       )}
 
-      {plan.is_pmpl && plan.status === 'survey_open' && (
+      {plan.is_project_creator && plan.status === 'survey_open' && (
         <SurveyPanel plan={plan} onSubmitted={refresh} />
       )}
 
-      {plan.is_pmpl && (
+      {plan.is_project_creator && (
         <MemberManagement plan={plan} onChanged={refresh} />
       )}
 

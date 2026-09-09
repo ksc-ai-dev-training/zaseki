@@ -287,6 +287,9 @@ export interface ProjectListItem {
   members: ProjectMemberSummary[]
   proxy_user_id: number | null
   proxy_user_name: string | null
+  /** プロジェクトの作成者（projects.created_by）。アンケート回答・席決めの実権限を持つ（2026-09-09追加、千田さんの案） */
+  created_by: number | null
+  created_by_name: string | null
 }
 
 export type QuarterPlanStatus = 'seats_confirmed' | 'survey_open' | 'weekdays_finalized' | 'seats_allocated'
@@ -373,8 +376,10 @@ export interface MyProjectItem {
   project_name: string
   project_title: ProjectTitle
   can_assign_seats: boolean
-  /** 自分がこのプロジェクトのPJ席決担当（projects.proxy_user_id）かどうか（2026-09-09追加） */
-  is_seat_proxy: boolean
+  /** 自分がこのプロジェクトの作成者（projects.created_by）かどうか（2026-09-09追加。当初は
+   * is_seat_proxy〔proxy_user_id基準〕という名前だったが、千田さんの案によるワークフロー変更で
+   * 権限の基準がcreated_byに変わったことに伴い名称・基準列とも変更した） */
+  is_project_creator: boolean
   // 対象四半期を自由に選択できるよう、存在する計画を全件（period_start昇順）返す
   // （2026-08-31訂正。従来はplan: MyProjectPlanSummary | null で直近1件のみだった）
   plans: MyProjectPlanSummary[]
@@ -413,7 +418,11 @@ export interface ProjectPlanDetail {
   allocated_seat_label: string | null
   allocated_seats: { id: number; seat_no: string }[] | null
   my_project_title: ProjectTitle
+  /** @deprecated 表示用（PM/PLバッジ等）にのみ使う。権限判定にはis_project_creatorを使うこと */
   is_pmpl: boolean
+  /** 自分がこのプロジェクトの作成者かどうか（2026-09-09追加、千田さんの案。旧is_pmplに代わり
+   * アンケート回答パネル・席決め委任パネルの表示条件として使う） */
+  is_project_creator: boolean
   can_manage_seat_assign: boolean
   response: ProjectPlanResponse | null
   has_previous_plan: boolean

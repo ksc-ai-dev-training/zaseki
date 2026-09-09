@@ -3,6 +3,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useUsers, type UserRoleFilter, type UserStatusFilter } from '../hooks/useUsers'
 import { useAppSettings } from '../hooks/useAppSettings'
 import { useProjects } from '../hooks/useProjects'
+import { useMe } from '../hooks/useMe'
 import Modal from '../components/Modal'
 import type {
   AreaManagerRole, EmploymentType, EmploymentStatus, ProjectListItem, ProjectMemberSummary, ProjectTitle,
@@ -307,10 +308,14 @@ interface ProjectForm {
   name: string
   members: ProjectMemberRow[]
   proxyUserId: number | null
+  // 作成者（projects.created_by、2026-09-09追加、千田さんの案）。アンケート回答・席決めの実権限を
+  // 持つ利用者。proxyUserIdと異なりPM/PL限定ではなくメンバー全員から選べる
+  createdBy: number | null
 }
 
 function ProjectsTab() {
   const { items, isLoading, refresh } = useProjects()
+  const { me } = useMe()
   const [form, setForm] = useState<ProjectForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -335,7 +340,10 @@ function ProjectsTab() {
 
   const openAdd = () => {
     setFormError(null)
-    setForm({ id: null, name: '', members: [], proxyUserId: null })
+    // 作成者は既定でこの画面を操作している管理部自身にする（A-28がcreated_byを呼び出し者に設定する
+    // のと揃える。ここで指定しないと、直後のA-29呼び出しでcreated_byがnullに上書きされてしまう）。
+    // 追加後にメンバーを選んで作成者を変更することもできる
+    setForm({ id: null, name: '', members: [], proxyUserId: null, createdBy: me?.id ?? null })
   }
   const openEdit = (p: ProjectListItem) => {
     setFormError(null)
@@ -343,6 +351,7 @@ function ProjectsTab() {
       id: p.id, name: p.name,
       members: p.members.map((m) => ({ user_id: m.user_id, name: m.name, project_title: m.project_title })),
       proxyUserId: p.proxy_user_id,
+      createdBy: p.created_by,
     })
   }
 
@@ -361,6 +370,7 @@ function ProjectsTab() {
           name: form.name,
           members: form.members.map((m) => ({ user_id: m.user_id, project_title: m.project_title })),
           proxy_user_id: form.proxyUserId,
+          created_by: form.createdBy,
         }),
       })
       setForm(null)
@@ -386,6 +396,7 @@ function ProjectsTab() {
               <th className="px-4 py-2">プロジェクト名</th>
               <th className="px-4 py-2">PM・PL・SL</th>
               <th className="px-4 py-2">PJ席決担当</th>
+              <th className="px-4 py-2">作成者</th>
               <th className="px-4 py-2">メンバー数</th>
               <th className="px-4 py-2"></th>
             </tr>
@@ -408,6 +419,7 @@ function ProjectsTab() {
                     ) : <span className="text-xs text-slate-400">未設定</span>}
                   </td>
                   <td className="px-4 py-2 text-xs text-slate-500">{p.proxy_user_name ?? '未設定'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{p.created_by_name ?? '未設定'}</td>
                   <td className="px-4 py-2">{p.member_count}名</td>
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-2">
@@ -481,6 +493,7 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
       ...form,
       members: form.members.filter((m) => m.user_id !== userId),
       proxyUserId: form.proxyUserId === userId ? null : form.proxyUserId,
+      createdBy: form.createdBy === userId ? null : form.createdBy,
     })
   }
   const setTitle = (userId: number, title: ProjectTitle) => {
@@ -513,7 +526,10 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
         </label>
 
         <div>
-          <span className="mb-1 block text-slate-500">メンバー・PM／PL・PJ席決担当</span>
+          <span className="mb-1 block text-slate-500">メンバー・PM／PL・PJ席決担当・作成者</span>
+          <p className="mb-2 text-xs text-slate-400">
+            PJ席決担当は表示用の項目です。アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです（2026-09-09変更）。
+          </p>
           <div className="overflow-x-auto rounded border border-slate-200">
             <table className="w-full text-sm">
               <thead>
@@ -521,6 +537,7 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
                   <th className="px-3 py-1.5">氏名</th>
                   <th className="px-3 py-1.5">役割</th>
                   <th className="px-3 py-1.5">PJ席決担当</th>
+                  <th className="px-3 py-1.5">作成者</th>
                   <th className="px-3 py-1.5"></th>
                 </tr>
               </thead>
@@ -551,6 +568,14 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
                           onChange={() => setForm({ ...form, proxyUserId: m.user_id })}
                         />
                       </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="radio"
+                          name="created-by-user"
+                          checked={form.createdBy === m.user_id}
+                          onChange={() => setForm({ ...form, createdBy: m.user_id })}
+                        />
+                      </td>
                       <td className="px-3 py-1.5 text-right">
                         <button type="button" onClick={() => removeMember(m.user_id)} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">削除</button>
                       </td>
@@ -558,7 +583,7 @@ function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error 
                   )
                 })}
                 {form.members.length === 0 && (
-                  <tr><td colSpan={4} className="px-3 py-3 text-center text-xs text-slate-400">メンバーがいません</td></tr>
+                  <tr><td colSpan={5} className="px-3 py-3 text-center text-xs text-slate-400">メンバーがいません</td></tr>
                 )}
               </tbody>
             </table>

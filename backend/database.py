@@ -199,6 +199,28 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- created_by（作成者）: 2026-09-09追加。千田さんの案によるPJ座席運用フローの変更
+-- （「プロジェクト作成は誰でも、アンケート回答・席決めはプロジェクトを作成した人が行う」）に伴い、
+-- アンケート回答（A-16）・席決め関連（A-14・A-17・A-18・A-58・A-64・A-70・A-71・A-72・A-75）の
+-- 権限判定を、project_title（PM/PL）・proxy_user_id（PJ席決担当）からこの列へ切り替えた。
+-- proxy_user_id・project_title自体は表示・A-29のバリデーション用途で引き続き残す。
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(id);
+-- 既存プロジェクトのバックフィル（冪等、created_by未設定の行のみ対象）。
+-- 優先順位: (1) proxy_user_id（PM/PLであることが既に保証されている） (2) 最初のPMメンバー
+-- (3) 最初のPLメンバー (4) 役職を問わず最初のメンバー。メンバーが1人もいないプロジェクトのみ
+-- created_byがNULLのまま残り得る（管理部がS-08の「作成者」欄から手動で設定する想定）。
+UPDATE projects SET created_by = proxy_user_id WHERE created_by IS NULL AND proxy_user_id IS NOT NULL;
+UPDATE projects p SET created_by = (
+    SELECT pm.user_id FROM project_members pm WHERE pm.project_id = p.id AND pm.project_title = 'PM'
+    ORDER BY pm.id LIMIT 1
+) WHERE p.created_by IS NULL;
+UPDATE projects p SET created_by = (
+    SELECT pm.user_id FROM project_members pm WHERE pm.project_id = p.id AND pm.project_title = 'PL'
+    ORDER BY pm.id LIMIT 1
+) WHERE p.created_by IS NULL;
+UPDATE projects p SET created_by = (
+    SELECT pm.user_id FROM project_members pm WHERE pm.project_id = p.id ORDER BY pm.id LIMIT 1
+) WHERE p.created_by IS NULL;
 
 -- T-06 project_members
 CREATE TABLE IF NOT EXISTS project_members (

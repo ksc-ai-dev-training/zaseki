@@ -67,11 +67,14 @@ async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
     （2026-08-28、members・member_count・proxy_user_id・proxy_user_nameを追加）。呼び出し時の次の四半期の
     計画データの自動作成（_ensure_next_quarter_plans）は、2026-09-03に「四半期」という概念自体を撤廃した
     ことに伴い廃止した（検討資料「プロジェクト座席・曜日調整フロー改善案」変更D。プロジェクト座席の期間は
-    エリア責任者・管理部が都度A-67で設定する）。"""
+    エリア責任者・管理部が都度A-67で設定する）。created_by・created_by_name（2026-09-09追加、千田さんの案）:
+    プロジェクトの作成者（T-05.created_by）。アンケート回答（A-16）・席決め（A-18等）の実権限を持つ利用者
+    であり、S-08編集モーダルで管理部が確認・是正できるようにするために追加した（PJ席決担当
+    〔proxy_user_id〕は表示用として引き続き残る。両者は別概念になった点に注意）。"""
     pool = get_pool()
 
     rows = await pool.fetch(
-        """SELECT p.id, p.name, p.proxy_user_id,
+        """SELECT p.id, p.name, p.proxy_user_id, p.created_by,
                   string_agg(DISTINCT (u.last_name || ' ' || u.first_name), '、')
                       FILTER (WHERE pm.project_title IN ('PM', 'PL')) AS pm_pl_names,
                   COUNT(pm.id) AS member_count,
@@ -90,10 +93,12 @@ async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
     for r in rows:
         members = json.loads(r["members_json"])
         proxy_name = next((m["name"] for m in members if m["user_id"] == r["proxy_user_id"]), None)
+        created_by_name = next((m["name"] for m in members if m["user_id"] == r["created_by"]), None)
         items.append({
             "id": r["id"], "name": r["name"], "pm_pl_names": r["pm_pl_names"] or "未設定",
             "member_count": r["member_count"], "members": members,
             "proxy_user_id": r["proxy_user_id"], "proxy_user_name": proxy_name,
+            "created_by": r["created_by"], "created_by_name": created_by_name,
         })
     return {"items": items}
 
@@ -103,13 +108,19 @@ class ProjectCreate(BaseModel):
 
 
 @router.post("/projects")
-async def create_project(body: ProjectCreate, _: CurrentUser = Depends(require_roles("admin"))):
+async def create_project(body: ProjectCreate, user: CurrentUser = Depends(require_roles("admin"))):
     """A-28: プロジェクトの新規作成（S-08プロジェクト・PM管理タブ）。同名プロジェクトの重複チェックは
-    行わない（要件定義書に禁止規定なし、4.6節）。"""
+    行わない（要件定義書に禁止規定なし、4.6節）。created_by（作成者）は呼び出した管理部自身を設定する
+    （2026-09-09追加。千田さんの案によるワークフロー変更でcreated_byがアンケート回答・席決めの実権限を
+    持つようになったため。管理部が本来の担当者の代わりに作成した場合は、この画面のPUT /projects/{id}/
+    membersで後から作成者を変更できる〔A-29参照〕）。project_membersの自動追加は行わない（従来通り、
+    メンバーは後からA-29で設定する）。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
-    row = await get_pool().fetchrow("INSERT INTO projects (name) VALUES ($1) RETURNING id", name)
+    row = await get_pool().fetchrow(
+        "INSERT INTO projects (name, created_by) VALUES ($1, $2) RETURNING id", name, user.id
+    )
     return {"id": row["id"], "detail": "プロジェクトを追加しました"}
 
 
@@ -122,17 +133,24 @@ class ProjectMembersUpdate(BaseModel):
     name: str
     members: list[ProjectMemberItem]
     proxy_user_id: int | None = None
+    # 作成者（T-05.created_by、2026-09-09追加、千田さんの案）。アンケート回答・席決めの実権限を持つ
+    # 利用者を管理部が確認・是正できるようにする。proxy_user_idと異なりPM/PL限定ではなく、
+    # membersに含まれるいずれかの利用者であればよい（作成者概念はPM/PL体制より広いため）。
+    created_by: int | None = None
 
 
 @router.put("/projects/{id}/members")
 async def update_project_members(id: int, body: ProjectMembersUpdate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-29: メンバー構成・PM/PL/SL・PJ席決担当をまとめて更新する。bodyに含まれないuser_idの既存メンバーは
-    削除、新規はcan_assign_seats=falseで追加、既存は所属継続のままproject_titleのみ更新する（UPSERT。
-    2026-08-28追加。can_assign_seats・seat_assign_granted_byはbodyの対象外のため既存メンバーの値を保持する）。
-    メンバー削除に伴う既存のプロジェクト座席予約（A-18生成分）・アンケート回答（T-11）の連鎖処理は行わない
-    （要件定義書・基本設計書のいずれにも規定がないため、本フェーズのスコープ外とする）。<code>name</code>も
-    あわせて更新する（2026-08-28追加。画面モックアップの編集モーダルがプロジェクト名・メンバーを1つの
-    フォームとして一括保存する設計のため、名称変更用に別APIを新設せずA-29に統合した）。"""
+    """A-29: メンバー構成・PM/PL/SL・PJ席決担当・作成者をまとめて更新する。bodyに含まれないuser_idの
+    既存メンバーは削除、新規はcan_assign_seats=falseで追加、既存は所属継続のままproject_titleのみ更新する
+    （UPSERT。2026-08-28追加。can_assign_seats・seat_assign_granted_byはbodyの対象外のため既存メンバーの
+    値を保持する）。メンバー削除に伴う既存のプロジェクト座席予約（A-18生成分）・アンケート回答（T-11）の
+    連鎖処理は行わない（要件定義書・基本設計書のいずれにも規定がないため、本フェーズのスコープ外とする）。
+    <code>name</code>もあわせて更新する（2026-08-28追加。画面モックアップの編集モーダルがプロジェクト名・
+    メンバーを1つのフォームとして一括保存する設計のため、名称変更用に別APIを新設せずA-29に統合した）。
+    <code>created_by</code>（2026-09-09追加）: 指定された場合、bodyのmembersに含まれるuser_idの
+    いずれかでなければ400（PM/PL限定ではない）。バックフィル漏れの是正や、管理部が本来の担当者の
+    代わりにA-28でプロジェクトを作成した場合の引き継ぎに使う。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
@@ -157,6 +175,9 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, _: Current
         if proxy_member is None or proxy_member.project_title not in ("PM", "PL"):
             raise HTTPException(400, detail="PJ席決担当にはPMまたはPLのみ指定できます")
 
+    if body.created_by is not None and body.created_by not in user_ids:
+        raise HTTPException(400, detail="作成者にはメンバーのいずれかを指定してください")
+
     async with pool.acquire() as conn:
         async with conn.transaction():
             existing = {r["user_id"] for r in await conn.fetch(
@@ -176,8 +197,8 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, _: Current
                     id, m.user_id, m.project_title,
                 )
             await conn.execute(
-                "UPDATE projects SET name = $1, proxy_user_id = $2, updated_at = now() WHERE id = $3",
-                name, body.proxy_user_id, id,
+                "UPDATE projects SET name = $1, proxy_user_id = $2, created_by = $3, updated_at = now() WHERE id = $4",
+                name, body.proxy_user_id, body.created_by, id,
             )
     return {"detail": "プロジェクトを更新しました"}
 
