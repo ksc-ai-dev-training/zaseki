@@ -380,6 +380,8 @@ export interface MyProjectItem {
   project_name: string
   project_title: ProjectTitle
   can_assign_seats: boolean
+  /** 自分がこのプロジェクトのPJ席決担当（projects.proxy_user_id）かどうか（2026-09-09追加） */
+  is_seat_proxy: boolean
   // 対象四半期を自由に選択できるよう、存在する計画を全件（period_start昇順）返す
   // （2026-08-31訂正。従来はplan: MyProjectPlanSummary | null で直近1件のみだった）
   plans: MyProjectPlanSummary[]

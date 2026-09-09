@@ -53,9 +53,16 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     """A-13: 自分がPM・PL・SL・メンバーであるプロジェクトと、対象四半期の計画状況の一覧。
     各プロジェクトについて存在する計画を全件（period_start昇順）返す（2026-08-31訂正。従来は
     直近のperiod_startを持つ計画1件〔現在進行中とみなす〕のみを返していたが、「対象四半期を
-    自由に選択できるようにしてほしい」との要望を受け、S-09と同様に対象四半期を選べるようにした）。"""
+    自由に選択できるようにしてほしい」との要望を受け、S-09と同様に対象四半期を選べるようにした）。
+    is_seat_proxy（2026-09-09追加）: 自分がこのプロジェクトのPJ席決担当（T-05.proxy_user_id）
+    かどうか。S-02の「複数人の代理予約」ボタンの表示条件（Availability.tsx）が、実際の権限判定
+    （bulk_assign_free_seats_by_seat等のcan_manage、role='admin' or proxy_user_id==自分 or
+    can_assign_seats）より緩く、project_title='PM'/'PL'というだけでボタンが表示され、権限のない
+    PM/PLが操作の最後で403になる不具合があったため追加した。フロント側はcan_assign_seats or
+    is_seat_proxyで判定する（project_title条件は削除する）。"""
     rows = await get_pool().fetch(
         """SELECT pm.project_id, p.name AS project_name, pm.project_title, pm.can_assign_seats,
+                  (p.proxy_user_id = $1) AS is_seat_proxy,
                   plan.id AS plan_id, plan.period_start, plan.period_end, plan.status,
                   plan.required_seats, plan.allocated_seats
            FROM project_members pm
@@ -74,6 +81,7 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
         item = items_by_project.setdefault(r["project_id"], {
             "project_id": r["project_id"], "project_name": r["project_name"],
             "project_title": r["project_title"], "can_assign_seats": r["can_assign_seats"],
+            "is_seat_proxy": r["is_seat_proxy"],
             "plans": [],
         })
         if r["plan_id"] is None:

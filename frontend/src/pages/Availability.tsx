@@ -134,7 +134,12 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
   const [selectedMembers, setSelectedMembers] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.project_title === 'PM' || p.project_title === 'PL') && p.plans.length > 0)
+  // 実際の権限判定（バックエンドのcan_manage、project_pm.py参照）はcan_assign_seats or
+  // proxy_user_id==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
+  // project_title==='PM'/'PL'もOR条件に含めていたため、権限のないPM/PLにもボタンが表示され、
+  // 対象メンバー選択・座席クリックまで操作した最後にAPIの403で初めて拒否される不具合があった
+  // （2026-09-09修正）。
+  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_seat_proxy) && p.plans.length > 0)
   // 対象プロジェクトを1つも持たない利用者にはボタン自体を表示しない（2026-09-07修正。
   // 「対象外の人にはボタン自体を表示しないように」との要望を受けた。以前はボタンが
   // 常に表示され、押した後のモーダル内のプルダウンで初めて対象外と分かる作りだった）
@@ -1467,7 +1472,15 @@ export default function Availability() {
                       type="checkbox"
                       checked={recurring}
                       disabled={recurringStartOutOfRange}
-                      onChange={(e) => setRecurring(e.target.checked)}
+                      onChange={(e) => {
+                        // 単発予約の「同じ日に複数の座席は予約できません」エラー（duplicateSeatError）は
+                        // 繰り返し予約には適用されない別の確認フローのため、繰り返し予約に切り替えたら
+                        // 古いエラー表示を消す（2026-09-09修正。従来はチェックを入れてもエラー表示と
+                        // 「変更する」ボタンが残ったままになり、紛らわしかった）
+                        setRecurring(e.target.checked)
+                        setActionError(null)
+                        setDuplicateSeatError(false)
+                      }}
                     />
                     繰り返し予約にする
                   </label>
@@ -1526,19 +1539,31 @@ export default function Availability() {
                 <div className="mt-3 space-y-2">
                   <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
                   {duplicateSeatError && (
-                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <div
+                      className={`rounded border px-3 py-2 text-sm ${
+                        anySameDayReservation?.seat_type === 'project'
+                          ? 'border-red-200 bg-red-50 text-red-800'
+                          : 'border-amber-200 bg-amber-50 text-amber-800'
+                      }`}
+                    >
                       <p>
-                        {anySameDayReservation
-                          ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？`
-                          : 'この日の他の予約を取り消して、この座席に変更しますか？'}
+                        {anySameDayReservation?.seat_type === 'project'
+                          ? `現在の予約（${anySameDayReservation.seat_no}）は、PM・PLが割り当てたプロジェクトの確保済み座席です。取り消してこの座席に変更しますか？（プロジェクト座席の確保が失われます）`
+                          : anySameDayReservation
+                            ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？`
+                            : 'この日の他の予約を取り消して、この座席に変更しますか？'}
                       </p>
                       <button
                         type="button"
                         disabled={submitting}
                         onClick={confirmReserveReplace}
-                        className="mt-2 rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-800 disabled:opacity-50"
+                        className={`mt-2 rounded px-3 py-1 text-xs text-white disabled:opacity-50 ${
+                          anySameDayReservation?.seat_type === 'project'
+                            ? 'bg-red-700 hover:bg-red-800'
+                            : 'bg-amber-700 hover:bg-amber-800'
+                        }`}
                       >
-                        変更する
+                        {anySameDayReservation?.seat_type === 'project' ? 'プロジェクト座席を取り消して変更する' : '変更する'}
                       </button>
                     </div>
                   )}

@@ -1,4 +1,5 @@
 # A-22, A-23, A-24, A-30 座席マスタ管理（S-07）。詳細設計書3.7節
+import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -133,7 +134,13 @@ async def delete_seat(id: int, _: CurrentUser = Depends(require_roles("admin")))
     分けずにseat_id一致だけで判定すると、既に解除済みの座席でも履歴行が残っている限り常に
     「先にS-05で解除してください」と案内してしまうが、解除するものが何もなく手詰まりになる
     不具合があった。過去の履歴だけが残っている場合はFK制約上いずれにせよ物理削除できないため、
-    予約履歴と同じく廃止をご利用いただく案内にする）。"""
+    予約履歴と同じく廃止をご利用いただく案内にする）。
+
+    project_quarter_plans.allocated_seats（座席の島の割当、外部キー制約なしのJSONB配列）に
+    含まれる座席は、reservations・fixed_seat_assignmentsのようなFK制約が効かないためこれらの
+    チェックをすり抜けて削除でき、削除後もallocated_seatsに存在しない座席IDが残ったままになる
+    （プロジェクトの必要座席数と実際に確保できる座席数が静かにずれる）不具合があったため、
+    このチェックも追加した（2026-09-09追加）。"""
     pool = get_pool()
     existing = await pool.fetchrow("SELECT id FROM seats WHERE id = $1", id)
     if existing is None:
@@ -151,5 +158,10 @@ async def delete_seat(id: int, _: CurrentUser = Depends(require_roles("admin")))
     has_reservation = await pool.fetchval("SELECT 1 FROM reservations WHERE seat_id = $1", id)
     if has_reservation:
         raise HTTPException(409, detail="この座席の予約履歴があるため削除できません。廃止をご利用ください")
+    has_project_allocation = await pool.fetchval(
+        "SELECT 1 FROM project_quarter_plans WHERE allocated_seats @> $1::jsonb", json.dumps([id])
+    )
+    if has_project_allocation:
+        raise HTTPException(409, detail="この座席はプロジェクト座席の島の割当に含まれているため削除できません。廃止をご利用ください")
     await pool.execute("DELETE FROM seats WHERE id = $1", id)
     return {"detail": "座席を削除しました"}
