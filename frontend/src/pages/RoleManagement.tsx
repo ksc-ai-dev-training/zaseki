@@ -104,6 +104,53 @@ function UsersTab() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // 役割マスタのラベルを複数利用者へまとめて付与・解除する（2026-09-09追加。「1人ずつ編集モーダルを
+  // 開いてチェックを付け直す必要があり、部署異動などまとまった人数の役割変更のたびに工数がかかる」
+  // との指摘を受けた）
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkRoleMasterId, setBulkRoleMasterId] = useState<number | null>(null)
+  const [bulkApplying, setBulkApplying] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  const allSelected = items.length > 0 && items.every((u) => selectedIds.has(u.id))
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(items.map((u) => u.id)))
+  }
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const applyBulkRole = async (grant: boolean) => {
+    if (!bulkRoleMasterId || selectedIds.size === 0) return
+    setBulkApplying(true)
+    setBulkError(null)
+    try {
+      // 解除は既に付与されている利用者だけを対象にする（付与されていない利用者に解除APIを
+      // 呼ぶと404になり、Promise.allが失敗して選択した他の利用者の分まで巻き込むため）
+      const targetIds = grant
+        ? [...selectedIds]
+        : items.filter((u) => selectedIds.has(u.id) && u.custom_role_ids.includes(bulkRoleMasterId)).map((u) => u.id)
+      await Promise.all(
+        targetIds.map((id) =>
+          grant
+            ? apiFetch(`/api/users/${id}/custom-roles`, { method: 'POST', body: JSON.stringify({ role_master_id: bulkRoleMasterId }) })
+            : apiFetch(`/api/users/${id}/custom-roles/${bulkRoleMasterId}`, { method: 'DELETE' })
+        )
+      )
+      setSelectedIds(new Set())
+      setBulkRoleMasterId(null)
+      await refresh()
+    } catch (e) {
+      setBulkError(e instanceof ApiError ? e.message : '一括操作に失敗しました')
+    } finally {
+      setBulkApplying(false)
+    }
+  }
+
   const openEdit = (u: UserRoleItem) => {
     setFormError(null)
     setForm({
@@ -183,10 +230,49 @@ function UsersTab() {
         </label>
       </div>
 
+      {roleMasterItems.length > 0 && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-blue-50 px-4 py-3 text-sm">
+          <span className="font-medium text-blue-900">選択中: {selectedIds.size}名</span>
+          <select
+            value={bulkRoleMasterId ?? ''}
+            onChange={(e) => setBulkRoleMasterId(e.target.value ? Number(e.target.value) : null)}
+            className="h-8 rounded border border-slate-300 px-2 text-sm"
+          >
+            <option value="">役割を選択</option>
+            {roleMasterItems.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
+          </select>
+          <button
+            type="button"
+            disabled={!bulkRoleMasterId || bulkApplying}
+            onClick={() => applyBulkRole(true)}
+            className="rounded bg-blue-800 px-3 py-1 text-xs text-white disabled:opacity-50"
+          >
+            まとめて付与
+          </button>
+          <button
+            type="button"
+            disabled={!bulkRoleMasterId || bulkApplying}
+            onClick={() => applyBulkRole(false)}
+            className="rounded border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            まとめて解除
+          </button>
+          <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto text-xs text-slate-500 hover:underline">
+            選択解除
+          </button>
+          {bulkError && <span className="text-xs text-red-700">{bulkError}</span>}
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-slate-500">
+              {roleMasterItems.length > 0 && (
+                <th className="px-4 py-2">
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                </th>
+              )}
               <th className="px-4 py-2">氏名</th>
               <th className="px-4 py-2">メールアドレス</th>
               <th className="px-4 py-2">雇用形態</th>
@@ -199,6 +285,11 @@ function UsersTab() {
           <tbody>
             {items.map((u) => (
               <tr key={u.id} className="border-b border-slate-100">
+                {roleMasterItems.length > 0 && (
+                  <td className="px-4 py-2">
+                    <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleSelected(u.id)} />
+                  </td>
+                )}
                 <td className="px-4 py-2 font-semibold">{u.last_name} {u.first_name}</td>
                 <td className="px-4 py-2 text-xs text-slate-500">{u.email}</td>
                 <td className="px-4 py-2">{EMPLOYMENT_TYPE_JA[u.employment_type]}</td>
@@ -224,7 +315,7 @@ function UsersTab() {
               </tr>
             ))}
             {!isLoading && items.length === 0 && (
-              <tr><td colSpan={7} className="py-6 text-center text-slate-400">該当する利用者がいません</td></tr>
+              <tr><td colSpan={roleMasterItems.length > 0 ? 8 : 7} className="py-6 text-center text-slate-400">該当する利用者がいません</td></tr>
             )}
           </tbody>
         </table>

@@ -1,4 +1,4 @@
-# A-22, A-23, A-24, A-30 座席マスタ管理（S-07）。詳細設計書3.7節
+# A-22, A-23, A-24, A-30, A-53, A-77 座席マスタ管理（S-07）。詳細設計書3.7節
 import json
 from typing import Literal
 
@@ -84,6 +84,45 @@ async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("
         seat_no, body.area_id, body.seat_type, body.pos_x, body.pos_y,
     )
     return {"id": row["id"], "detail": "座席を追加しました"}
+
+
+class SeatBulkCreate(BaseModel):
+    seat_nos: list[str]
+    area_id: int
+    seat_type: Literal["free", "fixed", "project"]
+
+
+@router.post("/bulk")
+async def bulk_create_seats(body: SeatBulkCreate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-77: 座席の一括追加（S-07）。同一エリア・同一座席タイプの座席をまとめて登録する
+    （「1件ずつしか登録できず新設フロアの初期投入や増席のたびに工数がかかる」との指摘を受け
+    2026-09-09追加）。既存または入力内で重複する座席番号は、1件でも重複があると全体を失敗させて
+    やり直させるより、その座席だけスキップして残りを登録する方が手間が少ないため、スキップして
+    処理を続行し、作成できた件数とスキップした座席番号を返す。"""
+    pool = get_pool()
+    area = await pool.fetchrow("SELECT id FROM areas WHERE id = $1", body.area_id)
+    if area is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    seat_nos = [s.strip() for s in body.seat_nos if s.strip()]
+    if not seat_nos:
+        raise HTTPException(400, detail="座席番号を入力してください")
+    existing_rows = await pool.fetch("SELECT seat_no FROM seats WHERE seat_no = ANY($1::text[])", seat_nos)
+    existing = {r["seat_no"] for r in existing_rows}
+    seen: set[str] = set()
+    to_create: list[str] = []
+    skipped: list[str] = []
+    for seat_no in seat_nos:
+        if seat_no in existing or seat_no in seen:
+            skipped.append(seat_no)
+        else:
+            seen.add(seat_no)
+            to_create.append(seat_no)
+    if to_create:
+        await pool.executemany(
+            "INSERT INTO seats (seat_no, area_id, seat_type) VALUES ($1, $2, $3)",
+            [(seat_no, body.area_id, body.seat_type) for seat_no in to_create],
+        )
+    return {"created_count": len(to_create), "skipped": skipped}
 
 
 class SeatUpdate(BaseModel):

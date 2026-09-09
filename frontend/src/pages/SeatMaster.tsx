@@ -34,6 +34,23 @@ interface SeatForm {
   posY: number | null
 }
 
+// 座席の一括追加（A-77、2026-09-09追加）。連番プレフィックス欄は、この職場の座席番号が
+// 「A1」「Q12」のようにプレフィックス＋連番であることが多いため、そこから座席番号一覧を
+// 生成する補助入力（必須ではなく、seatNosTextを直接編集してもよい）
+interface BulkSeatForm {
+  areaId: number
+  seatType: SeatType
+  seatNosText: string
+  rangePrefix: string
+  rangeStart: string
+  rangeEnd: string
+}
+
+interface BulkSeatResult {
+  created_count: number
+  skipped: string[]
+}
+
 function pageNumbers(current: number, total: number): (number | '…')[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
   const pages = new Set([1, 2, total - 1, total, current - 1, current, current + 1])
@@ -59,6 +76,10 @@ export default function SeatMaster() {
   const [deleteTarget, setDeleteTarget] = useState<SeatMasterItem | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [bulkForm, setBulkForm] = useState<BulkSeatForm | null>(null)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [bulkResult, setBulkResult] = useState<BulkSeatResult | null>(null)
 
   const { items: areas } = useAreas()
   const { items, isLoading, refresh } = useSeatMaster(areaFilter, statusFilter, query)
@@ -124,6 +145,43 @@ export default function SeatMaster() {
     }
   }
 
+  const openBulkAdd = () => {
+    setBulkError(null)
+    setBulkResult(null)
+    setBulkForm({ areaId: areas[0]?.id ?? 0, seatType: 'free', seatNosText: '', rangePrefix: '', rangeStart: '', rangeEnd: '' })
+  }
+
+  const applyRangeToText = () => {
+    if (!bulkForm) return
+    const start = Number(bulkForm.rangeStart)
+    const end = Number(bulkForm.rangeEnd)
+    const prefix = bulkForm.rangePrefix.trim()
+    if (!prefix || !Number.isInteger(start) || !Number.isInteger(end) || start > end) return
+    const seatNos: string[] = []
+    for (let n = start; n <= end; n++) seatNos.push(`${prefix}${n}`)
+    setBulkForm({ ...bulkForm, seatNosText: seatNos.join(', ') })
+  }
+
+  const submitBulkForm = async () => {
+    if (!bulkForm) return
+    const seatNos = bulkForm.seatNosText.split(/[\s,、]+/).map((s) => s.trim()).filter(Boolean)
+    if (seatNos.length === 0) { setBulkError('座席番号を入力してください'); return }
+    setBulkSubmitting(true)
+    setBulkError(null)
+    try {
+      const res = await apiFetch<BulkSeatResult>('/api/seats/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ seat_nos: seatNos, area_id: bulkForm.areaId, seat_type: bulkForm.seatType }),
+      })
+      setBulkResult(res)
+      await refresh()
+    } catch (e) {
+      setBulkError(e instanceof ApiError ? e.message : '登録に失敗しました')
+    } finally {
+      setBulkSubmitting(false)
+    }
+  }
+
   return (
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
@@ -163,6 +221,13 @@ export default function SeatMaster() {
               className="ml-auto rounded border border-blue-800 px-3 py-1.5 text-sm text-blue-800 hover:bg-blue-50"
             >
               座席表に配置する
+            </button>
+            <button
+              type="button"
+              onClick={openBulkAdd}
+              className="rounded border border-blue-800 px-3 py-1.5 text-sm text-blue-800 hover:bg-blue-50"
+            >
+              ＋ まとめて追加
             </button>
             <button
               type="button"
@@ -336,6 +401,115 @@ export default function SeatMaster() {
             )}
             {formError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{formError}</p>}
           </div>
+        </Modal>
+      )}
+
+      {bulkForm && (
+        <Modal
+          title="座席をまとめて追加"
+          onClose={() => setBulkForm(null)}
+          footer={
+            bulkResult ? (
+              <button type="button" onClick={() => setBulkForm(null)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white">閉じる</button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setBulkForm(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" disabled={bulkSubmitting} onClick={submitBulkForm} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">まとめて登録する</button>
+              </>
+            )
+          }
+        >
+          {bulkResult ? (
+            <div className="space-y-2 text-sm">
+              <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-green-800">
+                {bulkResult.created_count}件の座席を追加しました。
+              </p>
+              {bulkResult.skipped.length > 0 && (
+                <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                  以下の座席番号は既に使用されているためスキップしました: {bulkResult.skipped.join('、')}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="flex gap-3">
+                <label className="block flex-1">
+                  <span className="mb-1 block text-slate-500">エリア</span>
+                  <select
+                    value={bulkForm.areaId}
+                    onChange={(e) => setBulkForm({ ...bulkForm, areaId: Number(e.target.value) })}
+                    className="h-9 w-full rounded border border-slate-300 px-2"
+                  >
+                    {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </label>
+                <label className="block flex-1">
+                  <span className="mb-1 block text-slate-500">座席タイプ</span>
+                  <select
+                    value={bulkForm.seatType}
+                    onChange={(e) => setBulkForm({ ...bulkForm, seatType: e.target.value as SeatType })}
+                    className="h-9 w-full rounded border border-slate-300 px-2"
+                  >
+                    <option value="free">フリー</option>
+                    <option value="fixed">固定</option>
+                    <option value="project">プロジェクト</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="rounded border border-slate-200 bg-slate-50 p-3">
+                <span className="mb-2 block text-xs text-slate-500">連番で入力欄を作成（任意。「プレフィックス＋開始〜終了」の座席番号を下の欄にまとめて入力する）</span>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-slate-500">プレフィックス</span>
+                    <input
+                      type="text"
+                      value={bulkForm.rangePrefix}
+                      onChange={(e) => setBulkForm({ ...bulkForm, rangePrefix: e.target.value })}
+                      placeholder="例: Q"
+                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-slate-500">開始番号</span>
+                    <input
+                      type="number"
+                      value={bulkForm.rangeStart}
+                      onChange={(e) => setBulkForm({ ...bulkForm, rangeStart: e.target.value })}
+                      placeholder="1"
+                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-slate-500">終了番号</span>
+                    <input
+                      type="number"
+                      value={bulkForm.rangeEnd}
+                      onChange={(e) => setBulkForm({ ...bulkForm, rangeEnd: e.target.value })}
+                      placeholder="20"
+                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                    />
+                  </label>
+                  <button type="button" onClick={applyRangeToText} className="h-8 rounded border border-blue-800 px-3 text-xs text-blue-800 hover:bg-blue-50">
+                    下の欄に反映
+                  </button>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-slate-500">座席番号（改行またはカンマ区切りで複数入力）</span>
+                <textarea
+                  rows={4}
+                  value={bulkForm.seatNosText}
+                  onChange={(e) => setBulkForm({ ...bulkForm, seatNosText: e.target.value })}
+                  placeholder={'例:\nQ1, Q2, Q3\nQ4'}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <p className="text-xs text-slate-400">エリア・座席タイプは入力したすべての座席番号に共通で適用されます。既に使用されている座席番号は自動的にスキップされます。</p>
+              {bulkError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{bulkError}</p>}
+            </div>
+          )}
         </Modal>
       )}
 

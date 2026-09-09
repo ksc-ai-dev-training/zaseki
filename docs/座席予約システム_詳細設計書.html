@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.78（ドラフト・作成中）</span>
+      <span>版数: 0.79（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -304,6 +304,7 @@ footer.doc-footer {
       <tr><td>0.76</td><td>2026-09-09</td><td>全画面のバグ調査（ユーザー指示「バグが生まれるものを手当たり次第全部調べて」）で見つかったドキュメントID管理のずれを遡及的に整理した。project_pm.pyの<code>bulk_assign_free_seats_by_seat</code>（<code>POST /project-quarter-plans/{id}/free-seat-assignments</code>）・<code>bulk_book_free_seats</code>（同<code>/free-seat-bookings</code>）・<code>retry_free_seat_assignment</code>（同<code>/free-seat-assignments/retry</code>）・<code>retry_seat_assignment</code>（同<code>/seat-assignments/retry</code>）、fixed_seats.pyのA-73（1日分の解除、date指定のA-21）が、新設時にA番号をdocstringへ記載しないまま実装され、一部は他のdocstring内で既に別のAPI（A-58＝update_seat_not_required）に割り当て済みの番号と誤って重複していた。新たにA-70（free-seat-bookings）・A-71（free-seat-assignments/retry）・A-72（seat-assignments/retry）・A-75（free-seat-assignments）・A-76（A-73の取り消し、新設<code>DELETE /fixed-seat-assignments/{seat_id}/absences/{date}</code>）を割り当て、3.4節・3.5節へ追加した。あわせてT-18 fixed_seat_absences（1日だけの固定座席解除）も新設時にテーブル定義（2章）が作成されていなかったため2.19節を新設し、A-73・A-76・A-06・A-07・A-09・A-47・A-69の関連箇所へ相互参照を追記した。同じ調査で見つかった機能面の不具合修正も反映: (1) T-18により1日だけ解除された固定座席が、表示は空席になるのに実際には誰も予約できなかった不具合をA-09・A-47で修正（当該日はフリー座席同様に予約を受け付け、固定座席保有者自身もRULE-07の対象外とする）。(2) 一度1日だけ解除すると元に戻す手段がなかったため、取り消し操作（A-76）を新設。(3) RULE-02の拒否文言（「同じ日に複数の座席は予約できません」）がA-09・A-47・<code>_check_and_book_day</code>・<code>generate_recurring_reservations</code>の4箇所に個別にハードコードされ、フロントエンドの「変更する」ボタンがこの文言との完全一致でのみ動作する脆い作りだったため、<code>database.DUPLICATE_SEAT_MESSAGE</code>定数に集約した。(4) A-74（AI提案）のレスポンスに<code>missing_plan_ids</code>を追加し、AIが一部のプロジェクトの提案を返し忘れた場合にフロントエンドが利用者へ知らせられるようにした。あわせて失敗時の例外詳細をサーバーログへ記録するようにした（<code>ai_weekday.py</code>、<code>logging.getLogger</code>）。1.4節のトレーサビリティ表は変更なし（今回追加したA番号はいずれも既存のFR-03-7・FR-03-11・FR-01-5・FR-01-1に対応する実装済み機能の遡及的な番号付けであり、新しい要求・画面は発生していない）。3.3節・3.4節・3.5節・3.9節・3.11節・2.19節を修正。</td></tr>
       <tr><td>0.77</td><td>2026-09-09</td><td>同じバグ調査で見つかった、S-10「座席状況の履歴照会」廃止（2026-09-07、コミット「Remove S-10 — it was a strict subset of S-02」）が本書に一切反映されていなかった積み残しを解消した。3.10節の見出しを「座席状況の履歴照会（旧S-10、2026-09-07廃止）」に変更し、A-45のテーブル行をA-31と同じ「廃止」表記（欠番として保持、経緯を記載）に置き換えた。5.5.x権限マトリクスのA-45行も同様に「廃止」表記に更新し、6章のエラー一覧からはA-45の行を削除した（6章は現存するAPIのエラー条件のみを列挙する運用のため）。1.4節のトレーサビリティ表のREQ-F-04行から「S-10」を外し廃止の経緯を注記した。本文中でA-06・A-45を並記していた箇所（誕生日バッジ・アバター表示・期限切れ固定座席の遅延評価に関する説明、T-01.birth_dayの列説明）をA-06のみに修正し、A-45への言及は「当初は共通化していたが廃止された」旨の注記に改めた。要件定義書・基本設計書・画面モックアップ一覧（<code>docs/_sidenav.js</code>）・操作マニュアルについても同様の反映が必要なため、あわせて着手する。</td></tr>
       <tr><td>0.78</td><td>2026-09-09</td><td>訂正反映: 上司から「参考元より機能としてはいいものだが工数が多すぎて使いづらい」とのレビューを受けた。最も工数（操作数）を押し上げていた箇所として、S-02の「複数人の代理予約（PJメンバー）」（A-75）における2026-09-08の日付ごとクリック方式を特定し、既定を2026-09-04時点の「座席を1回クリックして相手・曜日パターン・期間をまとめて設定する」方式に戻した（人数×日数に比例していた操作数を、人数に比例する操作数まで削減）。日付ごとに別々の座席を選びたい例外ケースは、案内文のリンクからサブモードとして引き続き選べる。APIのBody形状・バックエンド処理は変更していない（3.4節A-75を修正）。</td></tr>
+      <tr><td>0.79</td><td>2026-09-09</td><td>訂正反映（基本設計書v2.45）: 同じ上司レビュー（「工数が多すぎて使いづらい」）を受け、実際に全画面を操作して洗い出した工数の重い箇所のうち、S-09の座席の島の割当（v0.78で対応済み）に続き、S-07 座席マスタ管理とS-08 権限・役割管理を対応した。(1) S-07: 「座席は1件ずつしか追加できず、新設フロアの初期投入や増設のたびに1件ずつ登録する必要がある」との指摘を受け、新API A-77（<code>POST /seats/bulk</code>）を新設した。同一エリア・同一座席タイプの座席番号を複数まとめて登録でき、既存または入力内で重複する座席番号は個別にスキップして残りを登録する（1件でも重複があると全体を失敗させる方式は、どれが重複か探す手間が逆に増えるため採らなかった）。フロントエンドには「プレフィックス＋開始〜終了番号」から座席番号一覧を生成する補助入力も設けた（この職場の座席番号がプレフィックス＋連番の命名のため）。(2) S-08: 「役割マスタのラベルを複数の利用者へまとめて付与・解除する手段がなく、部署異動などまとまった人数の役割変更のたびに1人ずつ編集モーダルを開く必要がある」との指摘を受け、利用者ロール管理タブに複数選択チェックボックスと一括付与・一括解除の操作バーを追加した。バックエンドAPIは既存のA-36・A-37をそのまま複数回呼び出す方式とし、新規エンドポイントは追加していない（解除はPromise.allの一部失敗を避けるため、対象の役割を実際に持つ利用者のみに絞って呼び出す）。3.7節にA-77を追加、5.5.5節・5.5.6節の権限マトリクスにA-77の行を追加。</td></tr>
     </tbody>
   </table>
   </details>
@@ -946,6 +947,7 @@ footer.doc-footer {
       <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, pos_x?, pos_y?}</code>。<code>pos_x</code>・<code>pos_y</code>はS-02「座席配置モード」でのクリック位置（2026-08-27追加、両方指定するか両方省略する）。</td></tr>
       <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status, pos_x?, pos_y?}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
       <tr><td><code>A-53</code></td><td><span class="method delete">DELETE</span><code>/seats/{id}</code></td><td>座席の完全削除。</td><td>role='admin'</td><td>A-24の<code>status='retired'</code>（廃止）とは別の操作で、座席データ自体を物理削除する（2026-08-28追加）。固定座席割当（T-04）または予約履歴（T-08、キャンセル済みを含む）が残る座席は409で拒否する。</td></tr>
+      <tr><td><code>A-77</code></td><td><span class="method post">POST</span><code>/seats/bulk</code></td><td>座席の一括追加。</td><td>role='admin'</td><td>Body: <code>{seat_nos: string[], area_id, seat_type}</code>。「1件ずつしか登録できず新設フロアの初期投入や増設のたびに工数がかかる」との指摘を受け2026-09-09追加。同一エリア・同一座席タイプの座席番号をまとめて登録する。既存または入力内で重複する座席番号は個別にスキップし、作成できた分だけ登録した上で<code>{created_count, skipped: string[]}</code>を返す（1件でも重複があると全体を失敗させるA-66等の方針とは異なり、あえて部分成功を許容する。座席登録はどの座席が重複かを個別に探す手間の方が大きいため）。</td></tr>
     </tbody>
   </table>
 
@@ -1307,6 +1309,7 @@ footer.doc-footer {
       <tr><td>A-23</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-24</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-53</td><td><code>P-ADMIN</code></td><td>2026-08-28追加。</td></tr>
+      <tr><td>A-77</td><td><code>P-ADMIN</code></td><td>2026-09-09追加。</td></tr>
     </tbody>
   </table>
 
@@ -1475,7 +1478,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.78 / 2026-09-09</span>
+    <span>版数 0.79 / 2026-09-09</span>
   </footer>
 
 </div>
