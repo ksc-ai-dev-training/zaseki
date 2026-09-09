@@ -43,7 +43,6 @@
         { href: '03_画面モックアップ/S-07_seat-master.html', title: 'S-07 座席マスタ管理' },
         { href: '03_画面モックアップ/S-08_role-master.html', title: 'S-08 権限・役割管理' },
         { href: '03_画面モックアップ/S-09_project-seat-allocation.html', title: 'S-09 プロジェクト座席（エリア担当）' },
-        { href: '03_画面モックアップ/S-10_seat-history.html', title: 'S-10 座席状況の履歴照会' },
         { href: '03_画面モックアップ/S-11_proxy-booking.html', title: 'S-11 代理予約・取消' },
       ],
     },

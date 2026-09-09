@@ -841,6 +841,10 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
   const [aiReasoning, setAiReasoning] = useState<Record<number, string>>({})
   const [aiLoadingGroup, setAiLoadingGroup] = useState<string | null>(null)
   const [aiErrorByGroup, setAiErrorByGroup] = useState<Record<string, string>>({})
+  // AIの応答に一部のplan_idの提案が含まれていなかった場合の注意書き（グループ単位、2026-09-09追加。
+  // 従来は返ってきたsuggestionsだけを反映するため、AIが一部のプロジェクトの提案を返し忘れても
+  // 気づけず、利用者が「グループ全体にAI提案が適用された」と誤認しうる不具合があった）
+  const [aiPartialWarningByGroup, setAiPartialWarningByGroup] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
@@ -912,9 +916,10 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
   const generateAiSuggestions = async (group: (typeof groups)[number]) => {
     setAiLoadingGroup(group.key)
     setAiErrorByGroup((prev) => ({ ...prev, [group.key]: '' }))
+    setAiPartialWarningByGroup((prev) => ({ ...prev, [group.key]: '' }))
     try {
       const capacity = Object.fromEntries(WEEKDAYS.map((w) => [w.key, group.totalRequired])) as Record<Weekday, number>
-      const data = await apiFetch<{ suggestions: WeekdayAiSuggestion[] }>(
+      const data = await apiFetch<{ suggestions: WeekdayAiSuggestion[]; missing_plan_ids: number[] }>(
         '/api/project-quarter-plans/weekday-ai-suggestions',
         {
           method: 'POST',
@@ -942,6 +947,15 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
         data.suggestions.forEach((s) => { next[s.plan_id] = s.reasoning })
         return next
       })
+      if (data.missing_plan_ids && data.missing_plan_ids.length > 0) {
+        const names = data.missing_plan_ids
+          .map((id) => group.plans.find((p) => p.id === id)?.project_name ?? `plan_id ${id}`)
+          .join('、')
+        setAiPartialWarningByGroup((prev) => ({
+          ...prev,
+          [group.key]: `次のプロジェクトはAIから提案が返ってこなかったため、内容を変更していません: ${names}`,
+        }))
+      }
     } catch (e) {
       setAiErrorByGroup((prev) => ({ ...prev, [group.key]: e instanceof ApiError ? e.message : 'AI提案の生成に失敗しました' }))
     } finally {
@@ -992,6 +1006,9 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
               </div>
               {aiErrorByGroup[g.key] && (
                 <p className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">{aiErrorByGroup[g.key]}</p>
+              )}
+              {aiPartialWarningByGroup[g.key] && (
+                <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">{aiPartialWarningByGroup[g.key]}</p>
               )}
               <table className="w-full text-sm">
                 <thead>

@@ -1,4 +1,6 @@
-# A-13〜A-18、A-58 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
+# A-13〜A-18、A-58、A-64、A-70〜A-72、A-75 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
+# （2026-09-09追記: A-70〜A-72・A-75は新設時に本ファイル冒頭のコメントを更新しないまま追加されて
+# いたため、既存分とあわせてここに列挙するよう修正した）
 import json
 from datetime import date as Date
 from typing import Literal
@@ -513,10 +515,13 @@ class FreeSeatBookingBody(BaseModel):
 
 @router.post("/project-quarter-plans/{id}/free-seat-bookings")
 async def bulk_book_free_seats(id: int, body: FreeSeatBookingBody, user: CurrentUser = Depends(require_auth)):
-    """複数メンバーへ、通常のフリー座席（座席の島とは無関係）を日付ごとに自動で割り振って一括予約する
-    （2026-09-04追加。「代理予約を複数名まとめて、PJのメンバーに対して行いたい。座席はプロジェクト
-    座席ではなくフリー座席として扱ってほしい」との要望を受けた）。権限はA-18と同じ
-    role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（T-06.can_assign_seats）。
+    """A-70: 複数メンバーへ、通常のフリー座席（座席の島とは無関係）を日付ごとに自動で割り振って
+    一括予約する（2026-09-04追加。「代理予約を複数名まとめて、PJのメンバーに対して行いたい。座席は
+    プロジェクト座席ではなくフリー座席として扱ってほしい」との要望を受けた。ここまでA番号が
+    docstringに記載されておらず、retry_free_seat_assignment〔A-71〕のdocstring内でのみ
+    「A-70のエリア自動割当版」と言及されていたため、2026-09-09に本docstringへも明記した）。
+    権限はA-18と同じrole='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN
+    （T-06.can_assign_seats）。
     座席の島の割当状況（plan.status）には依存しない（フリー座席の確保なので島の有無を問わない）。
     RULE-05（予約可能期間）はadmin以外は通常どおり検証する（FR-01-7はadminのみの特例）。"""
     if not body.member_user_ids:
@@ -618,7 +623,7 @@ class FreeSeatAssignmentsBody(BaseModel):
 
 @router.post("/project-quarter-plans/{id}/free-seat-assignments")
 async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody, user: CurrentUser = Depends(require_auth)):
-    """複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、それぞれ指定した期間・
+    """A-75: 複数メンバーへ、S-02のフロアマップ上で1人ずつクリックして選んだ座席を、それぞれ指定した期間・
     繰り返しパターン（毎日／毎週）でフリー座席として一括予約する（2026-09-04追加、2026-09-07に
     単発日付のみの対応から日付範囲・繰り返しパターン対応へ拡張。さらに同日、期間・パターンを全員
     共通の1つから、座席をクリックするたびにその場のモーダルで1人分ずつ確認・確定する方式に変更した。
@@ -633,7 +638,14 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
     メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・RULE-07・座席専有チェックは
     A-10・A-18と共通のgenerate_recurring_reservationsに委譲する（メンバー・座席1組につき1件の
-    recurring_rulesを作成）。"""
+    recurring_rulesを作成）。
+
+    ID管理の補足（2026-09-09追加）: このエンドポイントは新設時にA番号を振らないまま docstring に
+    記載されず、retry_free_seat_assignment（A-71）のdocstring内で「A-58（bulk_assign_free_seats_by_seat）
+    と同じ」と誤って言及されていた。A-58は実際にはupdate_seat_not_required（PUT
+    /project-members/{id}/seat-not-required）に既に割り当て済みの番号（詳細設計書3.4節）であり、
+    重複していた。A-70〜A-74が既に使用済みだったため、本エンドポイントには新たにA-75を割り当てて
+    解消した。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
     for a in body.assignments:
@@ -732,7 +744,9 @@ async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody,
     """A-71: 複数人のフリー座席一括確保（S-02の座席クリック版・A-70のエリア自動割当版のどちらも）の
     結果で「除外」となった日だけを、指定した別の座席に振り替える（2026-09-07追加。「席を取って結果で
     除外が出てきたとき、除外部分だけ別の席に変更できる機能が欲しい」との要望を受けた）。権限・除外
-    理由の考え方はA-58（bulk_assign_free_seats_by_seat）と同じ。振替はdatesで明示的に指定された日付
+    理由の考え方はA-75（bulk_assign_free_seats_by_seat、2026-09-09訂正。従来ここでA-58と誤記していたが、
+    A-58は既にupdate_seat_not_requiredに割り当て済みのため、正しい番号A-75に修正した）と同じ。振替は
+    datesで明示的に指定された日付
     だけを対象にする（元々成功していた日には触れない）。座席はidではなく座席番号（seat_no）で指定する
     （A-22座席一覧は管理部専用のため、管理部以外の呼び出し元〔PJ席決担当〕が座席idの一覧を取得する
     手段がなく、フロアマップ上で見えている座席番号をそのまま入力できるようにするため）。"""

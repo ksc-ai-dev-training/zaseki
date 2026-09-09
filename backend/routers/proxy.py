@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import (
+    DUPLICATE_SEAT_MESSAGE,
     fixed_seat_absences_in_range,
     fixed_seat_absent_on,
     free_seat_bookable_period,
@@ -353,7 +354,7 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
         body.user_id, body.date,
     )
     if duplicate and not body.replace_existing:
-        raise HTTPException(400, detail="同じ日に複数の座席は予約できません")
+        raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
 
     async with pool.acquire() as conn:
         async with conn.transaction():

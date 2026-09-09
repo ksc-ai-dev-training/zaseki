@@ -577,16 +577,18 @@ async def suggest_weekdays_ai(body: WeekdayAiSuggestBody, _: CurrentUser = Depen
     各プロジェクトのrequired_seatsの合計）と同じ値をそのグループ分だけフロントエンドが算出して渡す。
     実際のLLM呼び出しはai_weekday.suggest_weekdays()に委譲する（OpenAI Chat Completions APIを
     httpxで直接呼ぶ、専用SDKは追加していない）。呼び出しに失敗した場合は502を返し、フロントエンドは
-    対象グループのマトリクス表を変更しない（検討資料3.3節「失敗時」の方針）。"""
+    対象グループのマトリクス表を変更しない（検討資料3.3節「失敗時」の方針）。missing_plan_ids
+    （2026-09-09追加）: 依頼したplan_idのうちAIの応答に含まれていなかったもの。フロントエンドは
+    このplan_idに該当する行について「AI提案なし」である旨を利用者に示す。"""
     if not body.plans:
         raise HTTPException(400, detail="対象のプロジェクトを1件以上指定してください")
     try:
-        suggestions = await ai_weekday.suggest_weekdays(
+        result = await ai_weekday.suggest_weekdays(
             [p.model_dump() for p in body.plans], dict(body.weekday_capacity),
         )
     except ai_weekday.WeekdayAiSuggestionError as e:
         raise HTTPException(502, detail="AI提案の生成に失敗しました。しばらくしてから再度お試しください") from e
-    return {"suggestions": suggestions}
+    return result
 
 
 class WeekdayFinalizeItem(BaseModel):

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
 from database import (
+    DUPLICATE_SEAT_MESSAGE,
     fixed_seat_absent_on,
     free_seat_open_date,
     generate_recurring_reservations,
@@ -87,7 +88,7 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         user.id, body.date,
     )
     if duplicate and not body.replace_existing:
-        raise HTTPException(400, detail="同じ日に複数の座席は予約できません")
+        raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
 
     async with pool.acquire() as conn:
         async with conn.transaction():

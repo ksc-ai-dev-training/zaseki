@@ -93,6 +93,12 @@ const AREA_TABS: { key: AreaFilter; label: string }[] = [
 
 const SEAT_TYPE_JA: Record<SeatType, string> = { free: 'フリー', fixed: '固定', project: 'プロジェクト' }
 
+// RULE-02（同一日複数予約禁止）の拒否メッセージ。バックエンドのDUPLICATE_SEAT_MESSAGE
+// （backend/database.py）と文字列を必ず一致させること。confirmReserveの catch 内でこの文言と
+// 完全一致するかどうかだけを見て「変更する」ボタンの表示を判定しているため、どちらか一方だけ
+// 文言を変えるとボタンが出なくなる（2026-09-09、両側を定数化してこのリスクを明示した）。
+const DUPLICATE_SEAT_MESSAGE = '同じ日に複数の座席は予約できません'
+
 // 期間ビュー（S-02）の表: 縦軸=日付・予約数・空席、横軸=座席番号・種別（現行スプレッドシート準拠）。
 // 左側の日付系4列・上部の座席ヘッダー行はスクロール中も見えるよう固定する（position: sticky）
 const PERIOD_COL_DATE_W = 96
@@ -626,7 +632,7 @@ export default function Availability() {
     } catch (e) {
       const message = e instanceof ApiError ? e.message : '予約に失敗しました'
       setActionError(message)
-      if (!proxyBookingFor && !recurring && message === '同じ日に複数の座席は予約できません') {
+      if (!proxyBookingFor && !recurring && message === DUPLICATE_SEAT_MESSAGE) {
         setDuplicateSeatError(true)
       }
     } finally {

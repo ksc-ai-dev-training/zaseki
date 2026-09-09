@@ -1,4 +1,4 @@
-# A-19, A-20, A-21, A-52, A-73 固定座席の指定（S-05）。詳細設計書3.5節
+# A-19, A-20, A-21, A-52, A-73, A-76 固定座席の指定（S-05）。詳細設計書3.5節
 from datetime import date as Date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -197,8 +197,8 @@ async def unassign(seat_id: int, date: Date | None = None, user: CurrentUser = D
 
 @router.delete("/{seat_id}/absences/{date}")
 async def undo_one_day_absence(seat_id: int, date: Date, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-73の取り消し操作: 誤って1日分の解除（T-18）を登録してしまった場合に元に戻す
-    （2026-09-08追加。従来は一度1日だけ解除すると元に戻す手段がなかった）。対象日の予約が
+    """A-76: A-73（1日分の解除）の取り消し操作。誤って1日分の解除（T-18）を登録してしまった場合に
+    元に戻す（2026-09-09追加。従来は一度1日だけ解除すると元に戻す手段がなかった）。対象日の予約が
     既に他の利用者によって行われていた場合は、元の固定座席利用者に予約が戻せなくなるため
     取り消しを拒否する。"""
     pool = get_pool()

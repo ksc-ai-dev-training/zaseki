@@ -2,11 +2,14 @@
 # DBへの書き込みは行わない。検討資料「プロジェクト座席・曜日調整フロー改善案」変更Cで
 # 決定済みの方針（生成AI・座席容量の定義・優先順位付けは判断理由つきでAIに委ねる）に基づく。
 import json
+import logging
 import os
 
 import httpx
 
 from database import ROOT_ENV
+
+logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or ROOT_ENV.get("OPENAI_API_KEY")
 OPENAI_MODEL = "gpt-4o-mini"
@@ -72,11 +75,15 @@ def _build_prompt(plans: list[dict], weekday_capacity: dict[str, int]) -> str:
     )
 
 
-async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) -> list[dict]:
+async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) -> dict:
     """A-74: 各プロジェクトの第一・第二希望・備考（T-11）と曜日ごとの座席容量から、OpenAIへ
     仮の曜日調整案を問い合わせる。plans各要素は{plan_id, project_name, choice1_weekdays,
-    choice2_weekdays, note}。戻り値は[{plan_id, weekdays, reasoning}, ...]（DBへの反映は
-    呼び出し元〔project_seats.py〕・フロントエンドの責任範囲外、あくまで提案）。"""
+    choice2_weekdays, note}。戻り値は{suggestions: [{plan_id, weekdays, reasoning}, ...],
+    missing_plan_ids: [...]}（DBへの反映は呼び出し元〔project_seats.py〕・フロントエンドの
+    責任範囲外、あくまで提案）。missing_plan_idsは、渡したplan_idのうちAIの応答に含まれて
+    いなかったもの（2026-09-09追加。従来は無言でその分だけ提案が欠けており、フロントエンドも
+    返ってきたsuggestionsだけを反映するため、利用者が「グループ全体に提案が適用された」と
+    誤認しうる不具合があった。呼び出し元がこれを見て利用者に知らせる）。"""
     if not OPENAI_API_KEY:
         raise WeekdayAiSuggestionError("OPENAI_API_KEYが設定されていません")
 
@@ -104,6 +111,13 @@ async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) 
         content = data["choices"][0]["message"]["content"]
         suggestions = json.loads(content)["suggestions"]
     except Exception as e:
+        # 従来はこの例外の詳細（原因がレート制限か、スキーマ不一致か、キー誤りか等）が
+        # HTTPExceptionのdetail経由でも一切ログにも残らず、502発生時に原因を追えなかった
+        # （2026-09-09修正）。ここでサーバーログに残す。
+        logger.exception(
+            "AI提案の生成に失敗しました（対象plan_id: %s、モデル: %s）",
+            [p.get("plan_id") for p in plans], OPENAI_MODEL,
+        )
         raise WeekdayAiSuggestionError(f"AI提案の生成に失敗しました: {e}") from e
 
     valid_plan_ids = {p["plan_id"] for p in plans}
@@ -114,4 +128,8 @@ async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) 
             continue
         weekdays = [w for w in s.get("weekdays", []) if w in WEEKDAYS]
         result.append({"plan_id": plan_id, "weekdays": weekdays, "reasoning": s.get("reasoning", "")})
-    return result
+
+    missing_plan_ids = sorted(valid_plan_ids - {r["plan_id"] for r in result})
+    if missing_plan_ids:
+        logger.warning("AI提案が一部のplan_idについて返ってこなかった: %s", missing_plan_ids)
+    return {"suggestions": result, "missing_plan_ids": missing_plan_ids}

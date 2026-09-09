@@ -22,6 +22,15 @@ def load_root_env() -> dict[str, str]:
     return env
 
 
+# RULE-02（同一日複数予約禁止）の拒否メッセージ。reservations.py（A-09）・proxy.py（A-47）が
+# HTTPExceptionのdetailとして、本ファイルの_check_and_book_day・generate_recurring_reservationsが
+# 除外理由（reason）として、それぞれこの文字列を使う。従来は4箇所に同じ文字列がハードコードされて
+# おり、Availability.tsxの「変更する」ボタンはこの文言と完全一致するかどうかでのみ表示可否を
+# 判定していたため、どこか1箇所でも文言を変えると気づかれないままボタンが出なくなる不具合の
+# 原因になっていた。定数化して4箇所を集約し、フロント側の一致対象も1箇所のコメントで明示する
+# （2026-09-09追加）。
+DUPLICATE_SEAT_MESSAGE = "同じ日に複数の座席は予約できません"
+
 ROOT_ENV = load_root_env()
 
 _db_port = os.environ.get("DB_PORT") or ROOT_ENV.get("DB_PORT", "55432")
@@ -502,7 +511,7 @@ async def _check_and_book_day(
             target_user_id, d,
         )
         if duplicate:
-            reason = "同じ日に複数の座席は予約できません"
+            reason = DUPLICATE_SEAT_MESSAGE
 
     if reason is not None:
         return {"date": d.isoformat(), "status": "excluded", "reason": reason}
@@ -667,7 +676,7 @@ async def generate_bulk_free_seat_reservations(
                     member_user_id, d,
                 )
                 if duplicate:
-                    reason = "同じ日に複数の座席は予約できません"
+                    reason = DUPLICATE_SEAT_MESSAGE
 
             seat = None
             if reason is None:
