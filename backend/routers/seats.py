@@ -79,11 +79,14 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
 
     multi_seat_holder（2026-09-09追加）: 「固定席の人でもフリー座席の予約ができるようにしてほしい」
     との要望を受けRULE-07（固定座席保有者はフリー座席を予約不可）を廃止したのに伴い、「同じ日に
-    複数の座席を保有している」ことを座席表の赤色表示で目立たせるための拡張フィールド。RULE-02に
-    より1人が同日に持てるreservations行は最大1件のため、複数保有は実質「固定座席（1件）＋その日の
-    reservations行（1件、フリー座席またはプロジェクト座席）」の組み合わせに限られる。該当する
-    利用者が占有する座席タイル（固定座席側・reservations側の両方）にtrueを付ける。S-02の
-    フロアマップのみが対象（期間ビュー〔A-07〕は対象外）。
+    複数の座席を保有している」ことを座席表の赤色表示で目立たせるための拡張フィールド。当初はRULE-02
+    により1人が同日に持てるreservations行は最大1件だったため「固定座席（1件）＋その日のreservations行
+    （1件）」の組み合わせのみを対象としていたが、同日中に「フリー座席、プロジェクト席の人も二つ席を
+    確保できるようにしていい」とのルール改定を受け、reservations行自体を同日に複数（keep_both、
+    A-09参照）持てるようになったため、(1)固定座席保有者がその日のreservations行も持つ場合、
+    (2)同じ日に有効なreservations行を2件以上持つ場合、のいずれかに該当する利用者を対象に含める。
+    該当する利用者が占有する座席タイル（対象となるすべての座席）にtrueを付ける。S-02のフロアマップ
+    のみが対象（期間ビュー〔A-07〕は対象外）。
     """
     await release_expired_fixed_seats()
     lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
@@ -119,9 +122,11 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
 
     project_name_by_seat_id = await project_blocked_seats(date)
 
-    # multi_seat_holder算出: dateに有効な固定座席を持ち、かつ同じdateにreservations行（フリー座席
-    # またはプロジェクト座席、いずれもreservationsに記録される）も持つ利用者のuser_id集合。
-    # fsaのJOIN条件（上のクエリ）と同じ日付範囲・T-18除外条件を用いる。
+    # multi_seat_holder算出（2026-09-09、RULE-02改定に伴い対象を拡張）: 以下のいずれかに該当する
+    # 利用者のuser_id集合。(1)dateに有効な固定座席を持ち、かつ同じdateにreservations行（フリー座席
+    # またはプロジェクト座席、いずれもreservationsに記録される）も持つ利用者。fsaのJOIN条件（上の
+    # クエリ）と同じ日付範囲・T-18除外条件を用いる。(2)固定座席の有無に関わらず、同じdateに有効な
+    # reservations行を2件以上持つ利用者（A-09のkeep_both、「両方保有」で発生し得る）。
     multi_seat_user_ids = {
         r["user_id"] for r in await pool.fetch(
             """SELECT fsa.user_id FROM fixed_seat_assignments fsa
@@ -133,7 +138,10 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
                  )
                  AND EXISTS (
                      SELECT 1 FROM reservations r WHERE r.user_id = fsa.user_id AND r.date = $1 AND r.status = 'active'
-                 )""",
+                 )
+               UNION
+               SELECT user_id FROM reservations WHERE date = $1 AND status = 'active'
+               GROUP BY user_id HAVING COUNT(*) > 1""",
             date,
         )
     }

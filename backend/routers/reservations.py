@@ -31,6 +31,12 @@ class ReservationCreate(BaseModel):
     # 「一度取消が必要なのか分かりにくい」との指摘を受け、フリー座席側にも同じ考え方を反映した。
     # 誤って他の予約を消さないよう、フロント側が明示的に「変更する」と伝えたときだけ有効にする）
     replace_existing: bool = False
+    # true: 同じ日に既にフリー座席・プロジェクト座席の予約がある場合、それを取り消さずこの座席も
+    # 追加で予約する（両方保有する。2026-09-09追加。「フリー座席、プロジェクト席の人も二つ席を
+    # 確保できるようにしていい」とのルール改定を受けた。既定の挙動は従来どおり「変更」のままとし、
+    # 「両方保有」は本人が明示的に選んだ場合のみの選択肢とする。replace_existingと同時にtrueには
+    # ならない想定〔フロント側で排他的なボタンとして提供する〕）。
+    keep_both: bool = False
 
 
 @router.post("")
@@ -40,8 +46,11 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     RULE-07（固定座席利用者はフリー座席を予約不可）は2026-09-09に廃止した（「固定席の人でもフリー座席の
     予約ができるようにしてほしい」との要望を受けた。続けて「固定席・プロジェクト席・フリー座席は
     同時に持てる状態でよい」との回答を得たため、単なる例外追加ではなくRULE-07自体を廃止する）。
-    廃止に伴い、同じ日に複数の座席を保有することになった場合は、本人に画面上で警告するにとどめる
-    （multi_seat_warning、下記参照）。"""
+    続けて同日中に「フリー座席、プロジェクト席の人も二つ席を確保できるようにしていい。ルール改定」
+    との連絡を受け、RULE-02自体も改定した。既定（keep_both=false）は従来どおり「変更」（既存を
+    取り消して新規に変更）のままだが、本人が明示的にkeep_both=trueを指定した場合は、既存の予約を
+    維持したままこの座席も追加で登録する（両方保有）。いずれの場合も、同じ日に複数の座席を保有する
+    ことになった場合は、本人に画面上で警告する（multi_seat_warning、下記参照）。"""
     pool = get_pool()
     seat = await pool.fetchrow(
         "SELECT id, seat_no, seat_type, status FROM seats WHERE id = $1", body.seat_id
@@ -75,27 +84,33 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
            WHERE fsa.user_id = $1 AND fsa.ended_on IS NULL AND fsa.valid_from <= CURRENT_DATE""",
         user.id,
     )
-    multi_seat_warning = None
-    if own_fixed_seat is not None and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], body.date):
-        multi_seat_warning = (
-            f"あなたは固定座席（{own_fixed_seat['seat_no']}）も保有しています。"
-            f"{body.date.month}月{body.date.day}日は複数の座席を保有する状態になります。"
-        )
-
-    # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない。
+    # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない、が既定（2026-09-09改定。
     # 詳細設計書6章のとおりRULE-05と異なりP-ADMIN除外の定めがないため、管理部が自分の予約として
-    # 登録する場合（A-09は常に本人の予約として登録する）も対象とする。
+    # 登録する場合（A-09は常に本人の予約として登録する）も対象とする。ただしkeep_both=trueの場合は
+    # 既存の予約を取り消さず、この座席も追加で登録する（両方保有、下記参照）。
     duplicate = await pool.fetchrow(
         """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
            WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
         user.id, body.date,
     )
-    if duplicate and not body.replace_existing:
+    if duplicate and not body.replace_existing and not body.keep_both:
         raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
+
+    multi_seat_warning = None
+    warning_reasons = []
+    if own_fixed_seat is not None and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], body.date):
+        warning_reasons.append(f"固定座席（{own_fixed_seat['seat_no']}）")
+    if duplicate and body.keep_both:
+        warning_reasons.append(f"{duplicate['seat_no']}の予約")
+    if warning_reasons:
+        multi_seat_warning = (
+            f"あなたは{'、'.join(warning_reasons)}も保有しています。"
+            f"{body.date.month}月{body.date.day}日は複数の座席を保有する状態になります。"
+        )
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            if duplicate:
+            if duplicate and body.replace_existing:
                 await conn.execute(
                     "UPDATE reservations SET status = 'cancelled', updated_at = now() WHERE id = $1", duplicate["id"]
                 )
@@ -112,7 +127,7 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     return {
         "id": row["id"], "seat_id": seat["id"], "seat_no": seat["seat_no"],
         "date": row["date"].isoformat(), "status": row["status"],
-        "replaced_seat_no": duplicate["seat_no"] if duplicate else None,
+        "replaced_seat_no": duplicate["seat_no"] if duplicate and body.replace_existing else None,
         "multi_seat_warning": multi_seat_warning,
     }
 

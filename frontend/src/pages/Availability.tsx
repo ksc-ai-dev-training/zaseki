@@ -717,9 +717,12 @@ export default function Availability() {
     }
   }
 
-  // 「同じ日に複数の座席は予約できません」で拒否された直後、利用者が明示的に「変更する」を押した
-  // 場合のみreplace_existing=trueで再送信する（2026-09-08追加）
-  const confirmReserveReplace = async () => {
+  // 「同じ日に複数の座席は予約できません」で拒否された直後、利用者が明示的に「変更する」または
+  // 「両方予約する」を押した場合のみ、それぞれreplace_existing・keep_both=trueで再送信する
+  // （2026-09-08追加、2026-09-09にkeep_both〔両方保有〕を追加。「フリー座席、プロジェクト席の人も
+  // 二つ席を確保できるようにしていい」とのルール改定を受けた。既定の「変更」は維持したまま、
+  // 「両方保有」を明示的な選択肢として追加した）
+  const confirmReserveResolveDuplicate = async (mode: 'replace' | 'keep_both') => {
     if (!reserveTarget) return
     setSubmitting(true)
     setActionError(null)
@@ -727,7 +730,10 @@ export default function Availability() {
     try {
       const data = await apiFetch<{ multi_seat_warning: string | null }>('/api/reservations', {
         method: 'POST',
-        body: JSON.stringify({ seat_id: reserveTarget.seatId, date: reserveTarget.date, replace_existing: true }),
+        body: JSON.stringify({
+          seat_id: reserveTarget.seatId, date: reserveTarget.date,
+          replace_existing: mode === 'replace', keep_both: mode === 'keep_both',
+        }),
       })
       setReserveTarget(null)
       setDuplicateSeatError(false)
@@ -1600,9 +1606,19 @@ export default function Availability() {
                 <div className="flex justify-between"><dt className="text-slate-500">{recurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
               </dl>
               {!proxyBookingFor && !recurring && existingSameDayReservation && (
-                <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
-                </p>
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <p>
+                    「予約する」を押すと、現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                    className="mt-2 rounded border border-amber-300 bg-white px-3 py-1 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    両方予約する（現在の予約（{existingSameDayReservation.seat_no}）はそのまま残す）
+                  </button>
+                </div>
               )}
               {!proxyBookingFor && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
@@ -1687,23 +1703,33 @@ export default function Availability() {
                     >
                       <p>
                         {anySameDayReservation?.seat_type === 'project'
-                          ? `現在の予約（${anySameDayReservation.seat_no}）は、PM・PLが割り当てたプロジェクトの確保済み座席です。取り消してこの座席に変更しますか？（プロジェクト座席の確保が失われます）`
+                          ? `現在の予約（${anySameDayReservation.seat_no}）は、PM・PLが割り当てたプロジェクトの確保済み座席です。取り消してこの座席に変更しますか？（プロジェクト座席の確保が失われます）他の座席を追加でもう1つ予約することもできます。`
                           : anySameDayReservation
-                            ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？`
-                            : 'この日の他の予約を取り消して、この座席に変更しますか？'}
+                            ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？他の座席を追加でもう1つ予約することもできます。`
+                            : 'この日の他の予約を取り消して、この座席に変更しますか？他の座席を追加でもう1つ予約することもできます。'}
                       </p>
-                      <button
-                        type="button"
-                        disabled={submitting}
-                        onClick={confirmReserveReplace}
-                        className={`mt-2 rounded px-3 py-1 text-xs text-white disabled:opacity-50 ${
-                          anySameDayReservation?.seat_type === 'project'
-                            ? 'bg-red-700 hover:bg-red-800'
-                            : 'bg-amber-700 hover:bg-amber-800'
-                        }`}
-                      >
-                        {anySameDayReservation?.seat_type === 'project' ? 'プロジェクト座席を取り消して変更する' : '変更する'}
-                      </button>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          onClick={() => confirmReserveResolveDuplicate('replace')}
+                          className={`rounded px-3 py-1 text-xs text-white disabled:opacity-50 ${
+                            anySameDayReservation?.seat_type === 'project'
+                              ? 'bg-red-700 hover:bg-red-800'
+                              : 'bg-amber-700 hover:bg-amber-800'
+                          }`}
+                        >
+                          {anySameDayReservation?.seat_type === 'project' ? 'プロジェクト座席を取り消して変更する' : '変更する'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                          className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          両方予約する（既存の予約は残す）
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
