@@ -5,15 +5,18 @@ import type { QuarterPlanItem } from '../types'
 // A-38: プロジェクト座席の計画データ一覧（S-09）。2026-09-03、「四半期」の概念を撤廃したことに伴い
 // quarter絞り込みパラメータを廃止し常に全件を返すよう変更した（検討資料「プロジェクト座席・曜日調整
 // フロー改善案」変更D）。unplanned_projectsは、今日以降に及ぶ計画データを1件も持たないプロジェクト
-// （まだ期間を設定していないプロジェクト）の一覧。
+// （まだ期間を設定していないプロジェクト）の一覧。area_seat_capacityは、出社曜日の調整表の
+// 「曜日ごとの合計」が物理座席数を超えていないかの警告表示に使うエリア別の有効座席数（2026-09-09追加）。
 export function useQuarterPlans() {
   const { data, error, isLoading, mutate } = useSWR<{
     items: QuarterPlanItem[]
     unplanned_projects: { id: number; name: string }[]
+    area_seat_capacity: { NORTH: number; EAST_WEST: number }
   }>('/api/project-quarter-plans', apiFetch)
   return {
     items: data?.items ?? [],
     unplannedProjects: data?.unplanned_projects ?? [],
+    areaSeatCapacity: data?.area_seat_capacity ?? { NORTH: 0, EAST_WEST: 0 },
     error, isLoading, refresh: mutate,
   }
 }

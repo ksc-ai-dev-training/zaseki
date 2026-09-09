@@ -110,7 +110,7 @@ const statusBadgeClass = (p: QuarterPlanItem) => {
 // 要望を受けた）。従来の四半期ごとの自動起票・対象四半期タブは廃止し、全期間を1本のリストで表示する。
 export default function ProjectSeatAllocation() {
   const navigate = useNavigate()
-  const { items: plans, unplannedProjects, refresh: refreshAll } = useQuarterPlans()
+  const { items: plans, unplannedProjects, areaSeatCapacity, refresh: refreshAll } = useQuarterPlans()
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -391,6 +391,7 @@ export default function ProjectSeatAllocation() {
 
         <WeekdayMatrix
           plans={plans.filter((p) => p.status === 'survey_open')}
+          areaSeatCapacity={areaSeatCapacity}
           onFinalized={refreshAll}
         />
 
@@ -828,7 +829,11 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
   )
 }
 
-function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFinalized: () => void }) {
+function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
+  plans: QuarterPlanItem[]
+  areaSeatCapacity: { NORTH: number; EAST_WEST: number }
+  onFinalized: () => void
+}) {
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -891,14 +896,18 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
   // プロジェクトごとのエリア情報がT-07に存在しないため、直近に座席の島を割り当てた四半期で実際に使った
   // エリア（A-38のprevious_area、backend/routers/project_seats.pyのlist_quarter_plans参照）で代用する、
   // との回答による。一度も割り当てたことがないプロジェクト（previous_area=null）は別グループにまとめる。
+  // seatCapacity: そのグループの物理座席数（座席タイプ問わず）。「曜日ごとの合計」がこれを超えた
+  // 曜日を警告表示するために使う（2026-09-09追加）。UNKNOWNグループはまだどのエリアになるか
+  // 決まっていないため比較対象を持たない（undefined）
   const AREA_GROUPS: {
     key: string; label: string
     matchPlan: (p: QuarterPlanItem) => boolean
     matchFixed: (a: (typeof fixedAssignments)[number]) => boolean
+    seatCapacity: number | undefined
   }[] = [
-    { key: 'NORTH', label: 'NORTHエリア', matchPlan: (p) => p.previous_area === 'NORTH', matchFixed: (a) => a.area === 'NORTH' },
-    { key: 'EAST_WEST', label: 'EAST・WESTエリア', matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST', matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST' },
-    { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => false },
+    { key: 'NORTH', label: 'NORTHエリア', matchPlan: (p) => p.previous_area === 'NORTH', matchFixed: (a) => a.area === 'NORTH', seatCapacity: areaSeatCapacity.NORTH },
+    { key: 'EAST_WEST', label: 'EAST・WESTエリア', matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST', matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST', seatCapacity: areaSeatCapacity.EAST_WEST },
+    { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => false, seatCapacity: undefined },
   ]
   const groups = AREA_GROUPS.map((g) => {
     const groupPlans = plans.filter(g.matchPlan)
@@ -994,7 +1003,12 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
           return (
             <div key={g.key} className="overflow-x-auto">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-600">{g.label}</div>
+                <div className="text-sm font-semibold text-slate-600">
+                  {g.label}
+                  {g.seatCapacity !== undefined && (
+                    <span className="ml-1.5 text-xs font-normal text-slate-400">（座席総数{g.seatCapacity}席）</span>
+                  )}
+                </div>
                 <button
                   type="button"
                   disabled={aiLoadingGroup === g.key}
@@ -1065,9 +1079,23 @@ function WeekdayMatrix({ plans, onFinalized }: { plans: QuarterPlanItem[]; onFin
                     {WEEKDAYS.map((w) => {
                       const total = dayTotal(w.key)
                       const filled = totalRequired > 0 && total === totalRequired
+                      // 座席不足の警告（2026-09-09追加）: その曜日の合計が物理座席数を超えている場合、
+                      // 座席の島の割当段階で初めて発覚し曜日を調整し直す手戻りが起きていたため、
+                      // 曜日を確定する前のこの段階で気づけるようにした
+                      const over = g.seatCapacity !== undefined && total > g.seatCapacity
+                        ? total - g.seatCapacity
+                        : 0
                       return (
-                        <td key={w.key} className={`px-2 py-2 text-center ${filled ? 'rounded bg-green-50 text-green-700' : ''}`}>
-                          {total}{filled && <span className="ml-1">✓</span>}
+                        <td
+                          key={w.key}
+                          title={over > 0 ? `座席総数${g.seatCapacity}席に対して${total}名。${over}席不足しています` : undefined}
+                          className={`px-2 py-2 text-center ${
+                            over > 0 ? 'rounded bg-red-50 text-red-700' : filled ? 'rounded bg-green-50 text-green-700' : ''
+                          }`}
+                        >
+                          {total}
+                          {filled && <span className="ml-1">✓</span>}
+                          {over > 0 && <span className="ml-1">⚠{over}</span>}
                         </td>
                       )
                     })}

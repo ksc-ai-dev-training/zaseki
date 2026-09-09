@@ -233,7 +233,10 @@ async def list_quarter_plans(
     'seats_allocated'、対象四半期の絞り込みに関わらず全期間から探す）で実際に使ったエリアを返す
     （2026-09-03追加、S-09の曜日調整表をエリアで分けたいとの要望を受けた。T-07にarea_id自体は
     存在しないため、割当済みの座席〔allocated_seats〕から逆引きする。一度も座席の島を割り当てて
-    いないプロジェクトはnull）。"""
+    いないプロジェクトはnull）。area_seat_capacity（{NORTH, EAST_WEST}の各エリアの有効座席数、
+    座席タイプを問わない）は、出社曜日の調整表の「曜日ごとの合計」が物理座席数を超えていないか
+    その場で判定できるようにするため2026-09-09追加。座席総数を毎回手で数える代わりに、必要数が
+    超過した曜日をUI側で警告表示する（3.9節参照）。"""
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
@@ -313,7 +316,21 @@ async def list_quarter_plans(
     )
     unplanned_projects = [{"id": r["id"], "name": r["name"]} for r in unplanned_rows]
 
-    return {"items": items, "unplanned_projects": unplanned_projects}
+    # 曜日調整表のNORTH／EAST・WEST分け（前述）と揃えたエリア別の有効座席数。座席タイプ（フリー／固定／
+    # プロジェクト）を問わず、そのエリアに物理的に存在する座席数を数える（2026-09-09追加）。
+    capacity_rows = await pool.fetch(
+        """SELECT a.name AS area_name, COUNT(*) AS cnt FROM seats s
+           JOIN areas a ON a.id = s.area_id
+           WHERE s.status = 'active'
+           GROUP BY a.name"""
+    )
+    capacity_by_area = {r["area_name"]: r["cnt"] for r in capacity_rows}
+    area_seat_capacity = {
+        "NORTH": capacity_by_area.get("NORTH", 0),
+        "EAST_WEST": capacity_by_area.get("EAST", 0) + capacity_by_area.get("WEST", 0),
+    }
+
+    return {"items": items, "unplanned_projects": unplanned_projects, "area_seat_capacity": area_seat_capacity}
 
 
 class QuarterPlanCreate(BaseModel):
