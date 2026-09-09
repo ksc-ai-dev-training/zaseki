@@ -1183,7 +1183,7 @@ export default function Availability() {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+      <div className="scrollbar-hide mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
         {AREA_TABS.map((t) => (
           <button
             key={t.key}
