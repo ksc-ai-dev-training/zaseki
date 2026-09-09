@@ -9,10 +9,49 @@ interface FloorProps {
   fixedSeatAssignMode?: boolean
   onAssignFixedSeat?: (seat: Seat) => void
   selectedSeatIds?: Set<number>
+  // 座席の島の割当モード（selectedSeatIdsがある時のみ意味を持つ）で、ブロックのラベルをクリック
+  // したときにそのブロック内の座席をまとめて選択・解除するコールバック（2026-09-09追加）
+  onToggleBlock?: (seatIds: number[], select: boolean) => void
   memberAssignMode?: boolean
   memberAssignEligibleIds?: Set<number>
   memberAssignPickedLabels?: Record<number, string>
   onMemberAssignClick?: (seat: Seat) => void
+}
+
+// ブロックの見出しラベル。座席の島の割当モード（selectedSeatIds・onToggleBlockが両方渡された時）
+// のみクリック可能にし、そのブロック内で選択可能な座席（空き、または既に選択済み）をまとめて
+// 選択／解除する。それ以外の画面では従来どおりただの見出しテキストとして表示する
+// （2026-09-09追加。「座席タイルを1つずつクリックする必要があり工数が多すぎる」との指摘を受けた）
+function SeatBlockLabel({ label, seatNos, seatByNo, selectedSeatIds, onToggleBlock }: {
+  label: string
+  seatNos: string[]
+  seatByNo: Record<string, Seat>
+  selectedSeatIds?: Set<number>
+  onToggleBlock?: (seatIds: number[], select: boolean) => void
+}) {
+  if (!selectedSeatIds || !onToggleBlock) {
+    return <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">{label}</div>
+  }
+  const selectableIds = seatNos
+    .map((no) => seatByNo[no])
+    .filter((s): s is Seat => Boolean(s) && ((s.status === 'free' && s.seat_type === 'free') || selectedSeatIds.has(s.id)))
+    .map((s) => s.id)
+  if (selectableIds.length === 0) {
+    return <div className="seat-block-label text-xs font-semibold text-slate-400 mb-1">{label}</div>
+  }
+  const allSelected = selectableIds.every((id) => selectedSeatIds.has(id))
+  return (
+    <button
+      type="button"
+      onClick={() => onToggleBlock(selectableIds, !allSelected)}
+      title={allSelected ? 'クリックしてこのブロックの選択をまとめて解除' : 'クリックしてこのブロックの空き座席をまとめて選択'}
+      className={`seat-block-label mb-1 block w-full text-left text-xs font-semibold underline decoration-dotted ${
+        allSelected ? 'text-green-700' : 'text-blue-700 hover:text-blue-900'
+      }`}
+    >
+      {label}
+    </button>
+  )
 }
 
 const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center', alignSelf: 'center' }
@@ -24,10 +63,19 @@ export function NorthFloor({ seatByNo, ...tileProps }: FloorProps) {
   const tile = (no: string, style: CSSProperties) => (
     <SeatTile seat={seatByNo[no]} style={style} {...tileProps} />
   )
+  const label = (text: string, seatNos: string[]) => (
+    <SeatBlockLabel
+      label={text}
+      seatNos={seatNos}
+      seatByNo={seatByNo}
+      selectedSeatIds={tileProps.selectedSeatIds}
+      onToggleBlock={tileProps.onToggleBlock}
+    />
+  )
   return (
     <div className="flex flex-col gap-3">
       <div className="floor-block">
-        <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">周辺スペース・Bブロック（ロッカー）</div>
+        {label('周辺スペース・Bブロック（ロッカー）', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8'])}
         <div className="seat-grid north-l rows-5">
           <div className="floor-pillar" style={{ gridColumn: '9 / span 2', gridRow: '1', ...pillarStyle }}>柱</div>
           <div className="floor-room" style={{ gridColumn: '6 / span 2', gridRow: '2 / span 4' }}>倉庫</div>
@@ -43,7 +91,7 @@ export function NorthFloor({ seatByNo, ...tileProps }: FloorProps) {
         </div>
       </div>
       <div className="floor-block">
-        <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">Aブロック</div>
+        {label('Aブロック', ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11'])}
         <div className="seat-grid north-l rows-2">
           {tile('A1', { gridColumn: '3', gridRow: '1' })}
           <div className="floor-pillar" style={{ gridColumn: '4', gridRow: '1 / span 2', ...pillarStyle }}>柱</div>
@@ -71,7 +119,13 @@ function SeatBlock({ label, seats, gridArea, seatByNo, ...tileProps }: {
 } & FloorProps) {
   return (
     <div className="floor-block" style={{ gridArea }}>
-      <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">{label}</div>
+      <SeatBlockLabel
+        label={label}
+        seatNos={seats}
+        seatByNo={seatByNo}
+        selectedSeatIds={tileProps.selectedSeatIds}
+        onToggleBlock={tileProps.onToggleBlock}
+      />
       <div className="seat-grid cols-2">
         {seats.map((no) => (
           <SeatTile key={no} seat={seatByNo[no]} {...tileProps} />

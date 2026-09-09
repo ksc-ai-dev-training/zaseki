@@ -465,6 +465,17 @@ export default function Availability() {
   const exitAssignFixedSeatMode = () => navigate('.', { replace: true, state: null })
   const exitPlaceSeatMode = () => navigate('.', { replace: true, state: null })
   const exitSeatBlockMode = () => { setSeatBlockSelection(new Set()); navigate('.', { replace: true, state: null }) }
+  // 座席の島の割当モードで、ブロックのラベル（「Cブロック」等）をクリックしたときにそのブロック
+  // 内の座席をまとめて選択・解除する（2026-09-09追加。「座席タイルを1つずつクリックする必要があり
+  // 工数が多すぎる」との指摘を受けた。対象は各ブロックの中で選択可能な座席〔空き、または既に
+  // 選択済み〕のみで、他の予約が入っている等で選択できない座席は対象外のまま残る）
+  const onToggleSeatBlock = (seatIds: number[], select: boolean) => {
+    setSeatBlockSelection((prev) => {
+      const next = new Set(prev)
+      seatIds.forEach((id) => { if (select) next.add(id); else next.delete(id) })
+      return next
+    })
+  }
 
   const confirmSeatBlock = async () => {
     if (!seatBlockFor || seatBlockSelection.size === 0) return
@@ -845,6 +856,7 @@ export default function Availability() {
     fixedSeatAssignMode: Boolean(assignFixedSeatFor),
     onAssignFixedSeat: (seat: Seat) => openAssignFixedSeat(seat, seatArea[seat.seat_no]),
     selectedSeatIds: seatBlockFor ? seatBlockSelection : undefined,
+    onToggleBlock: seatBlockFor ? onToggleSeatBlock : undefined,
     memberAssignMode: Boolean(memberSeatAssignFor),
     memberAssignEligibleIds: memberSeatAssignFor ? memberAssignEligibleIds : undefined,
     memberAssignPickedLabels: memberSeatAssignFor ? memberAssignPickedLabels : undefined,
@@ -942,7 +954,7 @@ export default function Availability() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
           <span>
             <strong>{seatBlockFor.projectName}</strong>の座席の島を{seatBlockFor.allocatedSeatIds ? '編集' : '割り当て'}中です（必要座席数: {seatBlockFor.requiredSeats}名）。
-            フロアマップの座席をクリックして選択・解除してください。選択中: {seatBlockSelection.size}席
+            フロアマップの座席をクリックして選択・解除してください（ブロックの見出し名をクリックすると、そのブロックの空き座席をまとめて選択・解除できます）。選択中: {seatBlockSelection.size}席
           </span>
           <span className="flex shrink-0 gap-3">
             <button
