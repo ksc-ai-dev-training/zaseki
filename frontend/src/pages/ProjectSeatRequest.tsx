@@ -534,7 +534,8 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
   const [changeError, setChangeError] = useState<string | null>(null)
   const [changeMessage, setChangeMessage] = useState<string | null>(null)
 
-  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.has_fixed_seat && !m.seat_not_required)
+  // RULE-07廃止（2026-09-09）に伴い、固定座席保有者も確保対象に含める（固定座席との併用可）
+  const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.seat_not_required)
   const assignedSeatIds = new Set(plan.members.map((m) => m.assigned_seat_id).filter((v): v is number => v !== null))
   const seatOptions = (plan.allocated_seats ?? []).filter((s) => !assignedSeatIds.has(s.id))
   // 変更先の候補は、必要人数ちょうどで座席の島が埋まっている（空き座席がない）ことが多く、
@@ -680,14 +681,17 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           <tbody>
             {plan.members.map((m) => (
               <tr key={m.member_id} className="border-b border-slate-100">
-                <td className="py-2 pr-3">{m.name}</td>
+                <td className="py-2 pr-3">
+                  {m.name}
+                  {m.has_fixed_seat && (
+                    <span className="ml-1.5 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700">固定座席あり</span>
+                  )}
+                </td>
                 <td className="py-2 pr-3 text-xs text-slate-500">
-                  {m.has_fixed_seat ? '固定座席あり' : m.seat_not_required ? '在宅のため不要' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
+                  {m.seat_not_required ? '在宅のため不要' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
                 </td>
                 <td className="py-2 pr-3">
-                  {m.has_fixed_seat ? (
-                    <span className="text-xs text-slate-400">対象外（固定座席保有者）</span>
-                  ) : m.seat_not_required ? (
+                  {m.seat_not_required ? (
                     <span className="text-xs text-slate-400">対象外（在宅のため不要）</span>
                   ) : m.assigned_seat_id === null ? (
                     <select
@@ -733,17 +737,13 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                   )}
                 </td>
                 <td className="py-2">
-                  {m.has_fixed_seat ? (
-                    <span className="text-xs text-slate-400">－</span>
-                  ) : (
-                    <input
-                      type="checkbox"
-                      checked={m.seat_not_required}
-                      disabled={busyMemberId === m.member_id || (m.assigned_seat_id !== null && !m.seat_not_required)}
-                      title={m.assigned_seat_id !== null && !m.seat_not_required ? '既に座席を確保済みです。先に予約を取り消してください' : undefined}
-                      onChange={(e) => toggleSeatNotRequired(m, e.target.checked)}
-                    />
-                  )}
+                  <input
+                    type="checkbox"
+                    checked={m.seat_not_required}
+                    disabled={busyMemberId === m.member_id || (m.assigned_seat_id !== null && !m.seat_not_required)}
+                    title={m.assigned_seat_id !== null && !m.seat_not_required ? '既に座席を確保済みです。先に予約を取り消してください' : undefined}
+                    onChange={(e) => toggleSeatNotRequired(m, e.target.checked)}
+                  />
                 </td>
               </tr>
             ))}
@@ -827,7 +827,8 @@ const AREA_OPTIONS: { key: 'all' | 'north' | 'east' | 'west'; label: string }[] 
 // よかったので」との要望を受けた。座席の島の割当と異なり、対象四半期・座席の島の状態を問わず
 // いつでも使える。空き座席への割当は自動（エリア指定のみ）で、座席は日によって変わり得る）
 function BulkFreeSeatBooking({ plan }: { plan: ProjectPlanDetail }) {
-  const candidates = plan.members.filter((m) => !m.has_fixed_seat && !m.seat_not_required)
+  // RULE-07廃止（2026-09-09）に伴い、固定座席保有者も対象に含める
+  const candidates = plan.members.filter((m) => !m.seat_not_required)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [area, setArea] = useState<'all' | 'north' | 'east' | 'west'>('all')
   const [patternType, setPatternType] = useState<'daily' | 'weekly'>('daily')

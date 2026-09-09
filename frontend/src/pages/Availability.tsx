@@ -215,7 +215,8 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
     setOpen(false)
   }
 
-  const candidates = plan?.members.filter((m) => !m.has_fixed_seat && !m.seat_not_required) ?? []
+  // RULE-07廃止（2026-09-09）に伴い、固定座席保有者も対象に含める（フリー座席との併用可）
+  const candidates = plan?.members.filter((m) => !m.seat_not_required) ?? []
 
   return (
     <>
@@ -376,6 +377,10 @@ export default function Availability() {
   const [memberAssignResult, setMemberAssignResult] = useState<MemberAssignResultRow[] | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // RULE-07廃止（2026-09-09）に伴い、固定座席保有者が同じ日にフリー座席等を予約すると複数の座席を
+  // 保有する状態になる。本人が気づけるよう、予約完了後に画面上へ警告を表示する
+  // （「2つ座席を保有していることを通知する」との要望、方式は「本人に画面上で警告」を選択）
+  const [multiSeatNotice, setMultiSeatNotice] = useState<string | null>(null)
 
   const { availability, isLoading, refresh: refreshAvailability } = useAvailability(date, areaFilter)
   const { items: areas } = useAreas(placeSeatMode)
@@ -648,6 +653,7 @@ export default function Availability() {
     setSubmitting(true)
     setActionError(null)
     setDuplicateSeatError(false)
+    setMultiSeatNotice(null)
     try {
       if (proxyBookingFor) {
         // S-11「代理予約モード」: 対象者の代理でA-47を呼び、完了後はS-11に戻る（4.11節）。
@@ -690,7 +696,7 @@ export default function Availability() {
         await refreshAll()
         return
       }
-      await apiFetch('/api/reservations', {
+      const data = await apiFetch<{ multi_seat_warning: string | null }>('/api/reservations', {
         method: 'POST',
         body: JSON.stringify({
           seat_id: reserveTarget.seatId, date: reserveTarget.date,
@@ -698,6 +704,7 @@ export default function Availability() {
         }),
       })
       setReserveTarget(null)
+      setMultiSeatNotice(data.multi_seat_warning)
       await refreshAll()
     } catch (e) {
       const message = e instanceof ApiError ? e.message : '予約に失敗しました'
@@ -716,13 +723,15 @@ export default function Availability() {
     if (!reserveTarget) return
     setSubmitting(true)
     setActionError(null)
+    setMultiSeatNotice(null)
     try {
-      await apiFetch('/api/reservations', {
+      const data = await apiFetch<{ multi_seat_warning: string | null }>('/api/reservations', {
         method: 'POST',
         body: JSON.stringify({ seat_id: reserveTarget.seatId, date: reserveTarget.date, replace_existing: true }),
       })
       setReserveTarget(null)
       setDuplicateSeatError(false)
+      setMultiSeatNotice(data.multi_seat_warning)
       await refreshAll()
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '予約に失敗しました')
@@ -918,6 +927,15 @@ export default function Availability() {
         <h1 className="text-xl font-bold">空き状況・予約</h1>
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-02</span>
       </header>
+
+      {multiSeatNotice && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-200 bg-red-50 px-8 py-2.5 text-sm text-red-800">
+          <span>⚠ {multiSeatNotice}</span>
+          <button type="button" onClick={() => setMultiSeatNotice(null)} className="shrink-0 text-red-700 underline hover:text-red-900">
+            閉じる
+          </button>
+        </div>
+      )}
 
       {assignFixedSeatFor && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
@@ -1288,6 +1306,10 @@ export default function Availability() {
             {l.label}
           </span>
         ))}
+        <span className="legend-item flex items-center gap-1.5">
+          <span className="legend-swatch inline-block h-3.5 w-3.5 rounded-sm seat-multi-holder" />
+          複数の座席を保有中（要確認）
+        </span>
       </div>
       </>
       )}
@@ -1539,6 +1561,11 @@ export default function Availability() {
           {recurringResult ? (
             <div>
               <p className="mb-2 text-sm text-slate-600">{recurringResult.seat_no} への繰り返し予約の登録結果</p>
+              {recurringResult.multi_seat_warning && (
+                <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {recurringResult.multi_seat_warning}
+                </p>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">

@@ -316,10 +316,11 @@ class ProxyReservationCreate(BaseModel):
 @router.post("/proxy")
 async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: CurrentUser = Depends(require_roles("admin"))):
     """A-47: フリー座席の代理予約（新規はフリー座席のみ、FR-01-5）。管理部はFR-01-7により
-    座席タイプ別の確保サイクル・予約可能期間（RULE-05）の制限を受けない。RULE-02・RULE-07・
-    RULE-03は対象者（body.user_id）の状態で判定する（A-09と同様の考え方だが、判定対象は
-    呼び出し者ではなく代理予約の対象者）。周期予約（繰り返しパターン指定）はA-10が未実装のため
-    本APIでは単発のみ対応する（2026-08-28追加時点のスコープ、A-10実装後に拡張予定）。"""
+    座席タイプ別の確保サイクル・予約可能期間（RULE-05）の制限を受けない。RULE-02・RULE-03は
+    対象者（body.user_id）の状態で判定する（A-09と同様の考え方だが、判定対象は呼び出し者ではなく
+    代理予約の対象者）。RULE-07（固定座席保有者はフリー座席を予約不可）は2026-09-09に廃止したため
+    ここでは検証しない。周期予約（繰り返しパターン指定）はA-10が未実装のため本APIでは単発のみ対応する
+    （2026-08-28追加時点のスコープ、A-10実装後に拡張予定）。"""
     pool = get_pool()
     await release_expired_fixed_seats()
     seat = await pool.fetchrow("SELECT id, seat_no, seat_type, status FROM seats WHERE id = $1", body.seat_id)
@@ -336,17 +337,6 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
     target = await pool.fetchrow("SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL", body.user_id)
     if target is None:
         raise HTTPException(404, detail="対象が見つかりません")
-
-    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。reservations.pyの
-    # A-09と同じ考え方）。対象者の固定座席がbody.date当日にT-18解除（絶対欠席）指定されている
-    # 場合も対象外とする（2026-09-08追加）。
-    own_fixed_seat_id = await pool.fetchval(
-        """SELECT seat_id FROM fixed_seat_assignments
-           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
-        body.user_id,
-    )
-    if own_fixed_seat_id is not None and not await fixed_seat_absent_on(own_fixed_seat_id, body.date):
-        raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
 
     duplicate = await pool.fetchrow(
         """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id

@@ -347,8 +347,11 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     ルール）を生成し、確定した出社曜日（weekdays_finalized）・対象四半期をもとにT-08を一括生成する。
     role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（T-06.can_assign_seats）。
     座席はallocated_seatsの範囲外を指定不可。同一座席を複数のメンバーに重複して指定した場合、
-    当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。固定座席保有者は
-    そもそもプロジェクト座席が不要なため、指定されても確保せず除外する（RULE-07、2026-08-28追加）。"""
+    当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。固定座席保有者を
+    確保対象から一律除外していたRULE-07は2026-09-09に廃止した（「固定席・プロジェクト席・
+    フリー座席は同時に持てる状態でよい」との回答を受けた）。デフォルトの必要座席数
+    （required_seats）の算出ロジック自体は変更していないため、固定座席保有者を含めて確保する場合は
+    必要に応じてPM・PL側で必要座席数を調整する。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
 
@@ -378,12 +381,6 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     )
     member_user_ids = {r["user_id"] for r in member_rows}
     seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
-    fixed_seat_user_ids = {
-        r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL",
-            list(member_user_ids),
-        )
-    }
     weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
     seat_no_by_id = await _seat_labels(pool, list(allocated_seat_ids))
 
@@ -398,10 +395,6 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         if a.member_user_id not in member_user_ids or a.seat_id not in allocated_seat_ids:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
                              "status": "excluded", "reason": "対象が見つかりません"})
-            continue
-        if a.member_user_id in fixed_seat_user_ids:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": "固定座席が割り当てられているため、プロジェクト座席は確保できません"})
             continue
         if a.member_user_id in seat_not_required_user_ids:
             results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
@@ -482,14 +475,6 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
         raise HTTPException(404, detail="対象が見つかりません")
     if body.member_user_id in seat_not_required_user_ids:
         raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
-    fixed_seat_user_ids = {
-        r["user_id"] for r in await pool.fetch(
-            "SELECT user_id FROM fixed_seat_assignments WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE",
-            body.member_user_id,
-        )
-    }
-    if body.member_user_id in fixed_seat_user_ids:
-        raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")
 
     seat_no_by_id = await _seat_labels(pool, [body.seat_id])
     results = await retry_excluded_dates(
@@ -636,9 +621,9 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     いない（1人のメンバーが複数の日付・座席を別々のassignmentとして持てるだけで、以前から
     assignments一覧の各要素は独立して処理していたため）。/free-seat-bookings（エリア指定で
     自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
-    メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・RULE-07・座席専有チェックは
+    メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・座席専有チェックは
     A-10・A-18と共通のgenerate_recurring_reservationsに委譲する（メンバー・座席1組につき1件の
-    recurring_rulesを作成）。
+    recurring_rulesを作成。RULE-07は2026-09-09に廃止）。
 
     ID管理の補足（2026-09-09追加）: このエンドポイントは新設時にA番号を振らないまま docstring に
     記載されず、retry_free_seat_assignment（A-71）のdocstring内で「A-58（bulk_assign_free_seats_by_seat）
@@ -853,15 +838,6 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         raise HTTPException(404, detail="対象が見つかりません")
     if member["seat_not_required"]:
         raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
-    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。reservations.pyの
-    # A-09と同じ考え方）
-    has_fixed_seat = await pool.fetchval(
-        """SELECT 1 FROM fixed_seat_assignments
-           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
-        member_user_id,
-    )
-    if has_fixed_seat:
-        raise HTTPException(400, detail="固定座席が割り当てられているため、プロジェクト座席は確保できません")
 
     assign_rows = await pool.fetch(
         """SELECT DISTINCT ON (r.user_id) r.user_id, r.seat_id

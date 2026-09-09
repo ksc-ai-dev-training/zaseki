@@ -87,15 +87,15 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
     今後の通常予約（T-08）は割当と矛盾するため取り消す。対象者が既に別の固定座席を持つ場合は
     そちらを解除してから割り当てる（1人1固定座席、S-05の「座席を変更する」もこのAPIで表現する）。
     valid_untilを指定した場合、その日を過ぎるとrelease_expired_fixed_seats()により自動的に
-    フリー座席へ戻る（2026-08-28追加）。RULE-07（固定座席利用者はフリー座席を予約不可）は新規予約側
-    （A-09・A-18・A-47）では検証済みだったが、既にフリー座席・プロジェクト座席の予約（周期予約含む）
-    を持つ利用者へ後から固定座席を指定した場合の逆方向が抜けており、両方の座席を保持できてしまう
-    不具合があったため、対象者の他の今後の予約（新しい固定座席自体を除く）もあわせて取り消す
-    （2026-08-28修正）。
+    フリー座席へ戻る（2026-08-28追加）。RULE-07（固定座席利用者はフリー座席を予約不可）は
+    2026-09-09に廃止した（「固定席の人でもフリー座席の予約ができるようにしてほしい」、続けて
+    「固定席・プロジェクト席・フリー座席は同時に持てる状態でよい」との回答を受けた）。これに伴い、
+    対象者が既に持っているフリー座席・プロジェクト座席の予約（新しい固定座席自体を除く）を
+    自動的に取り消す処理（2026-08-28追加分）は廃止し、そのまま残す。
 
     valid_from対応（2026-09-07追加）:
-    - valid_fromが本日より後（未来予約）の場合、その日が来るまでseat_type・対象者のRULE-07判定は
-      従来どおり（座席はフリー座席のまま、利用者もフリー座席を予約できる）。開始日を迎えた時点で
+    - valid_fromが本日より後（未来予約）の場合、その日が来るまで座席のseat_typeは従来どおり
+      （座席はフリー座席のまま）。開始日を迎えた時点で
       release_expired_fixed_seats()がseat_typeを'fixed'へ切り替える（有効化）。この場合も対象者の
       既存の固定座席は指定時点ですぐに解除する（1人1固定座席の原則を優先し、開始日までの間は
       いったん無固定状態になる簡易な仕様。切れ目のない引き継ぎまでは対応しない）。
@@ -142,15 +142,13 @@ async def assign(body: FixedSeatAssign, user: CurrentUser = Depends(require_role
                 if valid_from <= today:
                     await conn.execute("UPDATE seats SET seat_type = 'fixed' WHERE id = $1", body.seat_id)
                 cancel_from = max(valid_from, today)
+                # この座席自体に残っている他の利用者の予約は、固定座席化と矛盾するため取り消す。
+                # 対象者自身の他の座席の予約（フリー座席・プロジェクト座席）は、RULE-07廃止
+                # （2026-09-09）に伴いそのまま残す（固定座席と併せて保有できる）。
                 await conn.execute(
                     """UPDATE reservations SET status = 'cancelled', updated_at = now()
                        WHERE seat_id = $1 AND status = 'active' AND date >= $2""",
                     body.seat_id, cancel_from,
-                )
-                await conn.execute(
-                    """UPDATE reservations SET status = 'cancelled', updated_at = now()
-                       WHERE user_id = $1 AND seat_id != $2 AND status = 'active' AND date >= $3""",
-                    body.user_id, body.seat_id, cancel_from,
                 )
             await conn.execute(
                 """INSERT INTO fixed_seat_assignments (seat_id, user_id, assigned_by, valid_from, valid_until, ended_on)

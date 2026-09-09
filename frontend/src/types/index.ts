@@ -59,6 +59,9 @@ export interface Seat {
   /** S-02「座席配置モード」で配置した座席のみ設定される、エリアパネルに対する%座標。未設定はnull */
   pos_x: number | null
   pos_y: number | null
+  /** この座席の占有者が同じ日に別の座席も保有している場合true（RULE-07廃止に伴う座席表の赤色表示用、
+   * 2026-09-09追加） */
+  multi_seat_holder: boolean
 }
 
 export interface SeatBlock {
@@ -443,6 +446,8 @@ export interface RecurringReservationResult {
   seat_id: number
   seat_no: string
   results: RecurringReservationDayResult[]
+  /** 固定座席と重複保有になる日が含まれる場合の警告文（RULE-07廃止、2026-09-09追加）。なければnull */
+  multi_seat_warning: string | null
 }
 
 // 一括予約の結果で除外された日（2026-09-07追加）。「席を取って結果で除外が出てきたとき、

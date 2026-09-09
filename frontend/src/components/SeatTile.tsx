@@ -44,10 +44,18 @@ function SeatContent({ seat }: { seat: Seat }) {
     <>
       {seat.avatar_image && <img src={seat.avatar_image} alt="" className="seat-avatar" />}
       {seat.is_birthday && <span className="seat-birthday-badge" title="本日誕生日です">🎂</span>}
+      {seat.multi_seat_holder && (
+        <span className="seat-multi-badge" title="この人は同じ日に複数の座席を保有しています">⚠</span>
+      )}
       {showSeatNo && seat.seat_no}
       {seat.display_name && <span className="seat-tag">{seat.display_name}</span>}
     </>
   )
+}
+
+// STATUS_CLASSに加え、multi_seat_holderならseat-multi-holderを重ねて赤色表示にする（2026-09-09追加）
+function tileClass(seat: Seat): string {
+  return `${STATUS_CLASS[seat.status]}${seat.multi_seat_holder ? ' seat-multi-holder' : ''}`
 }
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
@@ -78,7 +86,7 @@ export default function SeatTile({
       )
     }
     return (
-      <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
+      <div className={`seat-tile opacity-40 ${tileClass(seat)}`} style={style} title={seat.title ?? undefined}>
         <SeatContent seat={seat} />
       </div>
     )
@@ -101,7 +109,7 @@ export default function SeatTile({
       )
     }
     return (
-      <div className={`seat-tile opacity-40 ${STATUS_CLASS[seat.status]}`} style={style}>
+      <div className={`seat-tile opacity-40 ${tileClass(seat)}`} style={style}>
         <SeatContent seat={seat} />
       </div>
     )
@@ -125,13 +133,13 @@ export default function SeatTile({
   }
   if (seat.status === 'mine') {
     return (
-      <button type="button" className="seat-tile status-mine" style={style} onClick={() => onCancel(seat)}>
+      <button type="button" className={`seat-tile ${tileClass(seat)}`} style={style} onClick={() => onCancel(seat)}>
         <SeatContent seat={seat} />
       </button>
     )
   }
   return (
-    <div className={`seat-tile ${STATUS_CLASS[seat.status]}`} style={style} title={seat.title ?? undefined}>
+    <div className={`seat-tile ${tileClass(seat)}`} style={style} title={seat.title ?? undefined}>
       <SeatContent seat={seat} />
     </div>
   )

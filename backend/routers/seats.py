@@ -76,6 +76,14 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     'project_pending'（未確定、display_nameはプロジェクト名）とする（2026-08-28、A-10・S-04実装に
     伴い区別を追加）。指定dateがfixed_seat_absences（T-18）に該当する場合は割当自体は残っていても
     その日だけ固定表示を外す（A-21の1日分の解除、2026-09-08追加）。
+
+    multi_seat_holder（2026-09-09追加）: 「固定席の人でもフリー座席の予約ができるようにしてほしい」
+    との要望を受けRULE-07（固定座席保有者はフリー座席を予約不可）を廃止したのに伴い、「同じ日に
+    複数の座席を保有している」ことを座席表の赤色表示で目立たせるための拡張フィールド。RULE-02に
+    より1人が同日に持てるreservations行は最大1件のため、複数保有は実質「固定座席（1件）＋その日の
+    reservations行（1件、フリー座席またはプロジェクト座席）」の組み合わせに限られる。該当する
+    利用者が占有する座席タイル（固定座席側・reservations側の両方）にtrueを付ける。S-02の
+    フロアマップのみが対象（期間ビュー〔A-07〕は対象外）。
     """
     await release_expired_fixed_seats()
     lookback_days = int(await get_setting("seat_history_lookback_days") or "31")
@@ -110,6 +118,25 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     )
 
     project_name_by_seat_id = await project_blocked_seats(date)
+
+    # multi_seat_holder算出: dateに有効な固定座席を持ち、かつ同じdateにreservations行（フリー座席
+    # またはプロジェクト座席、いずれもreservationsに記録される）も持つ利用者のuser_id集合。
+    # fsaのJOIN条件（上のクエリ）と同じ日付範囲・T-18除外条件を用いる。
+    multi_seat_user_ids = {
+        r["user_id"] for r in await pool.fetch(
+            """SELECT fsa.user_id FROM fixed_seat_assignments fsa
+               WHERE fsa.valid_from <= $1
+                 AND (fsa.ended_on IS NULL OR $1 <= fsa.ended_on)
+                 AND (fsa.valid_until IS NULL OR $1 <= fsa.valid_until)
+                 AND NOT EXISTS (
+                     SELECT 1 FROM fixed_seat_absences fab WHERE fab.seat_id = fsa.seat_id AND fab.date = $1
+                 )
+                 AND EXISTS (
+                     SELECT 1 FROM reservations r WHERE r.user_id = fsa.user_id AND r.date = $1 AND r.status = 'active'
+                 )""",
+            date,
+        )
+    }
 
     # 座席タイルの表示名（基本設計書3.3節）: 使用中の座席の姓が同一フロアで重複する場合のみ
     # 「姓（名の頭文字）」に切り替える。自分の予約は常に「姓（自分）」で区別不要。
@@ -164,6 +191,9 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
             avatar_image = r["reserved_avatar_image"]
             is_birthday = _is_birthday(r["reserved_birth_month"], r["reserved_birth_day"], date)
 
+        occupant_user_id = r["fixed_user_id"] if r["fixed_user_id"] is not None else r["reserved_user_id"]
+        multi_seat_holder = occupant_user_id is not None and occupant_user_id in multi_seat_user_ids
+
         areas[area_name][block_label].append({
             # 仕様書のレスポンス例にはないが、予約登録（A-09）のBody.seat_idに必要な拡張フィールド
             "id": r["id"],
@@ -176,6 +206,9 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
             "avatar_image": avatar_image,
             # 表示中の日付が誕生日（月日一致）の利用者が使用中の座席のみtrue（FR-08-4、2026-08-31追加）
             "is_birthday": is_birthday,
+            # この座席の占有者が、同じ日に別の座席も保有している（固定座席＋フリー/プロジェクト座席の
+            # 組み合わせ）場合true。RULE-07廃止に伴う座席表の赤色表示用（2026-09-09追加、docstring参照）
+            "multi_seat_holder": multi_seat_holder,
             "title": None,
             # 仕様書のレスポンス例にはないが、S-02「座席配置モード」で配置した座席のみ設定される
             # フロアマップ上の自由配置座標（エリアパネルに対する%）。未設定ならnull

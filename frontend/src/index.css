@@ -53,6 +53,10 @@ button:disabled {
 /* マイプロフィール（S-12）のアイコン・誕生日バッジ（FR-08-3・4、2026-08-31追加） */
 .seat-tile .seat-avatar { width: 16px; height: 16px; border-radius: 9999px; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.15); }
 .seat-tile .seat-birthday-badge { position: absolute; top: -7px; right: -7px; font-size: 12px; line-height: 1; }
+/* 同じ日に複数の座席を保有している利用者の座席タイル（RULE-07廃止に伴う目立たせ表示、2026-09-09追加。
+   「2つ席を取る場合、通知されるようにするのと座席表の赤色で表示して目立つようにしたい」との要望を
+   受けた）。既存のstatus-*と併用し、後から定義することで色を上書きする */
+.seat-tile .seat-multi-badge { position: absolute; top: -7px; left: -7px; font-size: 11px; line-height: 1; }
 button.seat-tile { cursor: pointer; }
 /* ホバー時は位置がわずかに動く演出ではなく、色味の変化で分かりやすくする
    （2026-09-04変更。「ホバーで少し動くより、明るくなる方がわかりやすい」との要望を受けた）。
@@ -66,6 +70,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
 .status-fixed { background: #ede9fe; border-color: #a78bfa; color: #5b21b6; }
 .status-project { background: #dcfce7; border-color: #4ade80; color: #166534; }
 .status-pending { background: #fef9c3; border: 1.5px dashed #eab308; color: #854d0e; }
+.seat-multi-holder { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
 
 .seat-grid.cols-2 { display: grid; grid-template-columns: repeat(2, 58px); gap: 8px; justify-content: center; }
 

@@ -353,9 +353,9 @@ async def release_expired_fixed_seats() -> None:
 
     詳細設計書3.12節の「バッチ処理」は本来夜間バッチとして定義しているが、本プロジェクトの
     スコープでは実際のスケジューラ基盤の実装は対象外（同節参照）。そのため、固定座席の状態が
-    実際に参照される主要な箇所（A-06空き状況取得・A-19固定座席一覧・A-09予約登録のRULE-07判定）
-    の先頭でこの関数を呼び、遅延評価で同等の結果（期限切れ翌日・開始日当日には必ず正しい状態になる）
-    を得る。"""
+    実際に参照される主要な箇所（A-06空き状況取得・A-19固定座席一覧・A-09予約登録のmulti_seat_warning
+    判定〔2026-09-09、RULE-07廃止に伴い判定内容は「拒否」から「警告」に変更〕）の先頭でこの関数を呼び、
+    遅延評価で同等の結果（期限切れ翌日・開始日当日には必ず正しい状態になる）を得る。"""
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -467,18 +467,18 @@ _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 async def _check_and_book_day(
     seat_id: int, target_user_id: int, d: Date, created_by: int, *,
-    enforce_rule05: bool, check_project_block: bool, has_fixed_seat: bool, rule_id: int | None,
+    enforce_rule05: bool, check_project_block: bool, rule_id: int | None,
 ) -> dict:
-    """1日分のRULE-02・RULE-05・RULE-07・座席専有チェック→問題なければreservationsへ1件挿入する
+    """1日分のRULE-02・RULE-05・座席専有チェック→問題なければreservationsへ1件挿入する
     （generate_recurring_reservationsとretry_excluded_datesが共通で使う下請け、2026-09-07切り出し。
     「除外部分だけ別の座席に変更したい」との要望を受け、パターン・連続期間ではなく明示的な日付ずつの
     予約〔retry_excluded_dates〕にも同じ判定ロジックを使い回せるようにした）。rule_idはT-09
-    recurring_rulesの行を持つ場合のみ（振替時は単発予約としてNULLのまま登録する）。"""
+    recurring_rulesの行を持つ場合のみ（振替時は単発予約としてNULLのまま登録する）。
+    RULE-07（固定座席保有者はフリー座席を予約不可）は2026-09-09に廃止したため、ここでは検証しない
+    （固定座席保有者かどうかを呼び出し元がここに伝える必要もなくなった）。"""
     pool = get_pool()
     reason = None
-    if has_fixed_seat:
-        reason = "固定座席が割り当てられているため、フリー座席は予約できません"
-    elif enforce_rule05:
+    if enforce_rule05:
         if d < Date.today():
             reason = "過去の日付は予約できません"
         else:
@@ -517,8 +517,8 @@ async def generate_recurring_reservations(
 ) -> dict:
     """A-10・A-18共通: T-09 recurring_rulesを1件作成し、該当する各日についてT-08予約を生成する
     （3.2節「周期予約の基本フロー」）。RULE-02（同一日複数のフリー座席予約禁止）・RULE-03（同一座席
-    同一日の二重予約禁止）・RULE-07（固定座席保有者はフリー座席を予約不可）を各日について検証し、
-    違反する日のみ除外する（違反しない日は登録する）。
+    同一日の二重予約禁止）を各日について検証し、違反する日のみ除外する（違反しない日は登録する）。
+    RULE-07（固定座席保有者はフリー座席を予約不可）は2026-09-09に廃止した。
 
     enforce_rule05: RULE-05（予約可能期間）を検証するか。A-10（一般利用者の自分自身の予約）はTrue、
     A-18（プロジェクト座席への確保）はプロジェクト座席専用の別サイクル・締切（3.4節）で運用されるため
@@ -530,14 +530,6 @@ async def generate_recurring_reservations(
     """
     pool = get_pool()
     weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
-
-    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加。開始日前は
-    # 従来どおりフリー座席を予約できる必要がある）
-    has_fixed_seat = bool(await pool.fetchval(
-        """SELECT 1 FROM fixed_seat_assignments
-           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
-        target_user_id,
-    ))
 
     rule_id = await pool.fetchval(
         """INSERT INTO recurring_rules (seat_id, user_id, pattern, start_date, end_date, created_by)
@@ -553,8 +545,7 @@ async def generate_recurring_reservations(
             continue
         results.append(await _check_and_book_day(
             seat_id, target_user_id, d, created_by,
-            enforce_rule05=enforce_rule05, check_project_block=check_project_block,
-            has_fixed_seat=has_fixed_seat, rule_id=rule_id,
+            enforce_rule05=enforce_rule05, check_project_block=check_project_block, rule_id=rule_id,
         ))
         d += timedelta(days=1)
 
@@ -570,17 +561,10 @@ async def retry_excluded_dates(
     受けた）。generate_recurring_reservationsと異なり、連続した期間・パターンではなく明示的な
     日付のリストを対象にする（元の予約で成功していた日はそのまま、除外された日だけをやり直すため）。
     振替分はrecurring_rulesを持たない単発予約として登録する（A-09と同じ形）。"""
-    pool = get_pool()
-    has_fixed_seat = bool(await pool.fetchval(
-        """SELECT 1 FROM fixed_seat_assignments
-           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
-        target_user_id,
-    ))
     return [
         await _check_and_book_day(
             seat_id, target_user_id, d, created_by,
-            enforce_rule05=enforce_rule05, check_project_block=check_project_block,
-            has_fixed_seat=has_fixed_seat, rule_id=None,
+            enforce_rule05=enforce_rule05, check_project_block=check_project_block, rule_id=None,
         )
         for d in sorted(dates)
     ]
@@ -615,24 +599,16 @@ async def generate_bulk_free_seat_reservations(
     （日によって座席が変わるため）ため、generate_recurring_reservationsと異なりrecurring_rule_idは
     付与しない（取消は各予約を個別に行う）。
 
-    RULE-02（同一日複数のフリー座席予約禁止）・RULE-07（固定座席保有者はフリー座席を予約不可）・
-    T-07の専有チェックは各メンバー・各日について検証する。enforce_rule05はRULE-05（予約可能期間）
-    を検証するか（呼び出し元がadminならFalse、FR-01-7と同じ考え方。それ以外はTrue）。
+    RULE-02（同一日複数のフリー座席予約禁止）・T-07の専有チェックは各メンバー・各日について検証する。
+    RULE-07（固定座席保有者はフリー座席を予約不可）は2026-09-09に廃止した。enforce_rule05は
+    RULE-05（予約可能期間）を検証するか（呼び出し元がadminならFalse、FR-01-7と同じ考え方。
+    それ以外はTrue）。
 
     戻り値: {"results": [{"user_id":..., "date": "YYYY-MM-DD", "status": "created"|"excluded",
                            "reason": str|None, "seat_no": str|None}]}
     """
     pool = get_pool()
     weekdays = pattern.get("weekdays") if pattern.get("type") == "weekly" else None
-
-    # valid_from（開始日）未到来の予約済み固定座席割当は対象外（2026-09-07追加）
-    fixed_user_ids = {
-        r["user_id"] for r in await pool.fetch(
-            """SELECT user_id FROM fixed_seat_assignments
-               WHERE user_id = ANY($1::bigint[]) AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
-            member_user_ids,
-        )
-    }
 
     results: list[dict] = []
     d = start_date
@@ -645,9 +621,7 @@ async def generate_bulk_free_seat_reservations(
         taken_seat_ids: set[int] = set()
         for member_user_id in member_user_ids:
             reason = None
-            if member_user_id in fixed_user_ids:
-                reason = "固定座席が割り当てられているため、フリー座席は予約できません"
-            elif enforce_rule05:
+            if enforce_rule05:
                 if d < Date.today():
                     reason = "過去の日付は予約できません"
                 else:

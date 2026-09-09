@@ -36,8 +36,12 @@ class ReservationCreate(BaseModel):
 @router.post("")
 async def create_reservation(body: ReservationCreate, user: CurrentUser = Depends(require_auth)):
     """A-09: 単発予約の登録（FR-01-1）。role='admin'はFR-01-7によりRULE-05（予約可能期間）をスキップするが、
-    RULE-02（同一日複数予約禁止）・RULE-07（固定座席利用者はフリー座席を予約不可）は
-    自分の予約として登録する限り管理部にも適用される（詳細設計書6章）。"""
+    RULE-02（同一日複数予約禁止）は自分の予約として登録する限り管理部にも適用される（詳細設計書6章）。
+    RULE-07（固定座席利用者はフリー座席を予約不可）は2026-09-09に廃止した（「固定席の人でもフリー座席の
+    予約ができるようにしてほしい」との要望を受けた。続けて「固定席・プロジェクト席・フリー座席は
+    同時に持てる状態でよい」との回答を得たため、単なる例外追加ではなくRULE-07自体を廃止する）。
+    廃止に伴い、同じ日に複数の座席を保有することになった場合は、本人に画面上で警告するにとどめる
+    （multi_seat_warning、下記参照）。"""
     pool = get_pool()
     seat = await pool.fetchrow(
         "SELECT id, seat_no, seat_type, status FROM seats WHERE id = $1", body.seat_id
@@ -62,22 +66,21 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         if Date.today() < open_date:
             raise HTTPException(400, detail=f"この座席は{open_date.month}月{open_date.day}日から予約できます")
 
-    # RULE-07: 固定座席の利用者はフリー座席を予約できない（同一人物が固定座席とフリー座席を
-    # 同時に保有する状態を防ぐ）。RULE-02と同様、管理部が自分の予約として登録する場合も対象とする。
-    # 有効期限切れの割当を先に解除しておくことで、期限切れ後にこの判定へ誤って引っかからないようにする。
-    # valid_from（開始日）がまだ来ていない予約済みの固定座席割当は対象外とする（2026-09-07追加。
-    # 未来の開始日を指定できるようになったことに伴い、開始日前は従来どおりフリー座席を予約できる
-    # 必要がある）。予約したい日（body.date）が、自分の固定座席のT-18解除（絶対欠席）指定日と
-    # 一致する場合は対象外とする（2026-09-08追加。「その日だけ固定座席を空けて自分は別の
-    # フリー座席を使いたい」を成立させるため）。
+    # RULE-07廃止に伴い、固定座席保有者もここでは拒否しない。ただし同じ日に固定座席とこの新しい
+    # 予約を両方保有することになる場合は、本人が気づけるようレスポンスにmulti_seat_warningを含める
+    # （2026-09-09追加）。
     await release_expired_fixed_seats()
-    own_fixed_seat_id = await pool.fetchval(
-        """SELECT seat_id FROM fixed_seat_assignments
-           WHERE user_id = $1 AND ended_on IS NULL AND valid_from <= CURRENT_DATE""",
+    own_fixed_seat = await pool.fetchrow(
+        """SELECT fsa.seat_id, s.seat_no FROM fixed_seat_assignments fsa JOIN seats s ON s.id = fsa.seat_id
+           WHERE fsa.user_id = $1 AND fsa.ended_on IS NULL AND fsa.valid_from <= CURRENT_DATE""",
         user.id,
     )
-    if own_fixed_seat_id is not None and not await fixed_seat_absent_on(own_fixed_seat_id, body.date):
-        raise HTTPException(400, detail="固定座席が割り当てられているため、フリー座席は予約できません")
+    multi_seat_warning = None
+    if own_fixed_seat is not None and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], body.date):
+        multi_seat_warning = (
+            f"あなたは固定座席（{own_fixed_seat['seat_no']}）も保有しています。"
+            f"{body.date.month}月{body.date.day}日は複数の座席を保有する状態になります。"
+        )
 
     # RULE-02: 一般利用者は同一日に複数のフリー座席を予約できない。
     # 詳細設計書6章のとおりRULE-05と異なりP-ADMIN除外の定めがないため、管理部が自分の予約として
@@ -110,6 +113,7 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         "id": row["id"], "seat_id": seat["id"], "seat_no": seat["seat_no"],
         "date": row["date"].isoformat(), "status": row["status"],
         "replaced_seat_no": duplicate["seat_no"] if duplicate else None,
+        "multi_seat_warning": multi_seat_warning,
     }
 
 
@@ -128,7 +132,9 @@ class RecurringReservationCreate(BaseModel):
 @router.post("/recurring")
 async def create_recurring_reservation(body: RecurringReservationCreate, user: CurrentUser = Depends(require_auth)):
     """A-10: 周期予約の登録（FR-01-6・D11）。role='admin'はFR-01-7によりRULE-05等をスキップする
-    （A-09と同様）。3.2節のとおり、ルール違反や座席競合が生じる日のみ除外し、他の日は登録する。"""
+    （A-09と同様）。3.2節のとおり、ルール違反や座席競合が生じる日のみ除外し、他の日は登録する。
+    RULE-07廃止（2026-09-09）に伴い、固定座席保有者でも登録できる。登録した日のいずれかで
+    固定座席と重複保有になる場合はmulti_seat_warningで本人に知らせる（A-09と同じ考え方）。"""
     if body.start_date > body.end_date:
         raise HTTPException(400, detail="開始日は終了日以前を指定してください")
     if body.pattern.type == "weekly" and not body.pattern.weekdays:
@@ -148,7 +154,26 @@ async def create_recurring_reservation(body: RecurringReservationCreate, user: C
         seat["id"], user.id, body.pattern.model_dump(exclude_none=True), body.start_date, body.end_date, user.id,
         enforce_rule05=(user.role != "admin"), check_project_block=True,
     )
-    return {"rule_id": result["rule_id"], "seat_id": seat["id"], "seat_no": seat["seat_no"], "results": result["results"]}
+
+    own_fixed_seat = await pool.fetchrow(
+        """SELECT fsa.seat_id, s.seat_no FROM fixed_seat_assignments fsa JOIN seats s ON s.id = fsa.seat_id
+           WHERE fsa.user_id = $1 AND fsa.ended_on IS NULL AND fsa.valid_from <= CURRENT_DATE""",
+        user.id,
+    )
+    multi_seat_warning = None
+    if own_fixed_seat is not None:
+        for r in result["results"]:
+            if r["status"] == "created" and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], Date.fromisoformat(r["date"])):
+                multi_seat_warning = (
+                    f"あなたは固定座席（{own_fixed_seat['seat_no']}）も保有しています。"
+                    "日によっては複数の座席を保有する状態になります。"
+                )
+                break
+
+    return {
+        "rule_id": result["rule_id"], "seat_id": seat["id"], "seat_no": seat["seat_no"],
+        "results": result["results"], "multi_seat_warning": multi_seat_warning,
+    }
 
 
 @router.delete("/{reservation_id}")
