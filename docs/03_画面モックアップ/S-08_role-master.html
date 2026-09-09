@@ -70,7 +70,6 @@
         <button class="tab active" id="tab-users" type="button" onclick="switchRoleTab('users')">利用者ロール管理</button>
         <button class="tab" id="tab-projects" type="button" onclick="switchRoleTab('projects')">プロジェクト・PM管理</button>
         <button class="tab" id="tab-areas" type="button" onclick="switchRoleTab('areas')">通知設定</button>
-        <button class="tab" id="tab-customroles" type="button" onclick="switchRoleTab('customroles')">役割マスタ管理</button>
       </div>
 
       <div class="tab-panel active" id="panel-users">
@@ -192,31 +191,6 @@
         </div>
       </div>
 
-      <div class="tab-panel" id="panel-customroles">
-        <div class="toolbar">
-          <button class="btn btn-primary" type="button" style="margin-left:auto" onclick="openCustomRoleEditModal('new')">
-            <span class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
-            役割を追加
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>役割名</th><th>説明</th><th>付与済み利用者数</th><th></th></tr></thead>
-            <tbody>
-              <tr>
-                <td class="cell-main">セキュリティ担当</td>
-                <td class="cell-sub">オフィスの入退室・座席まわりのセキュリティ対応窓口（仮の登録例）</td>
-                <td>1名</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm" type="button" onclick="openCustomRoleEditModal('セキュリティ担当')">編集</button>
-                  <button class="btn btn-danger-ghost btn-sm" type="button" onclick="deleteCustomRole('セキュリティ担当')">削除</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
     </div>
   </div>
 </div>
@@ -268,10 +242,6 @@
       </div>
       <div class="callout warn" id="role-edit-retired-warning" style="display:none">
         「退職済み」に変更して保存すると、この利用者は論理削除され、以後ログイン・予約ができなくなります。あわせて固定座席の割当があれば解除し、今後の予約（フリー座席・プロジェクト座席）はすべて取消扱いになります（RULE-06）。
-      </div>
-      <div class="field" style="margin-top:14px">
-        <label>役割マスタのラベル（任意・複数可）</label>
-        <label class="checkbox-line"><input type="checkbox">セキュリティ担当</label>
       </div>
     </div>
     <div class="modal-footer">
@@ -366,33 +336,10 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="customrole-edit-modal" onclick="if(event.target===this)closeCustomRoleEditModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="customrole-edit-title">役割を追加</div>
-      <button class="modal-close" type="button" aria-label="閉じる" onclick="closeCustomRoleEditModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="field">
-        <label>役割名</label>
-        <input type="text" id="customrole-edit-name" placeholder="例: セキュリティ担当">
-      </div>
-      <div class="field">
-        <label>説明（任意）</label>
-        <input type="text" id="customrole-edit-desc" placeholder="この役割が何を目的とした名前かのメモ">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" type="button" onclick="closeCustomRoleEditModal()">キャンセル</button>
-      <button class="btn btn-primary" type="button" onclick="closeCustomRoleEditModal()">保存する</button>
-    </div>
-  </div>
-</div>
-
 <script>
 // タブ切替・編集モーダル開閉（静的モック確認用の最小限のJS）
 function switchRoleTab(name) {
-  var tabs = ['users', 'projects', 'areas', 'customroles'];
+  var tabs = ['users', 'projects', 'areas'];
   tabs.forEach(function (t) {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     document.getElementById('panel-' + t).classList.toggle('active', t === name);
@@ -429,19 +376,6 @@ function openProjectEditModal(name) {
 }
 function closeProjectEditModal() {
   document.getElementById('project-edit-modal').classList.remove('open');
-}
-function openCustomRoleEditModal(name) {
-  document.getElementById('customrole-edit-title').textContent = (name === 'new') ? '役割を追加' : '役割を編集（' + name + '）';
-  document.getElementById('customrole-edit-name').value = (name === 'new') ? '' : name;
-  document.getElementById('customrole-edit-modal').classList.add('open');
-}
-function closeCustomRoleEditModal() {
-  document.getElementById('customrole-edit-modal').classList.remove('open');
-}
-function deleteCustomRole(name) {
-  if (confirm('役割「' + name + '」を削除しますか？付与されている利用者からもラベルが外れます。')) {
-    // 静的モックのため実際の削除は行わない
-  }
 }
 </script>
 

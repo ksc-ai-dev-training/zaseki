@@ -313,7 +313,6 @@ export default function Help() {
                 <li><strong>利用者ロール管理:</strong> 役割・氏名・雇用形態・在籍状況の設定、エリア責任者・副責任者の指定など。</li>
                 <li><strong>プロジェクト・PM管理:</strong> プロジェクトの追加・編集・削除、PM／PL／SL・PJ席決担当の設定。</li>
                 <li><strong>通知設定:</strong> 出社曜日アンケート関連のSlack通知先（Webhook URL）を設定。</li>
-                <li><strong>役割マスタ管理:</strong> 役割名（ラベル）の追加・編集・削除。</li>
               </ul>
             </Section>
 

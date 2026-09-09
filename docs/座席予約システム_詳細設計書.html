@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.79（ドラフト・作成中）</span>
+      <span>版数: 0.80（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -305,6 +305,7 @@ footer.doc-footer {
       <tr><td>0.77</td><td>2026-09-09</td><td>同じバグ調査で見つかった、S-10「座席状況の履歴照会」廃止（2026-09-07、コミット「Remove S-10 — it was a strict subset of S-02」）が本書に一切反映されていなかった積み残しを解消した。3.10節の見出しを「座席状況の履歴照会（旧S-10、2026-09-07廃止）」に変更し、A-45のテーブル行をA-31と同じ「廃止」表記（欠番として保持、経緯を記載）に置き換えた。5.5.x権限マトリクスのA-45行も同様に「廃止」表記に更新し、6章のエラー一覧からはA-45の行を削除した（6章は現存するAPIのエラー条件のみを列挙する運用のため）。1.4節のトレーサビリティ表のREQ-F-04行から「S-10」を外し廃止の経緯を注記した。本文中でA-06・A-45を並記していた箇所（誕生日バッジ・アバター表示・期限切れ固定座席の遅延評価に関する説明、T-01.birth_dayの列説明）をA-06のみに修正し、A-45への言及は「当初は共通化していたが廃止された」旨の注記に改めた。要件定義書・基本設計書・画面モックアップ一覧（<code>docs/_sidenav.js</code>）・操作マニュアルについても同様の反映が必要なため、あわせて着手する。</td></tr>
       <tr><td>0.78</td><td>2026-09-09</td><td>訂正反映: 上司から「参考元より機能としてはいいものだが工数が多すぎて使いづらい」とのレビューを受けた。最も工数（操作数）を押し上げていた箇所として、S-02の「複数人の代理予約（PJメンバー）」（A-75）における2026-09-08の日付ごとクリック方式を特定し、既定を2026-09-04時点の「座席を1回クリックして相手・曜日パターン・期間をまとめて設定する」方式に戻した（人数×日数に比例していた操作数を、人数に比例する操作数まで削減）。日付ごとに別々の座席を選びたい例外ケースは、案内文のリンクからサブモードとして引き続き選べる。APIのBody形状・バックエンド処理は変更していない（3.4節A-75を修正）。</td></tr>
       <tr><td>0.79</td><td>2026-09-09</td><td>訂正反映（基本設計書v2.45）: 同じ上司レビュー（「工数が多すぎて使いづらい」）を受け、実際に全画面を操作して洗い出した工数の重い箇所のうち、S-09の座席の島の割当（v0.78で対応済み）に続き、S-07 座席マスタ管理とS-08 権限・役割管理を対応した。(1) S-07: 「座席は1件ずつしか追加できず、新設フロアの初期投入や増設のたびに1件ずつ登録する必要がある」との指摘を受け、新API A-77（<code>POST /seats/bulk</code>）を新設した。同一エリア・同一座席タイプの座席番号を複数まとめて登録でき、既存または入力内で重複する座席番号は個別にスキップして残りを登録する（1件でも重複があると全体を失敗させる方式は、どれが重複か探す手間が逆に増えるため採らなかった）。フロントエンドには「プレフィックス＋開始〜終了番号」から座席番号一覧を生成する補助入力も設けた（この職場の座席番号がプレフィックス＋連番の命名のため）。(2) S-08: 「役割マスタのラベルを複数の利用者へまとめて付与・解除する手段がなく、部署異動などまとまった人数の役割変更のたびに1人ずつ編集モーダルを開く必要がある」との指摘を受け、利用者ロール管理タブに複数選択チェックボックスと一括付与・一括解除の操作バーを追加した。バックエンドAPIは既存のA-36・A-37をそのまま複数回呼び出す方式とし、新規エンドポイントは追加していない（解除はPromise.allの一部失敗を避けるため、対象の役割を実際に持つ利用者のみに絞って呼び出す）。3.7節にA-77を追加、5.5.5節・5.5.6節の権限マトリクスにA-77の行を追加。</td></tr>
+      <tr><td>0.80</td><td>2026-09-09</td><td>訂正反映（要件定義書v0.93・基本設計書v2.46）: 「役割マスタ管理なのですが必要ないと感じたので削除していいです」との申し出を受け、v0.79で拡張したばかりの役割マスタ管理（S-08の1タブ）を機能ごと廃止した。A-32〜A-37（3.8節）を廃止（欠番として保持）に変更し、A-25のレスポンスから<code>custom_role_ids</code>を削除した。T-14 role_master・T-15 user_custom_roles（2.15・2.16節）も廃止に変更し、<code>CREATE TABLE</code>文をbackend/database.pyから削除したが、既存環境（本番のマネージドPostgreSQL含む）のテーブル自体は物理削除していない（権限判定に一切使用しないラベルのみのテーブルであり、残置しても実害がないため）。図3のER図は経緯を示すためそのまま残し、廃止した旨のコールアウトを追加した。4章の画面項目定義から役割マスタ関連の3行（役割マスタのラベル・役割名・説明）を削除し、1.4節のトレーサビリティ表の該当行に廃止の注記を追加した。3.8節・4章・5.5.6節・2.15節・2.16節を修正。</td></tr>
     </tbody>
   </table>
   </details>
@@ -352,7 +353,7 @@ footer.doc-footer {
       <tr><td>REQ-F-05</td><td>座席利用ルールをシステムで担保できること</td><td>個別のFR番号はなし。要件定義書7章のRULE-01〜06として実現（4.5節参照）</td><td>S-02（予約操作全般）</td></tr>
       <tr><td>REQ-F-06</td><td>座席・エリアの構成を管理者が変更できること</td><td>FR-06-1, FR-06-2（4.6節）</td><td>S-07</td></tr>
       <tr><td>REQ-N-01〜04</td><td>非機能要求（認証・認可・性能・技術構成等）</td><td>NFR-01〜NFR-07（8章。個別の1対1対応は明記していない。NFR-07は要求仕様書に明記のない追加提案）</td><td>全画面共通</td></tr>
-      <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>役割マスタ管理</td><td>FR-07-1, FR-07-2（4.7節）</td><td>S-08</td></tr>
+      <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>役割マスタ管理<em>（2026-09-09廃止。4.7節・3.8節A-32〜A-37参照）</em></td><td>FR-07-1, FR-07-2（4.7節、いずれも廃止）</td><td>S-08</td></tr>
       <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>利用者プロフィール（アイコン・生年月日）</td><td>FR-08-1〜FR-08-4（4.8節、2026-08-31追加）</td><td>S-12（登録・編集）、S-02・S-10（表示）</td></tr>
       <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>プロジェクト座席が不要なメンバーの設定（在宅勤務等）</td><td>FR-03-10（4.3節、2026-09-01追加）</td><td>S-04</td></tr>
       <tr><td class="muted">（要求仕様書には明記のない追加提案）</td><td>ヘルプ（操作マニュアル）・フィードバック</td><td>FR-09-1〜FR-09-3（4.9節、2026-09-01追加）</td><td>S-13（ヘルプ・フィードバック送信）、S-14（フィードバック一覧）</td></tr>
@@ -555,6 +556,7 @@ footer.doc-footer {
   </div>
 
   <p><strong>図3: 権限・設定系</strong>（T-14, T-15, T-16。T-01は図1と共通のため列を絞って再掲）</p>
+  <p class="callout">T-14 role_master・T-15 user_custom_rolesは2026-09-09に廃止した（2.15・2.16節参照）。経緯を示すため図はそのまま残す。</p>
   <div class="diagram">
     <svg width="680" height="308" viewBox="0 0 680 308" font-family="'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif">
       <rect x="30" y="40" width="280" height="82" rx="8" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" />
@@ -765,28 +767,21 @@ footer.doc-footer {
   </table>
   <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>archived_at</code>を持つ（意味が異なるため列名を変えている）。<code>updated_at</code>は持たない。</p>
 
-  <h3>2.15 T-14 role_master（役割マスタ）</h3>
+  <h3>2.15 T-14 role_master（役割マスタ、2026-09-09廃止）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
-      <tr><td><code>name</code></td><td>VARCHAR(50)</td><td>不可</td><td>—</td><td>UNIQUE</td><td>役割名。</td></tr>
-      <tr><td><code>description</code></td><td>TEXT</td><td>可</td><td>NULL</td><td></td><td>説明。任意。</td></tr>
-      <tr><td><code>created_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>登録した管理部担当者。</td></tr>
+      <tr><td colspan="6"><em>廃止（2026-09-09）。</em>「役割マスタ管理なのですが必要ないと感じたので削除していいです」との申し出を受け、S-08の役割マスタ管理機能ごと廃止した。旧カラム: name（VARCHAR(50)、UNIQUE、役割名）、description（TEXT、NULL可）、created_by（FK→users、登録した管理部担当者）。<code>CREATE TABLE</code>文はbackend/database.pyから削除したが、既存環境（本番のマネージドPostgreSQL含む）のテーブル自体は物理削除していない（権限判定に一切使用しないラベルのみのテーブルであり、残置しても実害がないため）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成日時のみ。<strong>このテーブルはいかなるAPIの権限判定にも使用しない</strong>（基本設計書4.2節）。</p>
 
-  <h3>2.16 T-15 user_custom_roles（利用者への役割マスタ付与）</h3>
+  <h3>2.16 T-15 user_custom_roles（利用者への役割マスタ付与、2026-09-09廃止）</h3>
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
-      <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users, UNIQUE(user_id, role_master_id)</td><td></td></tr>
-      <tr><td><code>role_master_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→role_master, UNIQUE(user_id, role_master_id)</td><td></td></tr>
-      <tr><td><code>assigned_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>付与した管理部担当者。</td></tr>
-      <tr><td><code>assigned_at</code></td><td>TIMESTAMPTZ</td><td>不可</td><td>now()</td><td></td><td>付与日時。</td></tr>
+      <tr><td colspan="6"><em>廃止（2026-09-09）。</em>T-14と同時に廃止。旧カラム: user_id（FK→users）、role_master_id（FK→role_master）、assigned_by（FK→users）、assigned_at。(user_id, role_master_id) UNIQUE。剥奪は行の物理DELETEで表現していた（付与記録に履歴性を求められていなかったため）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 共通の<code>created_at</code>の代わりに<code>assigned_at</code>を持つ。<code>updated_at</code>は持たない（剥奪は行の物理DELETEで表現する。付与記録に履歴性を求められていないため）。</p>
 
   <h3>2.17 T-16 app_settings（アプリケーション設定）</h3>
   <p>基本設計書4.6節で「Keirekiのapp_settingsに相当するテーブルを設ける想定」としていたが、テーブル定義が未確定だったため、本書で新設する（2026-08-26）。座席タイプ別サイクルの基準日・締切日、出社曜日アンケートのリマインド関連の設定値等、運用中に管理部が変更しうる値をハードコードせずに保持する。</p>
@@ -955,7 +950,7 @@ footer.doc-footer {
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
-      <tr><td><code>A-25</code></td><td><span class="method get">GET</span><code>/users?role=&employment_status=&show_retired=&q=</code></td><td>利用者一覧（利用者ロール管理タブ、area_manager_roleを含む）。<code>show_retired=false</code>（既定）では<code>deleted_at</code>が設定された利用者を除外する。</td><td>role='admin'</td><td><code>q</code>（氏名・メールの部分一致）は2026-08-28追加、4.7節の絞り込み欄の裏付け。各行に<code>custom_role_ids</code>（T-15、編集モーダルのチェックボックス初期状態に使う）を含める（同日追加）。</td></tr>
+      <tr><td><code>A-25</code></td><td><span class="method get">GET</span><code>/users?role=&employment_status=&show_retired=&q=</code></td><td>利用者一覧（利用者ロール管理タブ、area_manager_roleを含む）。<code>show_retired=false</code>（既定）では<code>deleted_at</code>が設定された利用者を除外する。</td><td>role='admin'</td><td><code>q</code>（氏名・メールの部分一致）は2026-08-28追加、4.7節の絞り込み欄の裏付け。各行に<code>custom_role_ids</code>（T-15）を含めていたが、役割マスタ管理の廃止（2026-09-09）に伴い削除した。</td></tr>
       <tr><td><code>A-26</code></td><td><span class="method put">PUT</span><code>/users/{id}</code></td><td>利用者の編集（氏名訂正D14、雇用形態、role、エリア責任者・副責任者の指定、在籍状況、システム運用担当）。</td><td>role='admin'</td><td>Body: <code>{last_name, first_name, employment_type, role, area_manager_role, employment_status, is_system_operator}</code>。<code>area_manager_role</code>（'manager'/'deputy'/null）はrole='admin'の利用者のみ設定可（2026-08-27追加。特定のエリアへの配置ではなく利用者自身の属性）。<code>is_system_operator</code>はroleを問わず設定可（2026-09-01追加、既定false。フィードバック一覧〔A-60〕へのアクセスに使う）。<code>employment_status='retired'</code>への変更でRULE-06（4.1節参照）を実行：<code>deleted_at</code>設定、固定座席解除、今後の予約取消。</td></tr>
       <tr><td><code>A-27</code></td><td><span class="method get">GET</span><code>/projects</code></td><td>全プロジェクト一覧（プロジェクト・PM管理タブ）。</td><td>role='admin'</td><td>読み取り専用としては2026-08-28にS-09の実装とあわせて先行実装した。<code>pm_pl_names</code>を含むレスポンス拡張は同日追加。S-08「プロジェクト・PM管理」タブの実装にあわせ、各行に<code>member_count</code>・<code>members</code>（<code>[{member_id, user_id, name, project_title}]</code>、編集モーダルのメンバー表に使う）・<code>proxy_user_id</code>・<code>proxy_user_name</code>を追加した（2026-08-28再追加）。呼び出し時に次の四半期の計画データの自動作成を行う副作用を持っていたが、2026-09-03に「四半期」概念自体を撤廃したことに伴い廃止した（変更D、3.9節末尾のコールアウト参照。FR-03-1改訂に伴い<code>has_plan_for_next_quarter</code>・<code>quarter_base_months</code>を含む「四半期計画を開始する」パネル向けの拡張は2026-08-28時点で既に撤回・削除済み）。</td></tr>
       <tr><td><code>A-28</code></td><td><span class="method post">POST</span><code>/projects</code></td><td>プロジェクトの新規作成。</td><td>role='admin'</td><td>Body: <code>{name}</code>。同名プロジェクトの重複チェックは行わない（4.6節、要件定義書に禁止規定なし）。</td></tr>
@@ -963,12 +958,7 @@ footer.doc-footer {
       <tr><td><code>A-55</code></td><td><span class="method delete">DELETE</span><code>/projects/{id}</code></td><td>プロジェクトの削除（S-08プロジェクト・PM管理タブ）。</td><td>role='admin'</td><td>2026-08-28追加（A-49・A-50・A-52・A-54と同様、末尾番号）。project_members（T-06）・project_quarter_plans（T-07、FK経由でproject_weekday_responses〔T-11〕も連動）をあわせて削除する（A-29のメンバー削除とは異なり、プロジェクト自体の削除ではスコープ外にできない）。座席の島の割当（T-07.allocated_seats）を含む計画データが消えるため、<code>project_blocked_seats()</code>によるプロジェクト専有判定（3.3節A-06）も削除後は自動的に対象外になる。メンバーが既に個別に確保済みの座席予約（A-18生成分、reservations・recurring_rules）はproject_idを持たない独立データのため削除しない。</td></tr>
       <tr><td><code>A-30</code></td><td><span class="method get">GET</span><code>/areas</code></td><td>エリア一覧（NORTH/EAST/WEST。座席マスタ管理・空き状況の絞り込み等で使う静的なマスタ参照）。</td><td>role='admin'</td><td>2026-08-27訂正、責任者・副責任者はエリアに紐づかなくなったため削除（A-25で利用者の属性として取得する）。Slack通知先もエリアに紐づかなくなったため削除（A-49・A-50参照）。</td></tr>
       <tr><td><code>A-31</code></td><td colspan="4"><em>廃止（2026-08-27）。</em>エリアはnameのみの静的マスタになり、UIから編集する項目がなくなったため。責任者・副責任者の指定はA-26、Slack Webhook URLの設定はA-50に移設した。ID自体は欠番として保持する。</td></tr>
-      <tr><td><code>A-32</code></td><td><span class="method get">GET</span><code>/role-master</code></td><td>役割マスタ一覧（役割マスタ管理タブ）。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><code>A-33</code></td><td><span class="method post">POST</span><code>/role-master</code></td><td>役割マスタの追加。</td><td>role='admin'</td><td>Body: <code>{name, description}</code></td></tr>
-      <tr><td><code>A-34</code></td><td><span class="method put">PUT</span><code>/role-master/{id}</code></td><td>役割マスタの編集。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><code>A-35</code></td><td><span class="method delete">DELETE</span><code>/role-master/{id}</code></td><td>役割マスタの削除。</td><td>role='admin'</td><td></td></tr>
-      <tr><td><code>A-36</code></td><td><span class="method post">POST</span><code>/users/{id}/custom-roles</code></td><td>利用者への役割マスタ付与（FR-07-2）。</td><td>role='admin'</td><td>Body: <code>{role_master_id}</code>。権限判定には一切使用しない（基本設計書4.2節）。</td></tr>
-      <tr><td><code>A-37</code></td><td><span class="method delete">DELETE</span><code>/users/{id}/custom-roles/{role_master_id}</code></td><td>付与の取消。</td><td>role='admin'</td><td></td></tr>
+      <tr><td><code>A-32</code>〜<code>A-37</code></td><td colspan="4"><em>廃止（2026-09-09）。</em>役割マスタ管理（<code>GET/POST/PUT/DELETE /role-master</code>、<code>POST/DELETE /users/{id}/custom-roles</code>）一式。「役割マスタ管理なのですが必要ないと感じたので削除していいです」との申し出を受け、S-08の役割マスタ管理タブ・利用者一覧の役割マスタラベル付与欄ごと廃止した。ID自体は欠番として保持する。T-14・T-15（2.15・2.16節）も廃止したが、既存環境のテーブル自体は物理削除していない。</td></tr>
       <tr><td><code>A-49</code></td><td><span class="method get">GET</span><code>/app-settings</code></td><td>UIから編集可能な設定値の取得（通知設定タブ）。対象は<code>project_seat_slack_webhook_url</code>・通知文言2種（2026-09-02拡張、2026-09-03変更Bでアンケート送信時の文言を削除し3種→2種）。</td><td>role='admin'</td><td>2026-08-27追加（A-38〜A-48より後に新設したためIDは末尾）。T-16 app_settingsの大半は管理画面を持たずDB直接更新で運用するが（2.17節）、これらのキーのみ例外的にUIを持つ。通知文言2種は未設定（初回）の場合、実際に送信時使う初期文言（<code>backend/slack.py</code>のDEFAULT_MESSAGE_*）を<code>value</code>として返す（2026-09-02追加。「実際の通知の文言を編集できる機能を追加してほしい」との要望を受けた。画面には空欄ではなく実際の初期文言を表示し、そのまま編集を始められるようにするため）。</td></tr>
       <tr><td><code>A-50</code></td><td><span class="method put">PUT</span><code>/app-settings/{key}</code></td><td>UIから編集可能な設定値の更新（通知設定タブ）。</td><td>role='admin'</td><td>Body: <code>{value}</code>。<code>key</code>はA-49と同じ3キーのみ受け付ける（他のapp_settingsキーは本APIの対象外、2026-08-27追加・2026-09-02拡張・2026-09-03変更Bで4キー→3キー）。<code>project_seat_slack_webhook_url</code>のみ、入力する場合は<code>https://hooks.slack.com/services/</code>で始まる形式であることを検証する。通知文言2種は自由記述（500文字以内）で、形式チェックは行わない。文言に存在しないプレースホルダー（例: 誤って<code>{foo}</code>と書いた）を含めても保存自体は成功するが、実際の送信時にはslack.render_slack_message()が初期文言へフォールバックする（2026-09-02追加）。</td></tr>
     </tbody>
@@ -1134,15 +1124,12 @@ footer.doc-footer {
       <tr><td>雇用形態</td><td>select</td><td>必須</td><td>社員／契約職員／BPのいずれか。</td></tr>
       <tr><td>管理部ロールを付与する</td><td>toggle</td><td>必須（既定: オフ）</td><td>オンでrole='admin'。自分自身のrole='admin'を自分でオフにできてしまうと管理部が誰もいなくなる恐れがあるため、「自分自身の管理部ロールを外す操作」はAPI側で拒否する（実装時の検討事項として明記）。</td></tr>
       <tr><td>在籍状況</td><td>select</td><td>必須</td><td>在籍中／休職中／退職済みのいずれか。「退職済み」への変更はRULE-06（4.1節）を発火させる重い操作のため、画面側で確認ダイアログを挟む（基本設計書のとおり）。</td></tr>
-      <tr><td>役割マスタのラベル（複数可）</td><td>checkbox群</td><td>任意</td><td>役割マスタ（T-14）に存在するidのみ指定可能。権限判定には使わない（基本設計書4.2節）。</td></tr>
       <tr><td>プロジェクト名</td><td>text</td><td>必須</td><td>1文字以上。重複チェックは行わない（同名プロジェクトが存在してもよい、要件定義書に禁止規定なし）。</td></tr>
       <tr><td>メンバー行ごとの役割（PM/PL/SL/なし）</td><td>select</td><td>必須（既定: なし）</td><td>4つの選択肢のいずれか。人数の上限なし（PM・PL・SLとも複数名可）。</td></tr>
       <tr><td>PJ席決担当</td><td>radio（メンバー行ごと、単一選択）</td><td>任意（プロジェクトに1名まで）</td><td>役割がPMまたはPLの行のみ選択可（SL・なしの行はUIでdisabled）。プロジェクトにつき最大1名。API側でも役割がPM/PLでない利用者がproxy_user_idに指定されないよう検証する。</td></tr>
       <tr><td>責任者（エリア）</td><td>text（氏名検索）</td><td>任意（未設定可）</td><td>role='admin'の利用者のみ選択可（発注者確認済み、基本設計書3.2節T-02）。</td></tr>
       <tr><td>副責任者（エリア）</td><td>text（氏名検索）</td><td>任意（未設定可）</td><td>role='admin'の利用者のみ選択可。責任者が未設定の間は入力不可（画面側でdisabled、API側でも責任者未設定時は拒否）。</td></tr>
       <tr><td>Slack通知先（Webhook URL）</td><td>text</td><td>任意</td><td>入力する場合は<code>https://hooks.slack.com/services/</code>で始まるURL形式であることを確認する。未入力の場合は通知を送信しない（FR-03-9、2026-08-27訂正。プロジェクト座席共通の1つのみを持つ。当該エリアという概念はなくなった）。</td></tr>
-      <tr><td>役割名（役割マスタ）</td><td>text</td><td>必須</td><td>1文字以上、役割マスタ内でユニーク（T-14.name UNIQUE）。</td></tr>
-      <tr><td>説明（役割マスタ）</td><td>text</td><td>任意</td><td>最大200文字程度（明確な上限は実装時に決定）。</td></tr>
     </tbody>
   </table>
 
@@ -1324,12 +1311,7 @@ footer.doc-footer {
       <tr><td>A-29</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-30</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-31</td><td>—</td><td>廃止（2026-08-27）。3.8節参照。</td></tr>
-      <tr><td>A-32</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-33</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-34</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-35</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-36</td><td><code>P-ADMIN</code></td><td></td></tr>
-      <tr><td>A-37</td><td><code>P-ADMIN</code></td><td></td></tr>
+      <tr><td>A-32〜A-37</td><td>—</td><td>廃止（2026-09-09）。3.8節参照。</td></tr>
       <tr><td>A-49</td><td><code>P-ADMIN</code></td><td>2026-08-27追加。</td></tr>
       <tr><td>A-50</td><td><code>P-ADMIN</code></td><td>2026-08-27追加。</td></tr>
     </tbody>
@@ -1478,7 +1460,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.79 / 2026-09-09</span>
+    <span>版数 0.80 / 2026-09-09</span>
   </footer>
 
 </div>

@@ -1,4 +1,5 @@
-# A-25, A-26, A-32〜A-37, A-49, A-50 権限・役割管理（S-08）。詳細設計書3.8節
+# A-25, A-26, A-49, A-50 権限・役割管理（S-08）。詳細設計書3.8節
+# A-32〜A-37（役割マスタ管理）は2026-09-09に機能自体を廃止した（「必要ないと感じたので削除」との指示）。
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,21 +41,16 @@ async def list_users(
     _: CurrentUser = Depends(require_roles("admin")),
 ):
     """A-25: 利用者一覧（利用者ロール管理タブ）。show_retired=false（既定）ではdeleted_atが
-    設定された利用者を除外する。各行にcustom_role_ids（T-15、編集モーダルのチェックボックスの
-    初期状態に使う）を含める（2026-08-28追加、A-25の元の定義にはなかったが編集フォームに
-    必要なため）。qは氏名・メールでの部分一致検索（2026-08-28追加、4.7節の絞り込み欄の裏付け）。"""
+    設定された利用者を除外する。qは氏名・メールでの部分一致検索（2026-08-28追加、4.7節の絞り込み欄の裏付け）。"""
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT u.id, u.last_name, u.first_name, u.email, u.employment_type, u.role,
-                  u.area_manager_role, u.employment_status, u.is_system_operator, u.deleted_at,
-                  COALESCE(array_agg(ucr.role_master_id) FILTER (WHERE ucr.role_master_id IS NOT NULL), '{}'::bigint[]) AS custom_role_ids
+                  u.area_manager_role, u.employment_status, u.is_system_operator, u.deleted_at
            FROM users u
-           LEFT JOIN user_custom_roles ucr ON ucr.user_id = u.id
            WHERE ($1 = 'all' OR u.role = $1)
              AND ($2 = 'all' OR u.employment_status = $2)
              AND ($3 OR u.deleted_at IS NULL)
              AND ($4 = '' OR (u.last_name || u.first_name) ILIKE '%' || $4 || '%' OR u.email ILIKE '%' || $4 || '%')
-           GROUP BY u.id
            ORDER BY u.last_name, u.first_name""",
         role, employment_status, show_retired, q,
     )
@@ -66,7 +62,6 @@ async def list_users(
                 "area_manager_role": r["area_manager_role"], "employment_status": r["employment_status"],
                 "is_system_operator": r["is_system_operator"],
                 "retired": r["deleted_at"] is not None,
-                "custom_role_ids": list(r["custom_role_ids"]),
             }
             for r in rows
         ]
@@ -139,115 +134,6 @@ async def update_user(id: int, body: UserUpdate, user: CurrentUser = Depends(req
                     id,
                 )
     return {"detail": "利用者情報を更新しました"}
-
-
-@router.get("/role-master")
-async def list_role_master(_: CurrentUser = Depends(require_roles("admin"))):
-    """A-32: 役割マスタ一覧。付与済み利用者数を含める（役割マスタ管理タブの一覧列）。"""
-    rows = await get_pool().fetch(
-        """SELECT rm.id, rm.name, rm.description, COUNT(ucr.id) AS assigned_count
-           FROM role_master rm
-           LEFT JOIN user_custom_roles ucr ON ucr.role_master_id = rm.id
-           GROUP BY rm.id
-           ORDER BY rm.name"""
-    )
-    return {
-        "items": [
-            {"id": r["id"], "name": r["name"], "description": r["description"], "assigned_count": r["assigned_count"]}
-            for r in rows
-        ]
-    }
-
-
-class RoleMasterCreate(BaseModel):
-    name: str
-    description: str | None = None
-
-
-@router.post("/role-master")
-async def create_role_master(body: RoleMasterCreate, user: CurrentUser = Depends(require_roles("admin"))):
-    """A-33: 役割マスタの追加。"""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(400, detail="役割名を入力してください")
-    pool = get_pool()
-    duplicate = await pool.fetchval("SELECT 1 FROM role_master WHERE name = $1", name)
-    if duplicate:
-        raise HTTPException(409, detail="この役割名は既に使用されています")
-    row = await pool.fetchrow(
-        "INSERT INTO role_master (name, description, created_by) VALUES ($1, $2, $3) RETURNING id",
-        name, body.description, user.id,
-    )
-    return {"id": row["id"], "detail": "役割を追加しました"}
-
-
-@router.put("/role-master/{id}")
-async def update_role_master(id: int, body: RoleMasterCreate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-34: 役割マスタの編集。"""
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(400, detail="役割名を入力してください")
-    pool = get_pool()
-    existing = await pool.fetchrow("SELECT id FROM role_master WHERE id = $1", id)
-    if existing is None:
-        raise HTTPException(404, detail="対象が見つかりません")
-    duplicate = await pool.fetchval("SELECT 1 FROM role_master WHERE name = $1 AND id != $2", name, id)
-    if duplicate:
-        raise HTTPException(409, detail="この役割名は既に使用されています")
-    await pool.execute(
-        "UPDATE role_master SET name = $1, description = $2 WHERE id = $3", name, body.description, id
-    )
-    return {"detail": "役割を更新しました"}
-
-
-@router.delete("/role-master/{id}")
-async def delete_role_master(id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-35: 役割マスタの削除。付与済みの利用者からもラベルが外れる（T-15を連鎖削除、
-    S-08モックアップの削除確認文言のとおり）。"""
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute("DELETE FROM user_custom_roles WHERE role_master_id = $1", id)
-            result = await conn.execute("DELETE FROM role_master WHERE id = $1", id)
-    if result == "DELETE 0":
-        raise HTTPException(404, detail="対象が見つかりません")
-    return {"detail": "役割を削除しました"}
-
-
-class CustomRoleAssign(BaseModel):
-    role_master_id: int
-
-
-@router.post("/users/{id}/custom-roles")
-async def assign_custom_role(id: int, body: CustomRoleAssign, user: CurrentUser = Depends(require_roles("admin"))):
-    """A-36: 利用者への役割マスタ付与（FR-07-2）。権限判定には一切使用しない。"""
-    pool = get_pool()
-    target = await pool.fetchrow("SELECT id FROM users WHERE id = $1", id)
-    if target is None:
-        raise HTTPException(404, detail="対象が見つかりません")
-    role = await pool.fetchrow("SELECT id FROM role_master WHERE id = $1", body.role_master_id)
-    if role is None:
-        raise HTTPException(404, detail="対象が見つかりません")
-    already = await pool.fetchval(
-        "SELECT 1 FROM user_custom_roles WHERE user_id = $1 AND role_master_id = $2", id, body.role_master_id
-    )
-    if not already:
-        await pool.execute(
-            "INSERT INTO user_custom_roles (user_id, role_master_id, assigned_by) VALUES ($1, $2, $3)",
-            id, body.role_master_id, user.id,
-        )
-    return {"detail": "役割を付与しました"}
-
-
-@router.delete("/users/{id}/custom-roles/{role_master_id}")
-async def unassign_custom_role(id: int, role_master_id: int, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-37: 付与の取消。"""
-    result = await get_pool().execute(
-        "DELETE FROM user_custom_roles WHERE user_id = $1 AND role_master_id = $2", id, role_master_id
-    )
-    if result == "DELETE 0":
-        raise HTTPException(404, detail="対象が見つかりません")
-    return {"detail": "役割の付与を取り消しました"}
 
 
 @router.get("/app-settings")

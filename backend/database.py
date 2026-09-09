@@ -247,24 +247,9 @@ CREATE TABLE IF NOT EXISTS project_weekday_responses (
     responded_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- T-14 role_master。権限判定には一切使用しない（基本設計書4.2節）ラベルのみのマスタ
-CREATE TABLE IF NOT EXISTS role_master (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name        VARCHAR(50) NOT NULL UNIQUE,
-    description TEXT,
-    created_by  BIGINT NOT NULL REFERENCES users(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- T-15 user_custom_roles。剥奪は物理DELETEで表現する（履歴性を求められていないため）
-CREATE TABLE IF NOT EXISTS user_custom_roles (
-    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id        BIGINT NOT NULL REFERENCES users(id),
-    role_master_id BIGINT NOT NULL REFERENCES role_master(id),
-    assigned_by    BIGINT NOT NULL REFERENCES users(id),
-    assigned_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (user_id, role_master_id)
-);
+-- T-14 role_master・T-15 user_custom_roles（役割マスタ管理）は2026-09-09に機能自体を廃止した
+-- （「必要ないと感じたので削除」との指示。詳細設計書2.15・2.16節参照）。CREATE TABLE文は削除した。
+-- 既存環境（本番含む）にテーブル自体が残っていても実害はないため、DROP TABLEは行っていない。
 
 -- T-16 app_settings
 CREATE TABLE IF NOT EXISTS app_settings (

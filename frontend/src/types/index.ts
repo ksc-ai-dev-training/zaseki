@@ -257,16 +257,6 @@ export interface UserRoleItem {
   /** システム運用担当（FR-09-3、2026-09-01追加）。フィードバック一覧（S-14）へのアクセスに使う */
   is_system_operator: boolean
   retired: boolean
-  /** T-15のrole_master_id一覧。編集モーダルのチェックボックス初期状態に使う */
-  custom_role_ids: number[]
-}
-
-// A-32 GET /role-master（S-08 役割マスタ管理タブ）
-export interface RoleMasterItem {
-  id: number
-  name: string
-  description: string | null
-  assigned_count: number
 }
 
 // A-49 GET /app-settings（S-08 通知設定タブ）

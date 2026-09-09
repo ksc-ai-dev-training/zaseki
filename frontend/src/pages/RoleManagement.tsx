@@ -1,22 +1,20 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useUsers, type UserRoleFilter, type UserStatusFilter } from '../hooks/useUsers'
-import { useRoleMaster } from '../hooks/useRoleMaster'
 import { useAppSettings } from '../hooks/useAppSettings'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
 import type {
   AreaManagerRole, EmploymentType, EmploymentStatus, ProjectListItem, ProjectMemberSummary, ProjectTitle,
-  Role, RoleMasterItem, UserRoleItem,
+  Role, UserRoleItem,
 } from '../types'
 
-type Tab = 'users' | 'projects' | 'notifications' | 'customroles'
+type Tab = 'users' | 'projects' | 'notifications'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: '利用者ロール管理' },
   { key: 'projects', label: 'プロジェクト・PM管理' },
   { key: 'notifications', label: '通知設定' },
-  { key: 'customroles', label: '役割マスタ管理' },
 ]
 
 const ROLE_OPTIONS: { key: UserRoleFilter; label: string }[] = [
@@ -51,7 +49,6 @@ interface UserForm {
   areaManagerRole: AreaManagerRole
   employmentStatus: EmploymentStatus
   isSystemOperator: boolean
-  customRoleIds: number[]
 }
 
 // S-08 権限・役割管理
@@ -86,7 +83,6 @@ export default function RoleManagement() {
         {tab === 'users' && <UsersTab />}
         {tab === 'projects' && <ProjectsTab />}
         {tab === 'notifications' && <NotificationsTab />}
-        {tab === 'customroles' && <CustomRolesTab />}
       </div>
     </div>
   )
@@ -98,58 +94,10 @@ function UsersTab() {
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all')
   const [showRetired, setShowRetired] = useState(false)
   const { items, isLoading, refresh } = useUsers(roleFilter, statusFilter, showRetired, query)
-  const { items: roleMasterItems } = useRoleMaster()
 
   const [form, setForm] = useState<UserForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-
-  // 役割マスタのラベルを複数利用者へまとめて付与・解除する（2026-09-09追加。「1人ずつ編集モーダルを
-  // 開いてチェックを付け直す必要があり、部署異動などまとまった人数の役割変更のたびに工数がかかる」
-  // との指摘を受けた）
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [bulkRoleMasterId, setBulkRoleMasterId] = useState<number | null>(null)
-  const [bulkApplying, setBulkApplying] = useState(false)
-  const [bulkError, setBulkError] = useState<string | null>(null)
-
-  const allSelected = items.length > 0 && items.every((u) => selectedIds.has(u.id))
-  const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(items.map((u) => u.id)))
-  }
-  const toggleSelected = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const applyBulkRole = async (grant: boolean) => {
-    if (!bulkRoleMasterId || selectedIds.size === 0) return
-    setBulkApplying(true)
-    setBulkError(null)
-    try {
-      // 解除は既に付与されている利用者だけを対象にする（付与されていない利用者に解除APIを
-      // 呼ぶと404になり、Promise.allが失敗して選択した他の利用者の分まで巻き込むため）
-      const targetIds = grant
-        ? [...selectedIds]
-        : items.filter((u) => selectedIds.has(u.id) && u.custom_role_ids.includes(bulkRoleMasterId)).map((u) => u.id)
-      await Promise.all(
-        targetIds.map((id) =>
-          grant
-            ? apiFetch(`/api/users/${id}/custom-roles`, { method: 'POST', body: JSON.stringify({ role_master_id: bulkRoleMasterId }) })
-            : apiFetch(`/api/users/${id}/custom-roles/${bulkRoleMasterId}`, { method: 'DELETE' })
-        )
-      )
-      setSelectedIds(new Set())
-      setBulkRoleMasterId(null)
-      await refresh()
-    } catch (e) {
-      setBulkError(e instanceof ApiError ? e.message : '一括操作に失敗しました')
-    } finally {
-      setBulkApplying(false)
-    }
-  }
 
   const openEdit = (u: UserRoleItem) => {
     setFormError(null)
@@ -157,17 +105,6 @@ function UsersTab() {
       id: u.id, lastName: u.last_name, firstName: u.first_name, employmentType: u.employment_type,
       isAdmin: u.role === 'admin', areaManagerRole: u.area_manager_role, employmentStatus: u.employment_status,
       isSystemOperator: u.is_system_operator,
-      customRoleIds: [...u.custom_role_ids],
-    })
-  }
-
-  const toggleCustomRole = (roleMasterId: number, checked: boolean) => {
-    if (!form) return
-    setForm({
-      ...form,
-      customRoleIds: checked
-        ? [...form.customRoleIds, roleMasterId]
-        : form.customRoleIds.filter((id) => id !== roleMasterId),
     })
   }
 
@@ -176,9 +113,6 @@ function UsersTab() {
     setSubmitting(true)
     setFormError(null)
     try {
-      const original = items.find((u) => u.id === form.id)?.custom_role_ids ?? []
-      const added = form.customRoleIds.filter((id) => !original.includes(id))
-      const removed = original.filter((id) => !form.customRoleIds.includes(id))
       await apiFetch(`/api/users/${form.id}`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -189,14 +123,6 @@ function UsersTab() {
           is_system_operator: form.isSystemOperator,
         }),
       })
-      await Promise.all([
-        ...added.map((roleMasterId) =>
-          apiFetch(`/api/users/${form.id}/custom-roles`, { method: 'POST', body: JSON.stringify({ role_master_id: roleMasterId }) })
-        ),
-        ...removed.map((roleMasterId) =>
-          apiFetch(`/api/users/${form.id}/custom-roles/${roleMasterId}`, { method: 'DELETE' })
-        ),
-      ])
       setForm(null)
       await refresh()
     } catch (e) {
@@ -230,49 +156,10 @@ function UsersTab() {
         </label>
       </div>
 
-      {roleMasterItems.length > 0 && selectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-blue-50 px-4 py-3 text-sm">
-          <span className="font-medium text-blue-900">選択中: {selectedIds.size}名</span>
-          <select
-            value={bulkRoleMasterId ?? ''}
-            onChange={(e) => setBulkRoleMasterId(e.target.value ? Number(e.target.value) : null)}
-            className="h-8 rounded border border-slate-300 px-2 text-sm"
-          >
-            <option value="">役割を選択</option>
-            {roleMasterItems.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-          </select>
-          <button
-            type="button"
-            disabled={!bulkRoleMasterId || bulkApplying}
-            onClick={() => applyBulkRole(true)}
-            className="rounded bg-blue-800 px-3 py-1 text-xs text-white disabled:opacity-50"
-          >
-            まとめて付与
-          </button>
-          <button
-            type="button"
-            disabled={!bulkRoleMasterId || bulkApplying}
-            onClick={() => applyBulkRole(false)}
-            className="rounded border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-          >
-            まとめて解除
-          </button>
-          <button type="button" onClick={() => setSelectedIds(new Set())} className="ml-auto text-xs text-slate-500 hover:underline">
-            選択解除
-          </button>
-          {bulkError && <span className="text-xs text-red-700">{bulkError}</span>}
-        </div>
-      )}
-
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-slate-500">
-              {roleMasterItems.length > 0 && (
-                <th className="px-4 py-2">
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-                </th>
-              )}
               <th className="px-4 py-2">氏名</th>
               <th className="px-4 py-2">メールアドレス</th>
               <th className="px-4 py-2">雇用形態</th>
@@ -285,11 +172,6 @@ function UsersTab() {
           <tbody>
             {items.map((u) => (
               <tr key={u.id} className="border-b border-slate-100">
-                {roleMasterItems.length > 0 && (
-                  <td className="px-4 py-2">
-                    <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleSelected(u.id)} />
-                  </td>
-                )}
                 <td className="px-4 py-2 font-semibold">{u.last_name} {u.first_name}</td>
                 <td className="px-4 py-2 text-xs text-slate-500">{u.email}</td>
                 <td className="px-4 py-2">{EMPLOYMENT_TYPE_JA[u.employment_type]}</td>
@@ -315,7 +197,7 @@ function UsersTab() {
               </tr>
             ))}
             {!isLoading && items.length === 0 && (
-              <tr><td colSpan={roleMasterItems.length > 0 ? 8 : 7} className="py-6 text-center text-slate-400">該当する利用者がいません</td></tr>
+              <tr><td colSpan={7} className="py-6 text-center text-slate-400">該当する利用者がいません</td></tr>
             )}
           </tbody>
         </table>
@@ -403,23 +285,6 @@ function UsersTab() {
               <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 「退職済み」に変更して保存すると、この利用者は論理削除され、以後ログイン・予約ができなくなります。あわせて固定座席の割当があれば解除し、今後の予約（フリー座席・プロジェクト座席）はすべて取消扱いになります（RULE-06）。
               </p>
-            )}
-            {roleMasterItems.length > 0 && (
-              <div>
-                <span className="mb-1 block text-slate-500">役割マスタのラベル（任意・複数可）</span>
-                <div className="space-y-1">
-                  {roleMasterItems.map((rm) => (
-                    <label key={rm.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={form.customRoleIds.includes(rm.id)}
-                        onChange={(e) => toggleCustomRole(rm.id, e.target.checked)}
-                      />
-                      <span>{rm.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
             )}
             {formError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{formError}</p>}
           </div>
@@ -812,147 +677,6 @@ function NotificationsTab() {
       <button type="button" disabled={saving} onClick={save} className="mt-4 rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
         保存する
       </button>
-    </div>
-  )
-}
-
-interface CustomRoleForm {
-  id: number | null
-  name: string
-  description: string
-}
-
-function CustomRolesTab() {
-  const { items, isLoading, refresh } = useRoleMaster()
-  const [form, setForm] = useState<CustomRoleForm | null>(null)
-  const [formError, setFormError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<RoleMasterItem | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-
-  const openAdd = () => {
-    setFormError(null)
-    setForm({ id: null, name: '', description: '' })
-  }
-  const openEdit = (rm: RoleMasterItem) => {
-    setFormError(null)
-    setForm({ id: rm.id, name: rm.name, description: rm.description ?? '' })
-  }
-
-  const submitForm = async () => {
-    if (!form) return
-    setSubmitting(true)
-    setFormError(null)
-    try {
-      const body = JSON.stringify({ name: form.name, description: form.description || null })
-      if (form.id === null) {
-        await apiFetch('/api/role-master', { method: 'POST', body })
-      } else {
-        await apiFetch(`/api/role-master/${form.id}`, { method: 'PUT', body })
-      }
-      setForm(null)
-      await refresh()
-    } catch (e) {
-      setFormError(e instanceof ApiError ? e.message : '保存に失敗しました')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    setDeleteError(null)
-    try {
-      await apiFetch(`/api/role-master/${deleteTarget.id}`, { method: 'DELETE' })
-      setDeleteTarget(null)
-      await refresh()
-    } catch (e) {
-      setDeleteError(e instanceof ApiError ? e.message : '削除に失敗しました')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="flex justify-end border-b border-slate-200 p-4">
-        <button type="button" onClick={openAdd} className="rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900">
-          ＋ 役割を追加
-        </button>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="px-4 py-2">役割名</th>
-              <th className="px-4 py-2">説明</th>
-              <th className="px-4 py-2">付与済み利用者数</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((rm) => (
-              <tr key={rm.id} className="border-b border-slate-100">
-                <td className="px-4 py-2 font-semibold">{rm.name}</td>
-                <td className="px-4 py-2 text-xs text-slate-500">{rm.description}</td>
-                <td className="px-4 py-2">{rm.assigned_count}名</td>
-                <td className="px-4 py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => openEdit(rm)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">編集</button>
-                    <button type="button" onClick={() => { setDeleteError(null); setDeleteTarget(rm) }} className="rounded border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50">削除</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!isLoading && items.length === 0 && (
-              <tr><td colSpan={4} className="py-6 text-center text-slate-400">役割が登録されていません</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {form && (
-        <Modal
-          title={form.id === null ? '役割を追加' : `役割を編集（${form.name}）`}
-          onClose={() => setForm(null)}
-          footer={
-            <>
-              <button type="button" onClick={() => setForm(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={submitting || !form.name.trim()} onClick={submitForm} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">保存する</button>
-            </>
-          }
-        >
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-slate-500">役割名</span>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例: セキュリティ担当" className="h-9 w-full rounded border border-slate-300 px-3" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-slate-500">説明（任意）</span>
-              <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="この役割が何を目的とした名前かのメモ" className="h-9 w-full rounded border border-slate-300 px-3" />
-            </label>
-            {formError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{formError}</p>}
-          </div>
-        </Modal>
-      )}
-
-      {deleteTarget && (
-        <Modal
-          title="役割の削除"
-          onClose={() => setDeleteTarget(null)}
-          footer={
-            <>
-              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={deleting} onClick={confirmDelete} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">削除する</button>
-            </>
-          }
-        >
-          <p className="text-sm">役割「{deleteTarget.name}」を削除しますか？付与されている利用者からもラベルが外れます。</p>
-          {deleteError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p>}
-        </Modal>
-      )}
     </div>
   )
 }
