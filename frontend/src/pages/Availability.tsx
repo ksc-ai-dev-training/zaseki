@@ -974,31 +974,6 @@ export default function Availability() {
         </div>
       )}
 
-      {seatBlockFor && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
-          <span>
-            <strong>{seatBlockFor.projectName}</strong>の座席の島を{seatBlockFor.allocatedSeatIds ? '編集' : '割り当て'}中です（必要座席数: {seatBlockFor.requiredSeats}名）。
-            フロアマップの座席をクリックして選択・解除してください（ブロックの見出し名をクリックすると、そのブロックの空き座席をまとめて選択・解除できます）。選択中: {seatBlockSelection.size}席
-          </span>
-          <span className="flex shrink-0 gap-3">
-            <button
-              type="button"
-              disabled={submitting || seatBlockSelection.size === 0}
-              onClick={confirmSeatBlock}
-              className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
-            >
-              {seatBlockFor.allocatedSeatIds ? 'この内容で更新する' : 'この内容で割り当てる'}
-            </button>
-            <button type="button" onClick={exitSeatBlockMode} className="text-blue-700 underline hover:text-blue-900">
-              キャンセル
-            </button>
-          </span>
-        </div>
-      )}
-      {seatBlockFor && actionError && (
-        <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
-      )}
-
       {memberSeatAssignFor && memberAssignResult && (
         <div className="border-b border-blue-200 bg-blue-50 px-8 py-3 text-sm text-blue-900">
           <div className="mb-2 flex items-center justify-between">
@@ -1137,7 +1112,8 @@ export default function Availability() {
         <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
-      <div className="p-6" ref={topRef}>
+      <div className={seatBlockFor ? 'lg:flex lg:items-start' : ''}>
+      <div className="min-w-0 flex-1 p-6" ref={topRef}>
 
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {viewMode === 'floormap' && (
@@ -1545,6 +1521,51 @@ export default function Availability() {
         </div>
       </div>
 
+      </div>
+
+      {seatBlockFor && (
+        <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
+          <h2 className="text-sm font-semibold text-slate-800">
+            座席の島の{seatBlockFor.allocatedSeatIds ? '編集' : '割当'}
+          </h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between gap-2">
+              <dt className="text-slate-500">プロジェクト</dt>
+              <dd className="text-right font-medium">{seatBlockFor.projectName}</dd>
+            </div>
+            <div className="flex justify-between"><dt className="text-slate-500">必要座席数</dt><dd>{seatBlockFor.requiredSeats}名</dd></div>
+            <div className="flex justify-between">
+              <dt className="text-slate-500">選択中</dt>
+              <dd className={`font-semibold ${seatBlockSelection.size >= seatBlockFor.requiredSeats ? 'text-green-700' : 'text-amber-700'}`}>
+                {seatBlockSelection.size}席
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            左のフロアマップで座席をクリックして選択・解除してください。ブロックの見出し名をクリックすると、そのブロックの空き座席をまとめて選択・解除できます。
+          </p>
+          {actionError && (
+            <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{actionError}</p>
+          )}
+          <div className="mt-4 flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={submitting || seatBlockSelection.size === 0}
+              onClick={confirmSeatBlock}
+              className="rounded bg-blue-800 px-3 py-2 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
+            >
+              {seatBlockFor.allocatedSeatIds ? 'この内容で更新する' : 'この内容で割り当てる'}
+            </button>
+            <button
+              type="button"
+              onClick={exitSeatBlockMode}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </aside>
+      )}
       </div>
 
       {reserveTarget && (
