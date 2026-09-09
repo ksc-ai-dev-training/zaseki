@@ -899,6 +899,10 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // seatCapacity: そのグループの物理座席数（座席タイプ問わず）。「曜日ごとの合計」がこれを超えた
   // 曜日を警告表示するために使う（2026-09-09追加）。UNKNOWNグループはまだどのエリアになるか
   // 決まっていないため比較対象を持たない（undefined）
+  // UNKNOWNグループのmatchFixedは、以前は「エリア不明なので0人扱い」としていたが、「現状の固定席を
+  // 含ませてほしい」との指摘を受け、全エリア合計の固定座席人数を含めるよう修正した（2026-09-09追加。
+  // どのエリアになるか決まっていない以上、NORTH・EAST/WEST個別の内訳は出せないが、実在する固定座席の
+  // 人数を0のまま表示し続けるのは実態と合わずより誤解を招くため）
   const AREA_GROUPS: {
     key: string; label: string
     matchPlan: (p: QuarterPlanItem) => boolean
@@ -907,7 +911,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   }[] = [
     { key: 'NORTH', label: 'NORTHエリア', matchPlan: (p) => p.previous_area === 'NORTH', matchFixed: (a) => a.area === 'NORTH', seatCapacity: areaSeatCapacity.NORTH },
     { key: 'EAST_WEST', label: 'EAST・WESTエリア', matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST', matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST', seatCapacity: areaSeatCapacity.EAST_WEST },
-    { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => false, seatCapacity: undefined },
+    { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => true, seatCapacity: undefined },
   ]
   const groups = AREA_GROUPS.map((g) => {
     const groupPlans = plans.filter(g.matchPlan)
@@ -1079,7 +1083,12 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 font-semibold">
-                    <td className="py-2 pr-3">曜日ごとの合計<span className="ml-1 text-xs font-normal text-slate-400">（固定座席{g.fixedSeatCount}名を含む）</span></td>
+                    <td className="py-2 pr-3">
+                      曜日ごとの合計
+                      <span className="ml-1 text-xs font-normal text-slate-400">
+                        （固定座席{g.fixedSeatCount}名{g.key === 'UNKNOWN' ? '＝全エリア合計' : ''}を含む）
+                      </span>
+                    </td>
                     <td className="py-2 pr-3">{totalRequired}名</td>
                     {WEEKDAYS.map((w) => {
                       const total = dayTotal(w.key)
