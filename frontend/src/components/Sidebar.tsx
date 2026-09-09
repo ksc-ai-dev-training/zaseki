@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router'
 import type { Me } from '../types'
 
@@ -5,6 +6,10 @@ interface SidebarProps {
   me: Me
   onLogout: () => void
 }
+
+// サイドバーの折り畳み状態はブラウザに保存し、次回アクセス時も維持する
+// （2026-09-09追加。「メニューを折り畳み出来るようにしてほしい」との要望を受けた）
+const COLLAPSE_STORAGE_KEY = 'zaseki_sidebar_collapsed'
 
 const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean; systemOperatorOnly?: boolean }[] = [
   { to: '/', label: '空き状況・予約' },
@@ -23,14 +28,60 @@ const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '�
 // 画面共通のサイドバー（画面モックアップの.sidebarに相当）。スマホ幅では非表示にし、
 // S-02のみに用意した簡易な上部バー（Layout.tsx）に譲る（スマホ対応の対象はS-02のみ、基本設計書4.7節）
 export default function Sidebar({ me, onLogout }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? '1' : '0')
+      } catch {
+        // localStorageが使えない環境（プライベートブラウズ等）ではセッション内のみの切り替えになる
+      }
+      return next
+    })
+  }
+
+  if (collapsed) {
+    return (
+      <aside className="hidden w-14 shrink-0 flex-col items-center gap-3 border-r border-slate-200 bg-white py-4 sm:sticky sm:top-0 sm:flex sm:h-screen">
+        <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-800 text-sm font-bold text-white">Z</div>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title="メニューを開く"
+          aria-label="メニューを開く"
+          className="rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        >
+          »
+        </button>
+      </aside>
+    )
+  }
+
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:sticky sm:top-0 sm:flex sm:h-screen">
       <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 px-5 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-800 text-sm font-bold text-white">Z</div>
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-bold text-slate-800">Zaseki</div>
           <div className="text-[11px] text-slate-400">本社座席予約システム</div>
         </div>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title="メニューを折り畳む"
+          aria-label="メニューを折り畳む"
+          className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        >
+          «
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
