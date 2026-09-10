@@ -4,11 +4,13 @@ import { apiFetch, ApiError } from '../lib/api'
 import { useMe } from '../hooks/useMe'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
+import { useProjects } from '../hooks/useProjects'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import Modal from '../components/Modal'
+import ProjectEditModal, { ProjectDeleteConfirmModal, type ProjectForm } from '../components/ProjectEditModal'
 import type {
-  FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectPlanDetail, ProjectPlanMember, QuarterPlanStatus,
-  RetrySeatAssignmentResult, SeatAssignmentResult, Weekday,
+  FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectListItem, ProjectPlanDetail, ProjectPlanMember,
+  QuarterPlanStatus, RetrySeatAssignmentResult, SeatAssignmentResult, Weekday,
 } from '../types'
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
@@ -64,6 +66,10 @@ function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value
 // S-04 プロジェクト座席（PM側）。詳細設計書3.4節・4.3節
 export default function ProjectSeatRequest() {
   const { items, error, isLoading, refresh } = useMyProjects()
+  // 自分が作成したプロジェクトの編集・削除（2026-09-10追加。「S-04でもS-08と同じ編集・削除機能が
+  // 欲しい」との要望を受けた）。A-27は非adminの場合は自分が作成したプロジェクトのみ返すため、
+  // 一般ユーザーがこの画面で呼んでも他人のプロジェクトは含まれない
+  const { items: allProjects, refresh: refreshProjects } = useProjects()
   const [showCreate, setShowCreate] = useState(false)
 
   // 対象四半期タブ（S-09と同様の考え方）。自分が所属する全プロジェクトのplansに現れる
@@ -136,7 +142,15 @@ export default function ProjectSeatRequest() {
         )}
 
         <div className="space-y-8">
-          {items.map((mp) => <ProjectSection key={mp.project_id} item={mp} selectedQuarter={selectedQuarter} />)}
+          {items.map((mp) => (
+            <ProjectSection
+              key={mp.project_id}
+              item={mp}
+              selectedQuarter={selectedQuarter}
+              projectDetail={allProjects.find((p) => p.id === mp.project_id)}
+              onProjectsChanged={() => { refresh(); refreshProjects() }}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -199,15 +213,99 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
   )
 }
 
-function ProjectSection({ item, selectedQuarter }: { item: MyProjectItem; selectedQuarter: string }) {
+function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChanged }: {
+  item: MyProjectItem
+  selectedQuarter: string
+  projectDetail: ProjectListItem | undefined
+  onProjectsChanged: () => void
+}) {
   const roleLabel = item.project_title ?? '一般メンバー'
   const plan = item.plans.find((p) => p.period_start === selectedQuarter) ?? null
+
+  // 自分が作成したプロジェクトの編集・削除（2026-09-10追加。「S-04でもS-08と同じ編集・削除機能が
+  // 欲しい。編集機能の内容はS-08にある編集機能とまんま同じものでいい」との要望を受けた）。
+  // S-08のProjectsTabと全く同じProjectEditModal/ProjectDeleteConfirmModalを共有コンポーネントとして
+  // 使い、対象をprojectDetail（A-27、自分が作成したプロジェクトのみ返る）から初期化する
+  const [form, setForm] = useState<ProjectForm | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const openEdit = () => {
+    if (!projectDetail) return
+    setFormError(null)
+    setForm({
+      id: projectDetail.id, name: projectDetail.name,
+      members: projectDetail.members.map((m) => ({ user_id: m.user_id, name: m.name, project_title: m.project_title })),
+      proxyUserId: projectDetail.proxy_user_id,
+      createdBy: projectDetail.created_by,
+    })
+  }
+  const submitForm = async () => {
+    if (!form || form.id === null) return
+    if (!form.name.trim()) { setFormError('プロジェクト名を入力してください'); return }
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      await apiFetch(`/api/projects/${form.id}/members`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: form.name,
+          members: form.members.map((m) => ({ user_id: m.user_id, project_title: m.project_title })),
+          proxy_user_id: form.proxyUserId,
+          created_by: form.createdBy,
+        }),
+      })
+      setForm(null)
+      onProjectsChanged()
+    } catch (e) {
+      setFormError(e instanceof ApiError ? e.message : '保存に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const confirmDelete = async () => {
+    if (!projectDetail) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await apiFetch(`/api/projects/${projectDetail.id}`, { method: 'DELETE' })
+      setShowDelete(false)
+      onProjectsChanged()
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : '削除に失敗しました')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <section>
       <h2 className="mb-2 flex items-center gap-2 text-lg font-bold">
         {item.project_name}
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">{roleLabel}</span>
+        {item.is_project_creator && (
+          <span className="ml-auto flex gap-2">
+            <button
+              type="button"
+              disabled={!projectDetail}
+              onClick={openEdit}
+              className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              編集
+            </button>
+            <button
+              type="button"
+              disabled={!projectDetail}
+              onClick={() => { setDeleteError(null); setShowDelete(true) }}
+              className="rounded border border-red-200 px-3 py-1 text-xs font-normal text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              削除
+            </button>
+          </span>
+        )}
       </h2>
       {item.plans.length === 0 ? (
         <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
@@ -219,6 +317,26 @@ function ProjectSection({ item, selectedQuarter }: { item: MyProjectItem; select
         <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
           この四半期の計画はありません。
         </p>
+      )}
+
+      {form && (
+        <ProjectEditModal
+          form={form}
+          setForm={setForm}
+          onClose={() => setForm(null)}
+          onSubmit={submitForm}
+          submitting={submitting}
+          error={formError}
+        />
+      )}
+      {showDelete && projectDetail && (
+        <ProjectDeleteConfirmModal
+          projectName={projectDetail.name}
+          onClose={() => setShowDelete(false)}
+          onConfirm={confirmDelete}
+          deleting={deleting}
+          error={deleteError}
+        />
       )}
     </section>
   )
@@ -398,6 +516,31 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
   const [requestedSeats, setRequestedSeats] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copying, setCopying] = useState(false)
+
+  // 前回の回答をコピー（2026-09-10追加。「前回のPJ席の人、曜日調整がコピーできるようにしてほしい」
+  // との要望を受けた）。A-15（前回サイクルの参照）を呼び、前回の第一・第二希望・備考・必要座席数の
+  // 変更希望をこのフォームの入力欄に反映するだけで、送信自体は行わない（内容を見直してから
+  // 「この内容で回答する」を押してもらう）。前回が未回答だった場合はその旨を表示するのみ
+  const copyPrevious = async () => {
+    setCopying(true)
+    setError(null)
+    try {
+      const data = await apiFetch<PreviousPlanDetail>(`/api/project-quarter-plans/${plan.id}/previous`)
+      if (!data.response) {
+        setError('前回は未回答でした')
+        return
+      }
+      setChoice1(new Set(data.response.choice1_weekdays))
+      setChoice2(new Set(data.response.choice2_weekdays))
+      setNote(data.response.note ?? '')
+      setRequestedSeats(data.response.requested_seats !== null ? String(data.response.requested_seats) : '')
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '前回分の取得に失敗しました')
+    } finally {
+      setCopying(false)
+    }
+  }
 
   const submit = async () => {
     setSubmitting(true)
@@ -421,7 +564,19 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
 
   return (
     <div className="rounded border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3 font-semibold">出社曜日アンケートの回答</div>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+        出社曜日アンケートの回答
+        {plan.has_previous_plan && (
+          <button
+            type="button"
+            disabled={copying}
+            onClick={copyPrevious}
+            className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {copying ? 'コピー中...' : '前回の回答をコピーする'}
+          </button>
+        )}
+      </div>
       <div className="space-y-4 p-4">
         <WeekdayCheckboxGroup label="第一希望" value={choice1} onChange={setChoice1} />
         <WeekdayCheckboxGroup label="第二希望" value={choice2} onChange={setChoice2} />
@@ -597,6 +752,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<SeatAssignmentResult[] | null>(null)
   const [busyMemberId, setBusyMemberId] = useState<number | null>(null)
+  const [copying, setCopying] = useState(false)
 
   // 確保済みメンバーの座席変更（2026-09-03追加。「メンバーへの座席確保なのですが変更できるように
   // してほしい」との要望を受けた。従来は一度確保すると「割り当てる座席」欄が「—」になり、この画面
@@ -613,6 +769,45 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
   const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.seat_not_required)
   const assignedSeatIds = new Set(plan.members.map((m) => m.assigned_seat_id).filter((v): v is number => v !== null))
   const seatOptions = (plan.allocated_seats ?? []).filter((s) => !assignedSeatIds.has(s.id))
+
+  // 前回の座席をコピー（2026-09-10追加。「前回のPJ席の人がコピーできるようにしてほしい」との
+  // 要望を受けた）。A-15（前回サイクルの参照）で前回のメンバー→座席番号の対応を取得し、まだ未確保の
+  // メンバーについて、前回と同じ座席番号が今回の座席の島（seatOptions）にも含まれていればpicksへ
+  // 反映するだけで、確保自体は行わない（内容を見直してから既存の「この内容で確保する」を押してもらう）。
+  // 座席の島は期ごとに異なりうるため、前回と同じ座席番号が今回はない場合はそのメンバーの分は
+  // 何もしない（手動で選んでもらう）。既に手動で選択済みのpicksは上書きしない
+  const copyPreviousSeats = async () => {
+    setCopying(true)
+    setError(null)
+    try {
+      const data = await apiFetch<PreviousPlanDetail>(`/api/project-quarter-plans/${plan.id}/previous`)
+      const seatIdByNo = new Map(seatOptions.map((s) => [s.seat_no, s.id]))
+      const previousSeatNoByUserId = new Map(
+        data.assignments.filter((a) => a.seat_no !== null).map((a) => [a.user_id, a.seat_no as string])
+      )
+      setPicks((prev) => {
+        const next = { ...prev }
+        // usedSeatIdsはこの呼び出し内で完結させる（setState updaterはStrict Modeで2回
+        // 呼ばれうるため、外側スコープの可変Setを共有すると2回目の呼び出しで既に使用済み
+        // 扱いになり結果が空になる不具合になる。既存の手動選択分〔prev〕も重複対象に含める）
+        const usedSeatIds = new Set(Object.values(next).filter((v): v is number => v !== ''))
+        unassigned.forEach((m) => {
+          if (next[m.user_id]) return
+          const previousSeatNo = previousSeatNoByUserId.get(m.user_id)
+          const seatId = previousSeatNo ? seatIdByNo.get(previousSeatNo) : undefined
+          if (seatId !== undefined && !usedSeatIds.has(seatId)) {
+            next[m.user_id] = seatId
+            usedSeatIds.add(seatId)
+          }
+        })
+        return next
+      })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '前回分の取得に失敗しました')
+    } finally {
+      setCopying(false)
+    }
+  }
   // 変更先の候補は、必要人数ちょうどで座席の島が埋まっている（空き座席がない）ことが多く、
   // 空き座席だけでは選べる相手がいなかったため、既に他メンバーに割り当て済みの座席も選択肢に含め、
   // 選ぶとその相手と座席を交換する（2026-09-03追加。「変更先を選択を押しても座席が表示されないため
@@ -742,7 +937,19 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
 
   return (
     <div className="rounded border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3 font-semibold">メンバーへの座席確保</div>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+        メンバーへの座席確保
+        {plan.has_previous_plan && unassigned.length > 0 && (
+          <button
+            type="button"
+            disabled={copying}
+            onClick={copyPreviousSeats}
+            className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {copying ? 'コピー中...' : '前回の座席をコピーする'}
+          </button>
+        )}
+      </div>
       <div className="p-4">
         <table className="w-full text-sm">
           <thead>

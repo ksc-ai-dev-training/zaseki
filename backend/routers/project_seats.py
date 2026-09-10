@@ -1,5 +1,5 @@
-# A-27〜A-29 プロジェクト・PM管理（S-08）、A-38〜A-44・A-74 プロジェクト座席・エリア担当側（S-09）。
-# 詳細設計書3.8節・3.9節
+# A-27〜A-29・A-79 プロジェクト・PM管理（S-08、A-79はS-04も使用）、A-38〜A-44・A-74 プロジェクト座席・
+# エリア担当側（S-09）。詳細設計書3.8節・3.9節
 import json
 import re
 from datetime import date as Date
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import ai_weekday
-from auth_helpers import CurrentUser, require_roles
+from auth_helpers import CurrentUser, require_auth, require_roles
 from database import get_pool
 from slack import (
     DEFAULT_MESSAGE_FINALIZE_HEADER,
@@ -62,19 +62,24 @@ def _format_seat_range(seat_nos: list[str]) -> str:
 
 
 @router.get("/projects")
-async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
-    """A-27: 全プロジェクト一覧。S-08「プロジェクト・PM管理」タブの一覧・編集モーダルのメンバー表で使う
-    （2026-08-28、members・member_count・proxy_user_id・proxy_user_nameを追加）。呼び出し時の次の四半期の
+async def list_projects(user: CurrentUser = Depends(require_auth)):
+    """A-27: プロジェクト一覧。S-08「プロジェクト・PM管理」タブの一覧・編集モーダルのメンバー表、および
+    S-04「プロジェクト座席」の編集・削除機能（2026-09-10追加）で使う。呼び出し時の次の四半期の
     計画データの自動作成（_ensure_next_quarter_plans）は、2026-09-03に「四半期」という概念自体を撤廃した
     ことに伴い廃止した（検討資料「プロジェクト座席・曜日調整フロー改善案」変更D。プロジェクト座席の期間は
     エリア責任者・管理部が都度A-67で設定する）。created_by・created_by_name（2026-09-09追加、千田さんの案）:
     プロジェクトの作成者（T-05.created_by）。アンケート回答（A-16）・席決め（A-18等）の実権限を持つ利用者
     であり、S-08編集モーダルで管理部が確認・是正できるようにするために追加した（PJ席決担当
-    〔proxy_user_id〕は表示用として引き続き残る。両者は別概念になった点に注意）。"""
+    〔proxy_user_id〕は表示用として引き続き残る。両者は別概念になった点に注意）。
+    2026-09-10変更: 「S-04でもS-08と同じ編集・削除機能が欲しい」との要望を受け、role='admin'専用
+    だった認可をrequire_authに緩和し、role='admin'以外は自分が作成者（created_by）のプロジェクトのみに
+    絞り込むようにした（P-CREATOR）。レスポンス形状は変更していない。"""
     pool = get_pool()
 
+    where_clause = "" if user.role == "admin" else "WHERE p.created_by = $1"
+    params = [] if user.role == "admin" else [user.id]
     rows = await pool.fetch(
-        """SELECT p.id, p.name, p.proxy_user_id, p.created_by,
+        f"""SELECT p.id, p.name, p.proxy_user_id, p.created_by,
                   string_agg(DISTINCT (u.last_name || ' ' || u.first_name), '、')
                       FILTER (WHERE pm.project_title IN ('PM', 'PL')) AS pm_pl_names,
                   COUNT(pm.id) AS member_count,
@@ -86,8 +91,10 @@ async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
            FROM projects p
            LEFT JOIN project_members pm ON pm.project_id = p.id
            LEFT JOIN users u ON u.id = pm.user_id
+           {where_clause}
            GROUP BY p.id
-           ORDER BY p.name"""
+           ORDER BY p.name""",
+        *params,
     )
     items = []
     for r in rows:
@@ -101,6 +108,27 @@ async def list_projects(_: CurrentUser = Depends(require_roles("admin"))):
             "created_by": r["created_by"], "created_by_name": created_by_name,
         })
     return {"items": items}
+
+
+@router.get("/users/search")
+async def search_users_for_project(q: str = "", user: CurrentUser = Depends(require_auth)):
+    """A-79: プロジェクトメンバー追加用の軽量な利用者検索（2026-09-10新設）。「S-04でもS-08と同じ
+    編集機能が欲しい」との要望を受けた。S-08編集モーダルのメンバー検索は従来A-25（GET /users、
+    role='admin'専用、在籍状況・役割・エリア責任者区分等の管理系フィールドまで返す）を使っていたが、
+    S-04は誰でもアクセスするため、A-25をそのまま一般公開せず、モーダルが実際に使うid・氏名・emailの
+    みを返す最小権限の専用エンドポイントを新設した（A-25自体は変更せず、S-08は引き続きA-25を使う）。
+    qが空なら空配列を返す（全件ダンプを避ける）。在籍中（deleted_at IS NULL）の利用者のみ、氏名・email
+    の部分一致で最大20件返す。"""
+    if not q:
+        return {"items": []}
+    rows = await get_pool().fetch(
+        """SELECT id, last_name, first_name, email FROM users
+           WHERE deleted_at IS NULL
+             AND ((last_name || first_name) ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+           ORDER BY last_name, first_name LIMIT 20""",
+        q,
+    )
+    return {"items": [{"id": r["id"], "last_name": r["last_name"], "first_name": r["first_name"], "email": r["email"]} for r in rows]}
 
 
 class ProjectCreate(BaseModel):
@@ -140,7 +168,7 @@ class ProjectMembersUpdate(BaseModel):
 
 
 @router.put("/projects/{id}/members")
-async def update_project_members(id: int, body: ProjectMembersUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+async def update_project_members(id: int, body: ProjectMembersUpdate, user: CurrentUser = Depends(require_auth)):
     """A-29: メンバー構成・PM/PL/SL・PJ席決担当・作成者をまとめて更新する。bodyに含まれないuser_idの
     既存メンバーは削除、新規はcan_assign_seats=falseで追加、既存は所属継続のままproject_titleのみ更新する
     （UPSERT。2026-08-28追加。can_assign_seats・seat_assign_granted_byはbodyの対象外のため既存メンバーの
@@ -150,7 +178,11 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, _: Current
     メンバーを1つのフォームとして一括保存する設計のため、名称変更用に別APIを新設せずA-29に統合した）。
     <code>created_by</code>（2026-09-09追加）: 指定された場合、bodyのmembersに含まれるuser_idの
     いずれかでなければ400（PM/PL限定ではない）。バックフィル漏れの是正や、管理部が本来の担当者の
-    代わりにA-28でプロジェクトを作成した場合の引き継ぎに使う。"""
+    代わりにA-28でプロジェクトを作成した場合の引き継ぎに使う。
+    2026-09-10変更: 「S-04でもS-08と同じ編集機能が欲しい」との要望を受け、role='admin'専用だった認可を
+    require_authに緩和し、role='admin'以外は対象プロジェクトの作成者（created_by＝自分）のみ許可する
+    ようにした（P-CREATOR）。作成者は自分の判断で作成者自身を含むメンバー構成・役割・PJ席決担当・
+    作成者〔他メンバーへの譲渡を含む〕を変更でき、管理部と全く同じ操作範囲を持つ。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
@@ -158,9 +190,11 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, _: Current
         raise HTTPException(400, detail="同じ利用者が複数の行に指定されています")
 
     pool = get_pool()
-    project = await pool.fetchrow("SELECT id FROM projects WHERE id = $1", id)
+    project = await pool.fetchrow("SELECT id, created_by FROM projects WHERE id = $1", id)
     if project is None:
         raise HTTPException(404, detail="対象が見つかりません")
+    if user.role != "admin" and project["created_by"] != user.id:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
 
     user_ids = [m.user_id for m in body.members]
     if user_ids:
@@ -204,7 +238,7 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, _: Current
 
 
 @router.delete("/projects/{id}")
-async def delete_project(id: int, _: CurrentUser = Depends(require_roles("admin"))):
+async def delete_project(id: int, user: CurrentUser = Depends(require_auth)):
     """A-55: プロジェクトの削除（S-08プロジェクト・PM管理タブ、2026-08-28追加）。project_membersと
     project_quarter_plans（FK経由でproject_weekday_responsesも連動）はプロジェクト自体が消える以上
     存在意義を失うため、本APIの一部としてあわせて削除する（A-29のメンバー削除とは異なり、削除対象を
@@ -212,11 +246,16 @@ async def delete_project(id: int, _: CurrentUser = Depends(require_roles("admin"
     project_quarter_plans行の一部にすぎず、project_blocked_seats()はJOIN projectsで判定するため
     削除後は自動的にプロジェクト専有として扱われなくなる。一方、メンバーが個別に確保済みの座席予約
     （A-18生成分のreservations・recurring_rules）はproject_idを持たない独立したデータのため削除せず
-    残す（本人が実際にその座席を使っている実態を、プロジェクトという管理上の入れ物の削除で消さない）。"""
+    残す（本人が実際にその座席を使っている実態を、プロジェクトという管理上の入れ物の削除で消さない）。
+    2026-09-10変更: 「S-04でもS-08と同じ削除機能が欲しい」との要望を受け、role='admin'専用だった認可を
+    require_authに緩和し、role='admin'以外は対象プロジェクトの作成者（created_by＝自分）のみ許可する
+    ようにした（P-CREATOR）。削除の挙動自体は変更していない。"""
     pool = get_pool()
-    project = await pool.fetchrow("SELECT id, name FROM projects WHERE id = $1", id)
+    project = await pool.fetchrow("SELECT id, name, created_by FROM projects WHERE id = $1", id)
     if project is None:
         raise HTTPException(404, detail="対象が見つかりません")
+    if user.role != "admin" and project["created_by"] != user.id:
+        raise HTTPException(403, detail="この操作を行う権限がありません")
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -257,7 +296,9 @@ async def list_quarter_plans(
     いないプロジェクトはnull）。area_seat_capacity（{NORTH, EAST_WEST}の各エリアの有効座席数、
     座席タイプを問わない）は、出社曜日の調整表の「曜日ごとの合計」が物理座席数を超えていないか
     その場で判定できるようにするため2026-09-09追加。座席総数を毎回手で数える代わりに、必要数が
-    超過した曜日をUI側で警告表示する（3.9節参照）。"""
+    超過した曜日をUI側で警告表示する（3.9節参照）。has_previous_plan（2026-09-10追加）は、
+    同一プロジェクトにこの計画より前の期間の計画が存在するかどうかを返す。出社曜日の調整表の
+    「前回の確定曜日をコピーする」ボタン（A-15を呼ぶ）の表示条件に使う。"""
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
@@ -266,7 +307,11 @@ async def list_quarter_plans(
                       AS seat_assigner_names,
                   COUNT(DISTINCT pm.id) FILTER (WHERE fsa.user_id IS NULL AND NOT pm.seat_not_required) AS non_fixed_member_count,
                   wr.choice1_weekdays, wr.choice2_weekdays, wr.note,
-                  (wr.id IS NOT NULL) AS has_response
+                  (wr.id IS NOT NULL) AS has_response,
+                  EXISTS(
+                      SELECT 1 FROM project_quarter_plans pqp2
+                      WHERE pqp2.project_id = pqp.project_id AND pqp2.period_start < pqp.period_start
+                  ) AS has_previous_plan
            FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id
            LEFT JOIN project_members pm ON pm.project_id = pqp.project_id
@@ -321,6 +366,7 @@ async def list_quarter_plans(
             "choice2_weekdays": json.loads(r["choice2_weekdays"]) if r["choice2_weekdays"] else None,
             "note": r["note"],
             "previous_area": previous_area_by_project.get(r["project_id"]),
+            "has_previous_plan": r["has_previous_plan"],
         })
 
     # 期間未設定のプロジェクト（今日以降に及ぶ計画データを1件も持たないプロジェクト）を別枠で返す

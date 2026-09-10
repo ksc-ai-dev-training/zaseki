@@ -230,9 +230,24 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
 
 @router.get("/project-quarter-plans/{id}/previous")
 async def get_previous_quarter_plan(id: int, user: CurrentUser = Depends(require_auth)):
-    """A-15: 前回サイクル（3か月前とは限らず、同一プロジェクトで直近のもの）の計画を参照専用で取得（D13）。"""
+    """A-15: 前回サイクル（3か月前とは限らず、同一プロジェクトで直近のもの）の計画を参照専用で取得（D13）。
+    2026-09-10変更: 「前回のPJ席の人・曜日調整がコピーできるようにしてほしい」との要望を受け、
+    (1) 前回の座席割当（既存のassignments）に加え前回の出社曜日アンケート回答（response）・
+    確定曜日（weekdays_finalized）も返すようにした（S-04の「前回の回答をコピーする」
+    〔SurveyForm〕・「前回の座席をコピーする」〔BulkSeatAssign〕、S-09の「前回の確定曜日を
+    コピーする」〔WeekdayMatrix〕がそれぞれ使う）。(2) S-09（エリア責任者、role='admin'）からも
+    呼べるよう、role='admin'であれば自分がプロジェクトのメンバーでなくても許可するようにした。
+    A-14と共有する_require_ownerはmy_memberがNone非許容の実装のため、それとは独立に権限判定する。"""
     pool = get_pool()
-    plan, _ = await _require_owner(pool, id, user.id)
+    plan = await pool.fetchrow(
+        "SELECT project_id, period_start FROM project_quarter_plans WHERE id = $1", id
+    )
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if user.role != "admin":
+        member = await _member_row(pool, plan["project_id"], user.id)
+        if member is None:
+            raise HTTPException(403, detail="この操作を行う権限がありません")
 
     previous = await pool.fetchrow(
         """SELECT * FROM project_quarter_plans
@@ -260,9 +275,22 @@ async def get_previous_quarter_plan(id: int, user: CurrentUser = Depends(require
             for r in rows
         ]
 
+    response = await pool.fetchrow(
+        "SELECT choice1_weekdays, choice2_weekdays, note, requested_seats FROM project_weekday_responses WHERE plan_id = $1",
+        previous["id"],
+    )
+
     return {
         "id": previous["id"], "period_start": previous["period_start"].isoformat(),
         "period_end": previous["period_end"].isoformat(), "assignments": assignments,
+        "weekdays_finalized": json.loads(previous["weekdays_finalized"]) if previous["weekdays_finalized"] else None,
+        "response": (
+            {
+                "choice1_weekdays": json.loads(response["choice1_weekdays"]),
+                "choice2_weekdays": json.loads(response["choice2_weekdays"]),
+                "note": response["note"], "requested_seats": response["requested_seats"],
+            } if response else None
+        ),
     }
 
 

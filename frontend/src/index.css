@@ -178,6 +178,19 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
 .floor-zoom-viewport {
   -webkit-overflow-scrolling: touch;
 }
+/* S-09 出社曜日の調整表の座席表プレビュー（2026-09-10追加。「曜日調整する際、右に調整画面、
+   左に座席表を表示させPJ座席状況がわかるようにする」との要望を受けた）。フロア図はデスクトップ
+   全画面表示前提の固定ピクセルグリッドのため、下のモバイル対応と同じ考え方（zoomはtransform:scale
+   と異なり専有サイズごと縮小するため下に余白が残らない）を、画面幅に関わらず常時適用する専用
+   クラスとして流用する。`.floor-preview-box`経由のセレクタにすることで、下のモバイル用
+   メディアクエリ（bareな.floor-overview）との優先順位の衝突を避ける */
+.floor-preview-box .floor-overview {
+  zoom: 0.5;
+}
+.floor-preview-box .seat-tile .seat-tag {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .floor-overview {
     zoom: var(--pinch-scale, 1);

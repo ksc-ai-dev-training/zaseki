@@ -3,8 +3,82 @@ import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
+import { useAvailability } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
-import type { QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
+import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
+import { LEGEND, STATUS_CSS_CLASS } from './Availability'
+import type { QuarterPlanItem, QuarterPlanStatus, Seat, Weekday, WeekdayAiSuggestion } from '../types'
+
+function toLocalDateStr(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+function todayStr(): string {
+  return toLocalDateStr(new Date())
+}
+
+// 出社曜日の調整表（WeekdayMatrix）の左側に置く、本日時点の座席状況プレビュー（2026-09-10追加。
+// 「曜日調整する際、右に調整画面、左に座席表を表示させPJ座席状況がわかるようにする」との要望を
+// 受けた）。調整対象の期間は常に未来のため、その期間の実際の予約状況はまだ存在しない（座席は
+// まだ個人に決まっていない）。参考になるのは今現在すでに固定座席でどれだけ埋まっているかという
+// 情報のため、日付は「本日」固定でよい（バックエンドは未来方向の日付照会を無制限に許可している）。
+// あくまで参考表示で、座席の予約・取消はこの画面からは行えないため座席タイルはinertで無効化し、
+// onReserve/onCancelには空関数を渡す
+function AreaFloorPreview({ area, seatByNo, hasNorth, hasEast, hasWest, isLoading }: {
+  area: 'NORTH' | 'EAST_WEST'
+  seatByNo: Record<string, Seat>
+  hasNorth: boolean
+  hasEast: boolean
+  hasWest: boolean
+  isLoading: boolean
+}) {
+  const noop = () => {}
+  return (
+    <div className="mb-4 lg:mb-0 lg:w-96 lg:shrink-0">
+      <div className="floor-preview-box max-h-[480px] overflow-auto rounded border border-slate-200 bg-white p-2">
+        <p className="mb-1 text-xs text-slate-500">本日（{todayStr()}）時点の座席状況（参考表示・操作不可）</p>
+        {isLoading && <p className="text-xs text-slate-400">読み込み中...</p>}
+        {!isLoading && (
+          <div inert>
+            <div className="floor-overview inline-flex">
+              {area === 'NORTH' && hasNorth && (
+                <div className="panel-north">
+                  <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
+                  <NorthFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
+                </div>
+              )}
+              {area === 'EAST_WEST' && (hasEast || hasWest) && (
+                <div className="floor-overview-stack">
+                  {hasEast && (
+                    <div className="panel-east">
+                      <h2 className="area-heading area-east mb-3">EASTエリア</h2>
+                      <EastFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
+                    </div>
+                  )}
+                  {hasWest && (
+                    <div className="panel-west">
+                      <h2 className="area-heading area-west mb-3">WESTエリア</h2>
+                      <WestFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="seat-legend mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+          {LEGEND.map((l) => (
+            <span key={l.status} className="legend-item flex items-center gap-1">
+              <span className={`legend-swatch inline-block h-3 w-3 rounded-sm ${STATUS_CSS_CLASS[l.status]}`} />
+              {l.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
@@ -838,6 +912,20 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { items: fixedAssignments } = useFixedSeatAssignments()
+  // 座席表プレビュー（2026-09-10追加）用の本日時点の座席状況。既存フロアマップ（Availability.tsx）
+  // と全く同じフックで取得する。NORTH/EAST/WESTで座席番号の重複がないため、エリアごとに分けず
+  // 共通のseatByNoをNORTH用・EAST/WEST用の両方にそのまま渡してよい
+  const { availability: previewAvailability, isLoading: previewLoading } = useAvailability(todayStr(), 'all')
+  const previewSeatByNo: Record<string, Seat> = {}
+  previewAvailability?.areas.forEach((a) => {
+    a.blocks.forEach((b) => {
+      b.seats.forEach((s) => { previewSeatByNo[s.seat_no] = s })
+    })
+  })
+  const previewAreaNames = new Set(previewAvailability?.areas.map((a) => a.area))
+  const previewHasNorth = previewAreaNames.has('NORTH')
+  const previewHasEast = previewAreaNames.has('EAST')
+  const previewHasWest = previewAreaNames.has('WEST')
   // AI提案（FR-03-11、2026-09-08追加）: aiSuggestedはAIが埋めた「未編集の」セルのみを保持し、
   // エリア責任者がセルを直接編集する（toggle）とそのセルだけ取り除く（バッジが消え、通常の
   // 確定操作対象になる）。aiReasoningはプロジェクトごとの判断理由（グループ単位で生成するため、
@@ -850,6 +938,32 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // 従来は返ってきたsuggestionsだけを反映するため、AIが一部のプロジェクトの提案を返し忘れても
   // 気づけず、利用者が「グループ全体にAI提案が適用された」と誤認しうる不具合があった）
   const [aiPartialWarningByGroup, setAiPartialWarningByGroup] = useState<Record<string, string>>({})
+  // 前回の確定曜日をコピー（2026-09-10追加。「前回のPJ席の人、曜日調整がコピーできるようにして
+  // ほしい」との要望を受けた。S-04側でPMが前回の回答をコピーする経路とは別に、エリア責任者が
+  // アンケート回答を待たずにこの調整表から直接、前回確定した曜日をチェック状態へコピーできるように
+  // した）。A-15（前回サイクルの参照）を呼び、前回のweekdays_finalizedをそのプロジェクトのチェック
+  // 状態に反映するだけで、確定操作自体は行わない（内容を見直してから「この内容で全プロジェクトの
+  // 曜日を確定する」を押してもらう）。コピーしたセルはAI提案ではないため、既存のaiSuggestedバッジは
+  // 通常のtoggleと同様にそのプロジェクトの分だけ消す
+  const [copyingPlanId, setCopyingPlanId] = useState<number | null>(null)
+  const [copyErrorByPlan, setCopyErrorByPlan] = useState<Record<number, string>>({})
+  const copyPreviousWeekdays = async (planId: number) => {
+    setCopyingPlanId(planId)
+    setCopyErrorByPlan((prev) => ({ ...prev, [planId]: '' }))
+    try {
+      const data = await apiFetch<{ weekdays_finalized: Weekday[] | null }>(`/api/project-quarter-plans/${planId}/previous`)
+      if (!data.weekdays_finalized) {
+        setCopyErrorByPlan((prev) => ({ ...prev, [planId]: '前回は曜日確定前でした' }))
+        return
+      }
+      setChecked((prev) => ({ ...prev, [planId]: new Set(data.weekdays_finalized as Weekday[]) }))
+      setAiSuggested((prev) => ({ ...prev, [planId]: new Set() }))
+    } catch (e) {
+      setCopyErrorByPlan((prev) => ({ ...prev, [planId]: e instanceof ApiError ? e.message : '前回分の取得に失敗しました' }))
+    } finally {
+      setCopyingPlanId(null)
+    }
+  }
 
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
@@ -1004,8 +1118,20 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
           const totalRequired = g.totalRequired
           const dayTotal = (day: Weekday) =>
             g.plans.reduce((sum, p) => sum + (checked[p.id]?.has(day) ? p.required_seats : 0), 0) + g.fixedSeatCount
+          const hasPreview = g.key === 'NORTH' || g.key === 'EAST_WEST'
           return (
-            <div key={g.key} className="overflow-x-auto">
+            <div key={g.key} className={hasPreview ? 'lg:flex lg:items-start lg:gap-4' : ''}>
+              {hasPreview && (
+                <AreaFloorPreview
+                  area={g.key as 'NORTH' | 'EAST_WEST'}
+                  seatByNo={previewSeatByNo}
+                  hasNorth={previewHasNorth}
+                  hasEast={previewHasEast}
+                  hasWest={previewHasWest}
+                  isLoading={previewLoading}
+                />
+              )}
+              <div className={`overflow-x-auto ${hasPreview ? 'lg:min-w-0 lg:flex-1' : ''}`}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-slate-600">
                   {g.label}
@@ -1053,6 +1179,21 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                         )}
                         <div className="text-xs font-normal text-slate-400">{p.period_start} 〜 {p.period_end}</div>
                         {p.note && <div className="text-xs font-normal text-slate-400">備考: {p.note}</div>}
+                        {p.has_previous_plan && (
+                          <div className="mt-0.5">
+                            <button
+                              type="button"
+                              disabled={copyingPlanId === p.id}
+                              onClick={() => copyPreviousWeekdays(p.id)}
+                              className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-normal text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              {copyingPlanId === p.id ? 'コピー中...' : '前回の確定曜日をコピーする'}
+                            </button>
+                            {copyErrorByPlan[p.id] && (
+                              <span className="ml-1 text-[10px] text-red-600">{copyErrorByPlan[p.id]}</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 pr-3">{p.required_seats}名</td>
                       {WEEKDAYS.map((w) => {
@@ -1116,6 +1257,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                   </tr>
                 </tfoot>
               </table>
+              </div>
             </div>
           )
         })}

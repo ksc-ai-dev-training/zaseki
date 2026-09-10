@@ -313,6 +313,9 @@ export interface QuarterPlanItem {
   choice2_weekdays: Weekday[] | null
   note: string | null
   previous_area: 'NORTH' | 'EAST' | 'WEST' | null
+  /** 同一プロジェクトに、この計画より前の期間の計画が存在するか（2026-09-10追加、
+   * 「前回の確定曜日をコピーする」ボタンの表示条件に使う） */
+  has_previous_plan: boolean
 }
 
 // A-74 POST /project-quarter-plans/weekday-ai-suggestions（S-09 出社曜日の調整表のAI提案、
@@ -441,6 +444,10 @@ export interface PreviousPlanDetail {
   period_start: string
   period_end: string
   assignments: PreviousPlanAssignment[]
+  /** 前回の確定曜日（2026-09-10追加、S-09「前回の確定曜日をコピーする」で使う） */
+  weekdays_finalized: Weekday[] | null
+  /** 前回の出社曜日アンケート回答（2026-09-10追加、S-04「前回の回答をコピーする」で使う） */
+  response: ProjectPlanResponse | null
 }
 
 // A-10 POST /reservations/recurring（S-02）

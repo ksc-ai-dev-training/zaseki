@@ -122,7 +122,7 @@ const PERIOD_COL_WD_W = 44
 const PERIOD_COL_RES_W = 56
 const PERIOD_COL_VAC_W = 56
 
-const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
+export const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
   free: 'status-free',
   mine: 'status-mine',
   occupied: 'status-occupied',
@@ -131,7 +131,7 @@ const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
   project_pending: 'status-pending',
 }
 
-const LEGEND: { status: SeatStatus; label: string }[] = [
+export const LEGEND: { status: SeatStatus; label: string }[] = [
   { status: 'free', label: '空き（予約可能）' },
   { status: 'mine', label: '自分の予約' },
   { status: 'occupied', label: '使用中（他の利用者）' },
