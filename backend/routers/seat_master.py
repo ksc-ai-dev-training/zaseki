@@ -1,4 +1,4 @@
-# A-22, A-23, A-24, A-30, A-53, A-77 座席マスタ管理（S-07）。詳細設計書3.7節
+# A-22, A-23, A-24, A-30, A-53, A-77, A-82 座席マスタ管理（S-07）。詳細設計書3.7節
 import json
 from typing import Literal
 
@@ -159,6 +159,35 @@ async def update_seat(id: int, body: SeatUpdate, _: CurrentUser = Depends(requir
         seat_no, body.area_id, body.seat_type, body.status, body.pos_x, body.pos_y, id,
     )
     return {"detail": "座席を更新しました"}
+
+
+class SeatPositionUpdate(BaseModel):
+    area_id: int
+    pos_x: float
+    pos_y: float
+
+
+@router.patch("/{id}/position")
+async def update_seat_position(id: int, body: SeatPositionUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-82: フロアマップ上で座席をドラッグして位置を変更する（2026-09-10新設）。「座席の位置が
+    変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）
+    も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。座席番号・座席タイプ・
+    状態は変更しないため、これらが必須のA-24（PUT /seats/{id}）を毎回のドラッグで呼ぶのは
+    煩雑・過剰な再検証になる。本APIはarea_id・pos_x・pos_yの3項目のみを更新する軽量な専用API。
+    ドラッグ先が別エリアのパネルであることも想定し、area_idも同時に更新できるようにした
+    （ドロップ先のパネルから一意に決まるため、フロントエンドは常に確定した値を送る）。"""
+    pool = get_pool()
+    existing = await pool.fetchrow("SELECT id FROM seats WHERE id = $1", id)
+    if existing is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    area = await pool.fetchrow("SELECT id FROM areas WHERE id = $1", body.area_id)
+    if area is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    await pool.execute(
+        "UPDATE seats SET area_id = $1, pos_x = $2, pos_y = $3, updated_at = now() WHERE id = $4",
+        body.area_id, body.pos_x, body.pos_y, id,
+    )
+    return {"detail": "座席の位置を更新しました"}
 
 
 @router.delete("/{id}")

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
@@ -914,6 +914,52 @@ export default function Availability() {
     }
   }
 
+  // 座席配置編集モード中、既存の座席タイルをドラッグして位置を変更する（2026-09-10追加。
+  // 「座席をドラッグして配置できるようにしてほしい」との要望を受けた。実際のオフィス配置を
+  // 再現した固定レイアウトの座席〔A1等〕も対象に含めるため、ドロップ位置が既存の
+  // FLOOR_LAYOUT_SEATSの範囲かどうかは問わず、常にpos_x/pos_y（とドロップ先のarea_id）を
+  // 更新する。以後はその座標を使ってfree-placed-seatとして描画される（FloorAreas.tsx・
+  // freePositionedByArea参照）。ドラッグ中の見た目はポインタ追従のゴースト表示のみとし、
+  // ドラッグ元のタイル自体はAPI成功までそのまま残す（失敗時に元へ戻す処理を省くため）
+  const panelRefs = useRef<Record<'NORTH' | 'EAST' | 'WEST', HTMLDivElement | null>>({ NORTH: null, EAST: null, WEST: null })
+  const [draggingSeat, setDraggingSeat] = useState<{ seat: Seat; clientX: number; clientY: number } | null>(null)
+
+  const onSeatDragPointerDown = (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDraggingSeat({ seat, clientX: e.clientX, clientY: e.clientY })
+  }
+  const onSeatDragPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!draggingSeat) return
+    setDraggingSeat({ ...draggingSeat, clientX: e.clientX, clientY: e.clientY })
+  }
+  const onSeatDragPointerUp = async (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!draggingSeat) return
+    const seat = draggingSeat.seat
+    setDraggingSeat(null)
+    const target = (['NORTH', 'EAST', 'WEST'] as const)
+      .map((areaName) => ({ areaName, el: panelRefs.current[areaName] }))
+      .find(({ el }) => {
+        if (!el) return false
+        const rect = el.getBoundingClientRect()
+        return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+      })
+    if (!target?.el) return
+    const area = areas.find((a) => a.name === target.areaName)
+    if (!area) return
+    const rect = target.el.getBoundingClientRect()
+    const posX = ((e.clientX - rect.left) / rect.width) * 100
+    const posY = ((e.clientY - rect.top) / rect.height) * 100
+    try {
+      await apiFetch(`/api/seats/${seat.id}/position`, {
+        method: 'PATCH',
+        body: JSON.stringify({ area_id: area.id, pos_x: posX, pos_y: posY }),
+      })
+      await refreshAvailability()
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : '座席の位置の変更に失敗しました')
+    }
+  }
+
   const cancelFromList = async (id: number) => {
     try {
       await apiFetch(`/api/reservations/${id}`, { method: 'DELETE' })
@@ -999,6 +1045,10 @@ export default function Availability() {
     memberAssignEligibleIds: memberSeatAssignFor ? memberAssignEligibleIds : undefined,
     memberAssignPickedLabels: memberSeatAssignFor ? memberAssignPickedLabels : undefined,
     onMemberAssignClick,
+    positionEditMode: placeSeatMode,
+    onSeatDragPointerDown,
+    onSeatDragPointerMove,
+    onSeatDragPointerUp,
   }
 
   const areaNames = new Set(availability?.areas.map((a) => a.area))
@@ -1016,16 +1066,21 @@ export default function Availability() {
   // S-07から追加した座席のうち、フロアマップの固定レイアウト（実際の配置図）に含まれないものは
   // 通常のフロアマップの図には現れない。座席配置モード（pos_x/pos_yあり）で配置済みのものは
   // パネル上に直接重ねて表示し、それ以外（座標未設定）は「追加座席」として下に別枠一覧表示する。
+  // 固定レイアウト所属の座席（A1等）であっても、ドラッグでpos_x/pos_yを持つに至ったものは
+  // 同じ自由配置オーバーレイ側で描画する（2026-09-10追加。「座席をドラッグして配置できるように
+  // してほしい」との要望を受け、既存83席も対象に含めた。FloorAreas.tsx側は該当座席をこの条件と
+  // 対になる形で描画しないよう修正済み）
   const extraSeatGroups = new Map<string, Seat[]>()
   const freePositionedByArea: Record<'NORTH' | 'EAST' | 'WEST', Seat[]> = { NORTH: [], EAST: [], WEST: [] }
   Object.keys(seatByNo).forEach((no) => {
     const area = seatArea[no] as 'NORTH' | 'EAST' | 'WEST' | undefined
-    if (!area || FLOOR_LAYOUT_SEATS[area].has(no)) return
+    if (!area) return
     const seat = seatByNo[no]
     if (seat.pos_x !== null && seat.pos_y !== null) {
       freePositionedByArea[area].push(seat)
       return
     }
+    if (FLOOR_LAYOUT_SEATS[area].has(no)) return
     const label = `${area} ${blockLabelOf(no)}`
     if (!extraSeatGroups.has(label)) extraSeatGroups.set(label, [])
     extraSeatGroups.get(label)!.push(seat)
@@ -1046,6 +1101,10 @@ export default function Availability() {
           memberAssignEligibleIds={floorProps.memberAssignEligibleIds}
           memberAssignPickedLabels={floorProps.memberAssignPickedLabels}
           onMemberAssignClick={floorProps.onMemberAssignClick}
+          positionEditMode={floorProps.positionEditMode}
+          onSeatDragPointerDown={floorProps.onSeatDragPointerDown}
+          onSeatDragPointerMove={floorProps.onSeatDragPointerMove}
+          onSeatDragPointerUp={floorProps.onSeatDragPointerUp}
         />
       </div>
     ))
@@ -1079,10 +1138,22 @@ export default function Availability() {
 
       {placeSeatMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
-          <span>新しい座席を配置中です。フロアマップの空いている位置をクリックしてください。</span>
+          <span>座席表の配置を編集中です。空いている位置をクリックすると新しい座席を追加、既存の座席はドラッグすると位置を変更できます。</span>
           <button type="button" onClick={exitPlaceSeatMode} className="shrink-0 text-blue-700 underline hover:text-blue-900">
             完了・キャンセル
           </button>
+        </div>
+      )}
+
+      {draggingSeat && (
+        <div
+          className="seat-tile status-free"
+          style={{
+            position: 'fixed', left: draggingSeat.clientX, top: draggingSeat.clientY,
+            transform: 'translate(-50%, -50%)', pointerEvents: 'none', opacity: 0.85, zIndex: 50,
+          }}
+        >
+          {draggingSeat.seat.seat_no}
         </div>
       )}
 
@@ -1328,6 +1399,7 @@ export default function Availability() {
                   </div>
                 )}
                 <div
+                  ref={(el) => { panelRefs.current.NORTH = el }}
                   className={`panel-north ${placeSeatMode ? 'placement-mode-active' : ''}`}
                   onClick={(e) => handlePanelClick(e, 'NORTH')}
                 >
@@ -1341,6 +1413,7 @@ export default function Availability() {
               <div className="floor-overview-stack">
                 {hasEast && (
                   <div
+                    ref={(el) => { panelRefs.current.EAST = el }}
                     className={`panel-east ${placeSeatMode ? 'placement-mode-active' : ''}`}
                     onClick={(e) => handlePanelClick(e, 'EAST')}
                   >
@@ -1351,6 +1424,7 @@ export default function Availability() {
                 )}
                 {hasWest && (
                   <div
+                    ref={(el) => { panelRefs.current.WEST = el }}
                     className={`panel-west ${placeSeatMode ? 'placement-mode-active' : ''}`}
                     onClick={(e) => handlePanelClick(e, 'WEST')}
                   >

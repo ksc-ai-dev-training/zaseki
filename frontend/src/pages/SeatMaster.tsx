@@ -220,7 +220,7 @@ export default function SeatMaster() {
               onClick={() => navigate('/', { state: { placeSeatMode: true } })}
               className="ml-auto rounded border border-blue-800 px-3 py-1.5 text-sm text-blue-800 hover:bg-blue-50"
             >
-              座席表に配置する
+              座席表の配置を編集する
             </button>
             <button
               type="button"

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { Seat, SeatStatus } from '../types'
 
 const STATUS_CLASS: Record<SeatStatus, string> = {
@@ -28,6 +28,13 @@ interface SeatTileProps {
   /** このセッション中に暫定的に割り当て済みの座席id→メンバー氏名（送信前のプレビュー表示用） */
   memberAssignPickedLabels?: Record<number, string>
   onMemberAssignClick?: (seat: Seat) => void
+  /** フロアマップの座席配置編集モード（S-07「座席表の配置を編集する」から遷移するplaceSeatMode
+   * の拡張、2026-09-10追加）。「座席をドラッグして配置できるようにしてほしい」との要望を受けた。
+   * 有効な間は通常の予約・取消を行わず、ドラッグで位置（pos_x/pos_y）を変更できるようにする */
+  positionEditMode?: boolean
+  onSeatDragPointerDown?: (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => void
+  onSeatDragPointerMove?: (e: ReactPointerEvent<HTMLButtonElement>) => void
+  onSeatDragPointerUp?: (e: ReactPointerEvent<HTMLButtonElement>) => void
 }
 
 // 実際に利用者が使用中の座席（自分の予約・使用中・固定座席・プロジェクト座席個人確定済み）は
@@ -62,9 +69,28 @@ function tileClass(seat: Seat): string {
 export default function SeatTile({
   seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds,
   memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
+  positionEditMode, onSeatDragPointerDown, onSeatDragPointerMove, onSeatDragPointerUp,
 }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
+  }
+
+  if (positionEditMode) {
+    // 座席配置編集モード中は通常の予約・取消・他モードの操作を行わず、ドラッグの起点にする
+    // （2026-09-10追加）。setPointerCaptureにより、ポインタがこのボタンの外に出てもmove/up
+    // イベントはこの要素で受け続けるため、move/upハンドラも同じ要素に付ける
+    return (
+      <button
+        type="button"
+        className="seat-tile status-free cursor-grab select-none touch-none active:cursor-grabbing"
+        style={style}
+        onPointerDown={(e) => { e.preventDefault(); onSeatDragPointerDown?.(seat, e) }}
+        onPointerMove={onSeatDragPointerMove}
+        onPointerUp={onSeatDragPointerUp}
+      >
+        {seat.seat_no}
+      </button>
+    )
   }
 
   if (memberAssignMode) {

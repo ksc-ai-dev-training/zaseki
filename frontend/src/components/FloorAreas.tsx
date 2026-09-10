@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import SeatTile from './SeatTile'
 import type { Seat } from '../types'
 
@@ -16,6 +16,12 @@ interface FloorProps {
   memberAssignEligibleIds?: Set<number>
   memberAssignPickedLabels?: Record<number, string>
   onMemberAssignClick?: (seat: Seat) => void
+  // 座席配置編集モード（S-07「座席表の配置を編集する」から遷移、2026-09-10追加）。ドラッグで
+  // 座席の位置を変更できるようにする
+  positionEditMode?: boolean
+  onSeatDragPointerDown?: (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => void
+  onSeatDragPointerMove?: (e: ReactPointerEvent<HTMLButtonElement>) => void
+  onSeatDragPointerUp?: (e: ReactPointerEvent<HTMLButtonElement>) => void
 }
 
 // ブロックの見出しラベル。座席の島の割当モード（selectedSeatIds・onToggleBlockが両方渡された時）
@@ -60,9 +66,16 @@ const pillarStyle: CSSProperties = { width: 40, height: 36, justifySelf: 'center
 // フロアマップ画像に基づく配置をそのまま再現する。座席の状態のみ実データに差し替える。
 
 export function NorthFloor({ seatByNo, ...tileProps }: FloorProps) {
-  const tile = (no: string, style: CSSProperties) => (
-    <SeatTile seat={seatByNo[no]} style={style} {...tileProps} />
-  )
+  // ドラッグで独自の座標（pos_x/pos_y）を持つに至った座席は、Availability.tsxの
+  // free-placed-seatオーバーレイ側で描画するため、固定レイアウト側のこのマス目は
+  // 何も描画せず空けておく（2026-09-10追加。「座席をドラッグして配置できるように
+  // してほしい」との要望を受けた。A1等の既存83席も対象に含めるため、固定座標を
+  // 持たない前提だった従来の描画をこの条件で上書きする）
+  const tile = (no: string, style: CSSProperties) => {
+    const seat = seatByNo[no]
+    if (seat?.pos_x != null) return null
+    return <SeatTile seat={seat} style={style} {...tileProps} />
+  }
   const label = (text: string, seatNos: string[]) => (
     <SeatBlockLabel
       label={text}
@@ -127,9 +140,11 @@ function SeatBlock({ label, seats, gridArea, seatByNo, ...tileProps }: {
         onToggleBlock={tileProps.onToggleBlock}
       />
       <div className="seat-grid cols-2">
-        {seats.map((no) => (
-          <SeatTile key={no} seat={seatByNo[no]} {...tileProps} />
-        ))}
+        {seats.map((no) => {
+          const seat = seatByNo[no]
+          if (seat?.pos_x != null) return null
+          return <SeatTile key={no} seat={seat} {...tileProps} />
+        })}
       </div>
     </div>
   )

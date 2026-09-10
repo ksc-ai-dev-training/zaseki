@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 0.93（ドラフト・作成中）</span>
+      <span>版数: 0.94（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -319,6 +319,7 @@ footer.doc-footer {
       <tr><td>0.91</td><td>2026-09-10</td><td>新設（基本設計書v2.65）: 「座席の島の割当を行う際、かぶっている部分があったら登録する前に事前にかぶっていますと通知してほしい」との要望を受けた。A-44・A-80の重複判定が曜日単位であるため、S-02のフロアマップで表示中の1日だけでは気づけない重複（表示中の曜日とは別の曜日で既に確保されている座席との重複）が、実際に登録して初めて409エラーで判明する形になっていた問題への対応。新API A-81（<code>POST /project-quarter-plans/seat-block-check</code>、読み取り専用）を新設し、A-44・A-80と同じ重複判定ロジックだけを実行して<code>{"conflicts": string[]}</code>を返す。単一プロジェクト（<code>seatBlockFor</code>）・一括（<code>seatBlockBulkFor</code>）どちらの画面からも共用する。フロントエンドは座席の選択内容が変わるたびに本APIを呼び出し（デバウンス）、結果を警告バナーとして表示する。登録ボタンは無効化せず、最終的な可否判定は引き続きA-44・A-80が行う。1.4節のトレーサビリティ表は変更なし（既存のFR-03-6の事前確認手段であり、新しい要求・画面は発生していない）。3.9節にA-81を追加、5.5.7節の権限マトリクスにA-81の行を追加。</td></tr>
       <tr><td>0.92</td><td>2026-09-10</td><td>訂正反映（基本設計書v2.66）: 「もしかぶっていたら時どのプロジェクトがかぶっているのかわかるようにできる？」との要望を受けた。A-81（事前確認）・A-44（単一割当）・A-80（一括割当）の重複時のメッセージを、「既に他プロジェクトへ割り当てられている座席が含まれています」のような対象を特定できない文言から、具体的な座席番号と重複先のプロジェクト名を含む文言（例:「既に他プロジェクトへ割り当てられている座席が含まれています: A5（「営業PJ」と重複）」）に変更した。一括登録内の他プロジェクトとの重複メッセージも同様に対象の座席番号・重複先プロジェクト名を含めるようにした。判定ロジック自体（曜日単位の重複判定）は変更していない。3.9節（A-44・A-80・A-81）を修正。</td></tr>
       <tr><td>0.93</td><td>2026-09-10</td><td>訂正反映（基本設計書v2.70）: 「期間ビューで見れる範囲をもっと伸ばしてほしい」との要望を受けた。当初、期間ビューの箱の内部スクロールを廃止する対応（基本設計書v2.69）を行ったが、「ちがう、見れる範囲をもっと伸ばしてほしい」との指摘を受け、本質的な要望はRULE-05の予約可能期間（前月26日〜当月末日）そのものを表示可能範囲の上限としていた制約の方だと判明した。AskUserQuestionで確認し、「表示期間を自由に指定できるようにする」を選択。A-07（<code>GET /seats/availability/period</code>）・A-69（<code>GET /reservations/period-grid</code>）の<code>start</code>・<code>end</code>を、指定時にRULE-05の範囲へクランプする処理を廃止し、過去・未来とも自由な範囲を指定できるようにした（省略時の既定値はRULE-05の予約可能期間全体のまま変更なし）。1日ごとのループ処理（固定座席の割当復元等）が過大な範囲で重くなることを避けるため、<code>end - start</code>が366日を超える場合は400で拒否するようにした。3.3節（A-07）・3.11節（A-69）を修正。</td></tr>
+      <tr><td>0.94</td><td>2026-09-10</td><td>新設（基本設計書v2.71）: 「座席表にある席なのですが、これがもし座席の位置が変更したとき変更できるようになっていますか？」との質問を受け調査したところ、既存の座席の位置を変更する手段がないことが判明した。続けて「でしたら席をドラッグして配置できるようにすることはできますか？」との要望を受け、AskUserQuestionで対象範囲を確認（実際のオフィス配置を再現した既存83席を含む全座席が対象、との回答）。EnterPlanModeで調査・設計したうえで実装。新API A-82（<code>PATCH /seats/{id}/position</code>）を新設し、座席番号・タイプ・状態はそのままに、エリア・位置（area_id・pos_x・pos_y）のみを更新できるようにした（既存のA-24はこれらが必須のため、ドラッグのたびに呼ぶには不向き）。フロントエンドはS-02の座席配置モード（S-07「座席表の配置を編集する」から遷移、従来の「座席表に配置する」を拡張）で、座席タイルをポインタでドラッグ&ドロップできるようにした（ライブラリは使わず、既存のマイプロフィールのアバタークロップ機能と同じPointer Events + <code>setPointerCapture</code>で実装）。実際のオフィス配置を再現した既存83席（<code>FloorAreas.tsx</code>にハードコードされた固定レイアウト、DB上pos_x/pos_yは常にNULL）も、一度ドラッグすると以後はS-07で後から追加した座席と同じ座標ベースのオーバーレイ表示に切り替わり、固定レイアウト側の元のマス目には何も表示されなくなるようにした（<code>FloorAreas.tsx</code>側で座標を持つ座席を描画しないよう修正）。ブロックの見出し（Aブロック等）をクリックしてまとめて選択する機能（座席の島の割当モード）は座席番号ベースの対応関係のままとし、ドラッグで移動した座席も引き続き元のブロックの一員として扱う。1.4節のトレーサビリティ表は変更なし（既存のFR-06-1・S-07に対応する機能拡張であり、新しい要求・画面は発生していない）。3.7節にA-82を追加、5.5.5節の権限マトリクスにA-82の行を追加。</td></tr>
     </tbody>
   </table>
   </details>
@@ -959,6 +960,7 @@ footer.doc-footer {
       <tr><td><code>A-22</code></td><td><span class="method get">GET</span><code>/seats?area=&status=&q=</code></td><td>座席一覧。</td><td>role='admin'</td><td><code>q</code>は座席番号の部分一致検索（2026-08-27追加、4.5節の絞り込み欄の裏付け）。各行に固定座席割当（T-04）の有無を含め、編集時の警告表示に使う。応答生成前に<code>release_expired_fixed_seats()</code>を呼ぶ（2026-08-28追加）。</td></tr>
       <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, pos_x?, pos_y?}</code>。<code>pos_x</code>・<code>pos_y</code>はS-02「座席配置モード」でのクリック位置（2026-08-27追加、両方指定するか両方省略する）。</td></tr>
       <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status, pos_x?, pos_y?}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
+      <tr><td><code>A-82</code></td><td><span class="method patch">PATCH</span><code>/seats/{id}/position</code></td><td>フロアマップ上での座席のドラッグによる位置変更（座席番号・タイプ・状態は変更しない）。</td><td>role='admin'</td><td>2026-09-10新設。「座席表にある席なのですが、これがもし座席の位置が変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。Body: <code>{area_id, pos_x, pos_y}</code>（全て必須。ドロップ先のパネルから一意に決まるためフロントエンドは常に確定した値を送る）。座席番号・座席タイプ・状態はA-24と異なり変更しないため、これらが必須のA-24を毎回のドラッグで呼ぶ必要がなく、再検証コストを抑えた軽量専用API。実際のオフィス配置を再現した既存83席（S-02のFloorAreas.tsxにハードコードされた固定レイアウト）はDB上pos_x/pos_yが常にNULLだったが、本APIで一度でも位置を更新すると、以後はS-07で後から追加した座席と同じ座標ベースのオーバーレイ表示（<code>.free-placed-seat</code>）に切り替わり、固定レイアウト側の元のマス目には何も表示されなくなる（FloorAreas.tsx側で<code>pos_x != null</code>の座席を描画しないよう対応）。</td></tr>
       <tr><td><code>A-53</code></td><td><span class="method delete">DELETE</span><code>/seats/{id}</code></td><td>座席の完全削除。</td><td>role='admin'</td><td>A-24の<code>status='retired'</code>（廃止）とは別の操作で、座席データ自体を物理削除する（2026-08-28追加）。固定座席割当（T-04）または予約履歴（T-08、キャンセル済みを含む）が残る座席は409で拒否する。</td></tr>
       <tr><td><code>A-77</code></td><td><span class="method post">POST</span><code>/seats/bulk</code></td><td>座席の一括追加。</td><td>role='admin'</td><td>Body: <code>{seat_nos: string[], area_id, seat_type}</code>。「1件ずつしか登録できず新設フロアの初期投入や増設のたびに工数がかかる」との指摘を受け2026-09-09追加。同一エリア・同一座席タイプの座席番号をまとめて登録する。既存または入力内で重複する座席番号は個別にスキップし、作成できた分だけ登録した上で<code>{created_count, skipped: string[]}</code>を返す（1件でも重複があると全体を失敗させるA-66等の方針とは異なり、あえて部分成功を許容する。座席登録はどの座席が重複かを個別に探す手間の方が大きいため）。</td></tr>
     </tbody>
@@ -1324,6 +1326,7 @@ footer.doc-footer {
       <tr><td>A-24</td><td><code>P-ADMIN</code></td><td></td></tr>
       <tr><td>A-53</td><td><code>P-ADMIN</code></td><td>2026-08-28追加。</td></tr>
       <tr><td>A-77</td><td><code>P-ADMIN</code></td><td>2026-09-09追加。</td></tr>
+      <tr><td>A-82</td><td><code>P-ADMIN</code></td><td>2026-09-10追加。A-24と同じ。</td></tr>
     </tbody>
   </table>
 
@@ -1491,7 +1494,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 0.93 / 2026-09-10</span>
+    <span>版数 0.94 / 2026-09-10</span>
   </footer>
 
 </div>
