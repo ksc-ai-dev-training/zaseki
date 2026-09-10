@@ -59,7 +59,8 @@ export default function ProxyBooking() {
   // 2026-09-03に全面刷新した。氏名では絞り込まず、対象エリア・表示期間のみで全座席の状況を表示する
   const [gridAreaFilter, setGridAreaFilter] = useState<AreaFilter>('all')
   const [gridPeriodOverride, setGridPeriodOverride] = useState<{ start: string; end: string } | null>(null)
-  const { grid, isLoading: gridLoading, refresh: refreshGrid } = usePeriodGrid(gridPeriodOverride?.start, gridPeriodOverride?.end, gridAreaFilter)
+  const { grid, isLoading: gridLoading, error: gridFetchError, refresh: refreshGrid } = usePeriodGrid(gridPeriodOverride?.start, gridPeriodOverride?.end, gridAreaFilter)
+  const gridError = gridFetchError instanceof ApiError ? gridFetchError.message : null
   const gridPeriodStart = gridPeriodOverride?.start ?? grid?.start ?? ''
   const gridPeriodEnd = gridPeriodOverride?.end ?? grid?.end ?? ''
   const resetGridPeriod = () => setGridPeriodOverride(null)
@@ -264,8 +265,6 @@ export default function ProxyBooking() {
               <input
                 type="date"
                 value={gridPeriodStart}
-                min={grid?.full_start}
-                max={grid?.full_end}
                 disabled={!grid}
                 onChange={(e) => setGridPeriodOverride({ start: e.target.value, end: gridPeriodEnd })}
                 className="h-8 rounded border border-slate-300 px-2 text-sm"
@@ -274,8 +273,6 @@ export default function ProxyBooking() {
               <input
                 type="date"
                 value={gridPeriodEnd}
-                min={grid?.full_start}
-                max={grid?.full_end}
                 disabled={!grid}
                 onChange={(e) => setGridPeriodOverride({ start: gridPeriodStart, end: e.target.value })}
                 className="h-8 rounded border border-slate-300 px-2 text-sm"
@@ -288,6 +285,11 @@ export default function ProxyBooking() {
                 予約可能期間全体を表示
               </button>
             </div>
+            {/* 表示期間はRULE-05に縛られず自由に指定できる（2026-09-10、S-02と同じ理由。
+                Availability.tsxのコメント参照） */}
+            {gridError && (
+              <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{gridError}</p>
+            )}
 
             <div className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-200">
               {AREA_TABS.map((t) => (

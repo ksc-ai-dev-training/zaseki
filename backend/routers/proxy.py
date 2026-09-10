@@ -197,14 +197,19 @@ async def get_period_grid(
     ような画面にしたい」との要望を受けた）。固定座席もA-07のような「初日のみ氏名表示」の圧縮は
     行わず、どの日をクリックしても同じ固定座席の解除・変更操作ができるよう毎日氏名を返す。
     fixed_seat_absences（T-18）に記録された1日分の解除（A-73）がある日は'fixed'を返さない
-    （2026-09-08追加）。"""
+    （2026-09-08追加）。start・endを指定してもRULE-05の予約可能期間を超えて表示できないよう
+    クランプしていたが、A-07と同じ理由（「見れる範囲をもっと伸ばしてほしい。表示期間を自由に
+    指定できるようにしてほしい」）で2026-09-10にクランプを廃止した。366日を超える範囲は
+    A-07と同様に400で拒否する。"""
     await release_expired_fixed_seats()
     pool = get_pool()
     full_start, full_end = await free_seat_bookable_period()
-    range_start = min(max(start or full_start, full_start), full_end)
-    range_end = min(max(end or full_end, full_start), full_end)
+    range_start = start or full_start
+    range_end = end or full_end
     if range_start > range_end:
         range_start, range_end = range_end, range_start
+    if (range_end - range_start).days > 366:
+        raise HTTPException(400, detail="表示できる期間は366日以内です")
 
     project_name_for = await _project_name_lookup(pool)
 

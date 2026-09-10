@@ -253,8 +253,14 @@ async def get_availability_period(
     """A-07: 期間ビュー（FR-04-4）。座席×日付の在席状況マトリクス。
 
     start・endは指定がなければRULE-05の予約可能期間全体（前月26日〜当月末日、当月26日
-    以降は翌月末日まで延長）を既定値とし、指定があってもその範囲を超えないようクランプする
-    （画面モックアップのresetPeriodFilter/clampToPeriodを踏襲）。
+    以降は翌月末日まで延長）を既定値とする。以前はstart・endを指定してもこの範囲を超えて
+    表示できないようクランプしていたが、「見れる範囲をもっと伸ばしてほしい。表示期間を
+    自由に指定できるようにしてほしい」との要望を受け、2026-09-10にクランプを廃止した
+    （AskUserQuestionで確認、「表示期間を自由に指定できるようにする」を選択）。RULE-05は
+    あくまで新規にフリー座席を予約できる期間の制約であり、既に確定しているプロジェクト座席・
+    固定座席の状況を確認したいという閲覧目的とは本来別の話だったため、閲覧側の制約を撤廃した。
+    ただし際限のない範囲を許すと1日ごとのループ処理（固定座席の割当復元、下記）が重くなるため、
+    1回のリクエストで366日（約1年）を超える範囲は400で拒否する。
     固定座席（seat_type='fixed'）は毎日同じ利用者のままで表示が冗長になるため、割当期間中の
     最初の日だけ氏名を表示し、以降は'-'とする（2026-09-02、「固定座席の人の席は表示しなくていい」
     としていた方針を「表示してほしいが冗長さは避けたい」に変更する要望を受けて対象に含めた。
@@ -262,10 +268,12 @@ async def get_availability_period(
     """
     await release_expired_fixed_seats()
     full_start, full_end = await free_seat_bookable_period()
-    range_start = min(max(start or full_start, full_start), full_end)
-    range_end = min(max(end or full_end, full_start), full_end)
+    range_start = start or full_start
+    range_end = end or full_end
     if range_start > range_end:
         range_start, range_end = range_end, range_start
+    if (range_end - range_start).days > 366:
+        raise HTTPException(400, detail="表示できる期間は366日以内です")
 
     rows = await get_pool().fetch(
         """SELECT s.id, s.seat_no, s.seat_type, a.name AS area_name,

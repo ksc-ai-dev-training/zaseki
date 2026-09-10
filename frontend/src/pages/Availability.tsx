@@ -405,7 +405,8 @@ export default function Availability() {
 
   const { availability, isLoading, refresh: refreshAvailability } = useAvailability(date, areaFilter)
   const { items: areas } = useAreas(placeSeatMode)
-  const { period, isLoading: periodLoading, refresh: refreshPeriod } = usePeriodAvailability(periodOverride?.start, periodOverride?.end, areaFilter)
+  const { period, isLoading: periodLoading, error: periodFetchError, refresh: refreshPeriod } = usePeriodAvailability(periodOverride?.start, periodOverride?.end, areaFilter)
+  const periodError = periodFetchError instanceof ApiError ? periodFetchError.message : null
   const upcoming = useMyReservations('upcoming')
   const past = useMyReservations('past')
 
@@ -1414,8 +1415,6 @@ export default function Availability() {
             <input
               type="date"
               value={periodStart}
-              min={period?.full_start}
-              max={period?.full_end}
               disabled={!period}
               onChange={(e) => setPeriodOverride({ start: e.target.value, end: periodEnd })}
               className="h-8 rounded border border-slate-300 px-2 text-sm"
@@ -1424,8 +1423,6 @@ export default function Availability() {
             <input
               type="date"
               value={periodEnd}
-              min={period?.full_start}
-              max={period?.full_end}
               disabled={!period}
               onChange={(e) => setPeriodOverride({ start: periodStart, end: e.target.value })}
               className="h-8 rounded border border-slate-300 px-2 text-sm"
@@ -1438,6 +1435,12 @@ export default function Availability() {
               予約可能期間全体を表示
             </button>
           </div>
+          {/* 表示期間はRULE-05（予約可能期間）に縛られず自由に指定できる（2026-09-10、
+              「見れる範囲をもっと伸ばしてほしい」との要望を受けた。閲覧は予約可否とは別の話のため、
+              過去・未来とも自由に指定できるようにした。バックエンドは366日を超える範囲を400で拒否する） */}
+          {periodError && (
+            <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{periodError}</p>
+          )}
 
           {periodLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
