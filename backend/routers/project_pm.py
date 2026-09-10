@@ -1,7 +1,8 @@
-# A-13〜A-18、A-58、A-64、A-70〜A-72、A-75、A-78 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
+# A-13〜A-18、A-58、A-64、A-71〜A-72、A-75、A-78 プロジェクト座席・PM側（S-04）。詳細設計書3.4節
 # （2026-09-09追記: A-70〜A-72・A-75は新設時に本ファイル冒頭のコメントを更新しないまま追加されて
 # いたため、既存分とあわせてここに列挙するよう修正した。同日、A-78〔プロジェクトの自己申告作成〕を
-# 新設した）
+# 新設した。2026-09-10、A-70〔/free-seat-bookings〕はS-02の複数人代理予約〔A-75〕と内容が重複する
+# との判断により廃止した）
 import json
 from datetime import date as Date
 from typing import Literal
@@ -11,7 +12,6 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
 from database import (
-    generate_bulk_free_seat_reservations,
     generate_recurring_reservations,
     get_pool,
     retry_excluded_dates,
@@ -576,105 +576,6 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     }
 
 
-class FreeSeatBookingBody(BaseModel):
-    member_user_ids: list[int]
-    area: Literal["all", "north", "east", "west"] = "all"
-    pattern: dict
-    start_date: Date
-    end_date: Date
-
-
-@router.post("/project-quarter-plans/{id}/free-seat-bookings")
-async def bulk_book_free_seats(id: int, body: FreeSeatBookingBody, user: CurrentUser = Depends(require_auth)):
-    """A-70: 複数メンバーへ、通常のフリー座席（座席の島とは無関係）を日付ごとに自動で割り振って
-    一括予約する（2026-09-04追加。「代理予約を複数名まとめて、PJのメンバーに対して行いたい。座席は
-    プロジェクト座席ではなくフリー座席として扱ってほしい」との要望を受けた。ここまでA番号が
-    docstringに記載されておらず、retry_free_seat_assignment〔A-71〕のdocstring内でのみ
-    「A-70のエリア自動割当版」と言及されていたため、2026-09-09に本docstringへも明記した）。
-    権限はA-18と同じrole='admin'またはP-CREATOR（T-05.created_by）またはP-SEATASSIGN
-    （T-06.can_assign_seats）（2026-09-09変更、千田さんの案。従来はP-PROXY〔proxy_user_id〕だった）。
-    座席の島の割当状況（plan.status）には依存しない（フリー座席の確保なので島の有無を問わない）。
-    RULE-05（予約可能期間）はadmin以外は通常どおり検証する（FR-01-7はadminのみの特例）。"""
-    if not body.member_user_ids:
-        raise HTTPException(400, detail="対象メンバーを1人以上指定してください")
-    if body.start_date > body.end_date:
-        raise HTTPException(400, detail="開始日は終了日以前の日付を指定してください")
-    if body.pattern.get("type") not in ("daily", "weekly"):
-        raise HTTPException(400, detail="pattern.typeはdaily・weeklyのいずれかを指定してください")
-    if body.pattern.get("type") == "weekly" and not body.pattern.get("weekdays"):
-        raise HTTPException(400, detail="毎週の場合は曜日を1つ以上指定してください")
-
-    pool = get_pool()
-    plan = await pool.fetchrow(
-        """SELECT pqp.id, pqp.project_id, p.created_by FROM project_quarter_plans pqp
-           JOIN projects p ON p.id = pqp.project_id WHERE pqp.id = $1""",
-        id,
-    )
-    if plan is None:
-        raise HTTPException(404, detail="対象が見つかりません")
-
-    my_member = await _member_row(pool, plan["project_id"], user.id)
-    can_manage = (
-        user.role == "admin"
-        or plan["created_by"] == user.id
-        or (my_member is not None and my_member["can_assign_seats"])
-    )
-    if not can_manage:
-        raise HTTPException(403, detail="この操作を行う権限がありません")
-
-    member_rows = await pool.fetch(
-        "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
-    )
-    member_user_ids_in_project = {r["user_id"] for r in member_rows}
-    seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
-
-    target_user_ids = []
-    pre_excluded = []
-    for uid in body.member_user_ids:
-        if uid not in member_user_ids_in_project:
-            pre_excluded.append({"user_id": uid, "reason": "このプロジェクトのメンバーではありません"})
-        elif uid in seat_not_required_user_ids:
-            pre_excluded.append({"user_id": uid, "reason": "在宅勤務のため座席は不要に設定されています"})
-        else:
-            target_user_ids.append(uid)
-    if not target_user_ids:
-        raise HTTPException(400, detail="対象にできるメンバーがいません")
-
-    gen = await generate_bulk_free_seat_reservations(
-        target_user_ids, body.area, body.pattern, body.start_date, body.end_date, user.id,
-        enforce_rule05=(user.role != "admin"),
-    )
-
-    by_user: dict[int, list[dict]] = {}
-    for r in gen["results"]:
-        by_user.setdefault(r["user_id"], []).append(r)
-    results = []
-    for uid in body.member_user_ids:
-        rows = by_user.get(uid)
-        if rows is None:
-            reason = next(p["reason"] for p in pre_excluded if p["user_id"] == uid)
-            results.append({"user_id": uid, "status": "excluded", "reason": reason, "created_days": 0, "excluded_days": 0})
-            continue
-        created = [r for r in rows if r["status"] == "created"]
-        excluded = [r for r in rows if r["status"] == "excluded"]
-        # excluded_dates: 除外日を別の座席（1つ）に振り替えられるよう明細で返す（2026-09-07追加。
-        # /free-seat-assignments/retryで振り替える。自動割当のため成功した日の座席は日によって
-        # 異なり得るが、除外日の振替先は呼び出し元が指定する1つの座席になる）
-        excluded_dates = [{"date": r["date"], "reason": r["reason"]} for r in excluded]
-        if not created:
-            results.append({
-                "user_id": uid, "status": "excluded",
-                "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
-                "created_days": 0, "excluded_days": len(excluded), "excluded_dates": excluded_dates,
-            })
-        else:
-            results.append({
-                "user_id": uid, "status": "assigned",
-                "created_days": len(created), "excluded_days": len(excluded), "excluded_dates": excluded_dates,
-            })
-    return {"results": results}
-
-
 class FreeSeatAssignmentPattern(BaseModel):
     type: Literal["daily", "weekly"]
     weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
@@ -705,9 +606,9 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     したい」との要望を受けた）ことに伴い、1回のクリック＝1件のassignment（start_date=end_date、
     pattern.type='daily'固定）として送られてくるようになったが、APIのBody形状・処理自体は変更して
     いない（1人のメンバーが複数の日付・座席を別々のassignmentとして持てるだけで、以前から
-    assignments一覧の各要素は独立して処理していたため）。/free-seat-bookings（エリア指定で
-    自動割当、座席は日によって変わり得る）と異なり、こちらは呼び出し元が指定した特定の座席に
-    メンバーを固定して繰り返し予約する。日ごとのRULE-02・RULE-05・座席専有チェックは
+    assignments一覧の各要素は独立して処理していたため）。呼び出し元が指定した特定の座席に
+    メンバーを固定して繰り返し予約する（エリア指定で自動割当するA-70は、S-02の本APIと内容が
+    重複するとの判断により2026-09-10に廃止した）。日ごとのRULE-02・RULE-05・座席専有チェックは
     A-10・A-18と共通のgenerate_recurring_reservationsに委譲する（メンバー・座席1組につき1件の
     recurring_rulesを作成。RULE-07は2026-09-09に廃止）。
 
@@ -813,7 +714,7 @@ class RetryFreeSeatAssignmentBody(BaseModel):
 
 @router.post("/project-quarter-plans/{id}/free-seat-assignments/retry")
 async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody, user: CurrentUser = Depends(require_auth)):
-    """A-71: 複数人のフリー座席一括確保（S-02の座席クリック版・A-70のエリア自動割当版のどちらも）の
+    """A-71: 複数人のフリー座席一括確保（S-02の座席クリック版、A-75）の
     結果で「除外」となった日だけを、指定した別の座席に振り替える（2026-09-07追加。「席を取って結果で
     除外が出てきたとき、除外部分だけ別の席に変更できる機能が欲しい」との要望を受けた）。権限・除外
     理由の考え方はA-75（bulk_assign_free_seats_by_seat、2026-09-09訂正。従来ここでA-58と誤記していたが、

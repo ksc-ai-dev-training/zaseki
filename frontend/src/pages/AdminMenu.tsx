@@ -58,34 +58,44 @@ export default function AdminMenu() {
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-06</span>
       </header>
 
-      <div className="p-6">
-        <div className="mb-8 flex flex-wrap gap-4">
-          {stats.map((s) => (
-            <div key={s.label} className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-5 py-4">
-              <div className="text-xs text-slate-500">{s.label}</div>
-              <div className="mt-1 text-2xl font-bold text-slate-800">
-                {isLoading || s.value === undefined ? '—' : s.value}
-                <span className="ml-1 text-sm font-normal text-slate-400">{s.unit}</span>
+      <div className="space-y-8 p-6">
+        {/* サマリーと画面一覧の境目が分かりにくかったため区切り線を追加（2026-09-10追加。
+            「その他の画面にも区切るポイントがあったら線を作成してほしい」との要望を受けた） */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">サマリー</h2>
+          <div className="flex flex-wrap gap-4">
+            {stats.map((s) => (
+              <div key={s.label} className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-5 py-4">
+                <div className="text-xs text-slate-500">{s.label}</div>
+                <div className="mt-1 text-2xl font-bold text-slate-800">
+                  {isLoading || s.value === undefined ? '—' : s.value}
+                  <span className="ml-1 text-sm font-normal text-slate-400">{s.unit}</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CARDS.map((c) => (
-            <Link
-              key={c.id}
-              to={c.to}
-              className="rounded border border-slate-200 bg-white p-4 hover:border-blue-300 hover:shadow-sm"
-            >
-              <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">
-                {c.id}
-              </span>
-              <div className="mt-2 font-semibold text-slate-800">{c.name}</div>
-              <div className="mt-1 text-xs leading-relaxed text-slate-500">{c.desc}</div>
-            </Link>
-          ))}
-        </div>
+        <hr className="border-slate-200" />
+
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">各画面への入口</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {CARDS.map((c) => (
+              <Link
+                key={c.id}
+                to={c.to}
+                className="rounded border border-slate-200 bg-white p-4 hover:border-blue-300 hover:shadow-sm"
+              >
+                <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">
+                  {c.id}
+                </span>
+                <div className="mt-2 font-semibold text-slate-800">{c.name}</div>
+                <div className="mt-1 text-xs leading-relaxed text-slate-500">{c.desc}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   )

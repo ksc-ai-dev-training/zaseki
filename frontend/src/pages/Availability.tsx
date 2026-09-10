@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type MouseEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAvailability, type AreaFilter } from '../hooks/useAvailability'
@@ -15,7 +15,7 @@ import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
 import type {
   AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
-  RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
+  RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockBulkFor, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
 } from '../types'
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
@@ -99,6 +99,13 @@ function formatDateShort(dateStr: string): { md: string; wd: string } {
   const d = new Date(`${dateStr}T00:00:00`)
   return { md: `${d.getMonth() + 1}/${d.getDate()}`, wd: WEEKDAY_JA[d.getDay()] }
 }
+// 曜日パターンの暫定割当（FreeSeatPatternPick）が、表示中の日付を実際に含むかどうか
+// （座席タイルのプレビュー表示に使う。期間内でも曜日が一致しない日は含まない）
+function patternPickCoversDate(p: FreeSeatPatternPick, dateStr: string): boolean {
+  if (dateStr < p.startDate || dateStr > p.endDate) return false
+  if (p.patternType === 'daily') return true
+  return (p.weekdays ?? []).some((w) => WEEKDAY_DOW[w] === new Date(`${dateStr}T00:00:00`).getDay())
+}
 
 const AREA_TABS: { key: AreaFilter; label: string }[] = [
   { key: 'all', label: '全体表示' },
@@ -122,7 +129,7 @@ const PERIOD_COL_WD_W = 44
 const PERIOD_COL_RES_W = 56
 const PERIOD_COL_VAC_W = 56
 
-export const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
+const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
   free: 'status-free',
   mine: 'status-mine',
   occupied: 'status-occupied',
@@ -131,7 +138,7 @@ export const STATUS_CSS_CLASS: Record<SeatStatus, string> = {
   project_pending: 'status-pending',
 }
 
-export const LEGEND: { status: SeatStatus; label: string }[] = [
+const LEGEND: { status: SeatStatus; label: string }[] = [
   { status: 'free', label: '空き（予約可能）' },
   { status: 'mine', label: '自分の予約' },
   { status: 'occupied', label: '使用中（他の利用者）' },
@@ -188,6 +195,11 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
     try {
       const data = await apiFetch<ProjectPlanDetail>(`/api/project-quarter-plans/${latestPlanId}`)
       setPlan(data)
+      // 対象メンバーは既定で全員チェック済みにする（2026-09-10追加。「対象メンバーのチェックを
+      // 最初全員チェックされている状態にしてほしい」との要望を受けた。以前は何も選ばれておらず、
+      // メンバー数が多いプロジェクトほど1人ずつチェックする手間が大きかった）。対象外にしたい
+      // 人だけチェックを外せばよい
+      setSelectedMembers(new Set(data.members.filter((m) => !m.seat_not_required).map((m) => m.user_id)))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'メンバーの取得に失敗しました')
     } finally {
@@ -277,7 +289,7 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
             )}
             {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
             <p className="text-xs text-slate-400">
-              メンバーを選んで進むと、フロアマップ上で空いているフリー座席をクリックし、相手・曜日パターン・期間を選ぶだけで一括登録できます（日付ごとに違う座席にしたい場合は、進んだ先の画面から切り替えられます）。
+              メンバーを選んで進むと、通常のフリー座席予約と同じように、フロアマップ上で空いている座席をクリックし相手を選んで確保できます（「繰り返し予約にする」にチェックを入れると曜日パターン・期間をまとめて指定できます）。
             </p>
           </div>
         </Modal>
@@ -298,6 +310,11 @@ export default function Availability() {
   const proxyBookingFor = (location.state as { proxyBookingFor?: ProxyBookingFor } | null)?.proxyBookingFor
   // S-09から「座席の島を割り当てる」で遷移した場合、location.stateに対象計画が積まれる（座席の島の割当モード）
   const seatBlockFor = (location.state as { seatBlockFor?: SeatBlockFor } | null)?.seatBlockFor
+  // S-09から「座席の島の割当をまとめて行う」で遷移した場合、location.stateに対象計画一覧が積まれる
+  // （座席の島の一括割当モード、A-80・2026-09-10新設。単一プロジェクト用のseatBlockForとは独立した
+  // 別モードとして扱う。編集〔allocatedSeatIdsあり〕という単一モード特有の概念が一括モードには
+  // 存在しないため、型を混在させない）
+  const seatBlockBulkFor = (location.state as { seatBlockBulkFor?: SeatBlockBulkFor } | null)?.seatBlockBulkFor
   // S-04から「座席表から選ぶ」で遷移した場合、location.stateに対象計画が積まれる
   // （メンバーへの座席確保モード、2026-08-31追加）
   const memberSeatAssignFromNav = (location.state as { memberSeatAssignFor?: MemberSeatAssignFor } | null)?.memberSeatAssignFor
@@ -316,7 +333,9 @@ export default function Availability() {
   const [date, setDate] = useState(
     seatBlockFor
       ? firstMatchingWeekdayOnOrAfter(seatBlockFor.periodStart, seatBlockFor.weekdaysFinalized ?? [])
-      : memberSeatAssignFor?.periodStart ?? todayStr()
+      : seatBlockBulkFor?.plans[0]
+        ? firstMatchingWeekdayOnOrAfter(seatBlockBulkFor.plans[0].periodStart, seatBlockBulkFor.plans[0].weekdaysFinalized ?? [])
+        : memberSeatAssignFor?.periodStart ?? todayStr()
   )
   const [viewMode, setViewMode] = useState<'floormap' | 'period'>('floormap')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('all')
@@ -349,32 +368,33 @@ export default function Availability() {
   const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(
     () => new Set(seatBlockFor?.allocatedSeatIds ?? []),
   )
+  // 座席の島の一括割当モード（2026-09-10追加）: 右側の一覧で選択中のプロジェクト、および
+  // planId→選択中の座席idのSet（プロジェクトを切り替えても保持する）
+  const [activeBulkPlanId, setActiveBulkPlanId] = useState<number | null>(seatBlockBulkFor?.plans[0]?.planId ?? null)
+  const [bulkSelections, setBulkSelections] = useState<Record<number, Set<number>>>({})
   // メンバーへの座席確保モード（2026-08-31追加）: userId → 暫定割当の座席（＋freeSeatの場合は
   // その人だけの繰り返しパターン）。送信するまでサーバーには反映しない
   const [memberPicks, setMemberPicks] = useState<Record<number, MemberFreeSeatPick>>({})
   // メンバーへのフリー座席確保モードの暫定割当一覧（2026-09-08追加、上のFreeSeatDayPick参照）。
-  // byDateモード（日付ごとに1件ずつ）用
+  // 「繰り返し予約にする」のチェックを入れずに確定した、単発（1日だけ）の割当用
   const [freeSeatPicks, setFreeSeatPicks] = useState<FreeSeatDayPick[]>([])
-  // patternモード（曜日パターン＋期間で一括登録、既定）用の暫定割当一覧（2026-09-09復活）
+  // 「繰り返し予約にする」のチェックを入れて確定した、曜日パターン＋期間の割当用（2026-09-09復活）。
+  // 単発とパターンは同じ操作フロー（pickMemberConfig）の中でチェックボックス1つで選び分け、
+  // 送信時（confirmMemberSeatAssign）は両方の配列をまとめて結合する
   const [freeSeatPatternPicks, setFreeSeatPatternPicks] = useState<FreeSeatPatternPick[]>([])
-  // freeSeatモードの入力方式。既定は'pattern'（1クリック＝1人分の期間をまとめて登録）。日付ごとに
-  // 別々の座席を選びたい例外ケースのみ'byDate'に切り替える。切替はどちらの一覧もまだ空の間だけ
-  // 行える（両方式の暫定割当が混在すると分かりにくいため、2026-09-09追加）
-  const [freeSeatMode, setFreeSeatMode] = useState<'pattern' | 'byDate'>('pattern')
   const [pickMemberTarget, setPickMemberTarget] = useState<{ seatId: number; seatNo: string } | null>(null)
-  // patternモードで座席クリック→相手選択の直後に開く、曜日パターン・終了日の設定モーダル
-  // （2026-09-09復活、redesign前のpickMemberConfigと同じ考え方）
-  const [pickMemberPatternConfig, setPickMemberPatternConfig] = useState<{ seatId: number; seatNo: string; userId: number; userName: string; startDate: string } | null>(null)
-  const [patternPickType, setPatternPickType] = useState<'daily' | 'weekly'>('weekly')
-  const [patternPickWeekdays, setPatternPickWeekdays] = useState<Set<Weekday>>(new Set())
-  const [patternPickEndDate, setPatternPickEndDate] = useState('')
-  // メンバーへのフリー座席確保（freeSeat）で、座席クリック→相手選択の直後に開く確認モーダル
-  // （2026-09-07追加。「フリー座席と同じ席の取り方をしてほしい」との要望を受け、通常の予約
-  // モーダルと同じく座席をクリックするたびにその場で確認・確定する作りに変更した。2026-09-08、
-  // 繰り返しパターン・終了日の指定をやめ、画面上部の日付ナビゲーションで選んでいる「その1日だけ」を
-  // 確認する内容に変更した（複数日にしたい場合は日付を変えて同じ操作を繰り返す）。dateはモーダルを
-  // 開いた時点のものを保持する（確認中に上部の日付が変わっても内容がずれないように））
-  const [pickMemberConfig, setPickMemberConfig] = useState<{ seatId: number; seatNo: string; userId: number; userName: string; date: string } | null>(null)
+  // メンバーへのフリー座席確保（freeSeat）で、座席クリック→相手選択の直後に開く確認モーダル。
+  // 通常の座席予約モーダル（reserveTarget、上のrecurring系state）と同じ作りに統一し、既定は
+  // 表示中の1日だけの確保、「繰り返し予約にする」にチェックを入れた場合だけ曜日パターン・終了日を
+  // 指定する（2026-09-10修正。「1日と曜日でモードが分かれていて分かりにくい、普段のフリー座席の
+  // 取り方の画面と同じにしてほしい」との要望を受け、事前にpatternモード／byDateモードを選ばせる
+  // 方式〔2026-09-09〕をやめた）。startDateはモーダルを開いた時点の表示中の日付を保持する
+  // （確認中に上部の日付が変わっても内容がずれないように）
+  const [pickMemberConfig, setPickMemberConfig] = useState<{ seatId: number; seatNo: string; userId: number; userName: string; startDate: string } | null>(null)
+  const [pickRecurring, setPickRecurring] = useState(false)
+  const [pickRecurringType, setPickRecurringType] = useState<'daily' | 'weekly'>('weekly')
+  const [pickRecurringWeekdays, setPickRecurringWeekdays] = useState<Set<Weekday>>(new Set())
+  const [pickRecurringEndDate, setPickRecurringEndDate] = useState('')
   const [memberAssignResult, setMemberAssignResult] = useState<MemberAssignResultRow[] | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -399,11 +419,36 @@ export default function Availability() {
     await Promise.all([refreshAvailability(), refreshPeriod(), upcoming.mutate(), past.mutate()])
   }
 
+  // 座席の島の割当モード（単一・一括共通）の選択状態を読み書きするヘルパー（2026-09-10追加、
+  // 一括割当モードの新設に伴い、単一のseatBlockSelectionと一括のbulkSelections[activeBulkPlanId]の
+  // どちらを操作するかをここで吸収する）
+  const currentBlockSelection = seatBlockBulkFor
+    ? bulkSelections[activeBulkPlanId ?? -1] ?? new Set<number>()
+    : seatBlockSelection
+  const updateBlockSelection = (updater: (prev: Set<number>) => Set<number>) => {
+    if (seatBlockBulkFor) {
+      if (activeBulkPlanId === null) return
+      setBulkSelections((prev) => ({ ...prev, [activeBulkPlanId]: updater(prev[activeBulkPlanId] ?? new Set()) }))
+    } else {
+      setSeatBlockSelection(updater)
+    }
+  }
+  // 一括割当モードで、右の一覧からプロジェクトを切り替える。その計画の対象四半期の開始日以降で
+  // 確定した出社曜日に最初に該当する日にフロアマップの表示日を合わせる（単一モードの初期表示日と
+  // 同じ考え方、firstMatchingWeekdayOnOrAfter参照）
+  const pickBulkProject = (planId: number) => {
+    setActionError(null)
+    setActiveBulkPlanId(planId)
+    const plan = seatBlockBulkFor?.plans.find((p) => p.planId === planId)
+    if (plan) setDate(firstMatchingWeekdayOnOrAfter(plan.periodStart, plan.weekdaysFinalized ?? []))
+  }
+  const activeBulkPlan = seatBlockBulkFor?.plans.find((p) => p.planId === activeBulkPlanId)
+
   const openReserve = (seatId: number, seatNo: string, area: string, targetDate: string) => {
     setActionError(null)
-    if (seatBlockFor) {
-      // S-09「座席の島の割当モード」: モーダルは開かず、クリックのたびに選択をトグルする
-      setSeatBlockSelection((prev) => {
+    if (seatBlockFor || seatBlockBulkFor) {
+      // S-09「座席の島の割当モード」（単一・一括とも）: モーダルは開かず、クリックのたびに選択をトグルする
+      updateBlockSelection((prev) => {
         const next = new Set(prev)
         if (next.has(seatId)) next.delete(seatId)
         else next.add(seatId)
@@ -435,22 +480,18 @@ export default function Availability() {
   const onMemberAssignClick = (seat: Seat) => {
     setActionError(null)
     if (memberSeatAssignFor?.freeSeat) {
-      if (freeSeatMode === 'pattern') {
-        // patternモードは座席1件につき1人分の期間全体を割り当てるため、日付を問わずこの座席が
-        // 既に選ばれているかどうかで判定する（2026-09-09復活）
-        const pickedIndex = freeSeatPatternPicks.findIndex((p) => p.seatId === seat.id)
-        if (pickedIndex !== -1) {
-          setFreeSeatPatternPicks((prev) => prev.filter((_, i) => i !== pickedIndex))
-          return
-        }
-        setPickMemberTarget({ seatId: seat.id, seatNo: seat.seat_no })
+      // 繰り返し（曜日パターン）の割当は座席1件につき1人分の期間全体を割り当てるため、日付を
+      // 問わずこの座席が既に選ばれているかどうかで判定する（2026-09-09復活）
+      const patternIndex = freeSeatPatternPicks.findIndex((p) => p.seatId === seat.id)
+      if (patternIndex !== -1) {
+        setFreeSeatPatternPicks((prev) => prev.filter((_, i) => i !== patternIndex))
         return
       }
-      // byDateモード: 日付ごとの暫定割当のため、「今表示中の日付」にこの座席の割当が
+      // 単発（1日だけ）の割当は日付ごとの暫定割当のため、「今表示中の日付」にこの座席の割当が
       // 既にあるかどうかで判定する（2026-09-08修正、上のFreeSeatDayPick参照）
-      const pickedIndex = freeSeatPicks.findIndex((p) => p.seatId === seat.id && p.date === date)
-      if (pickedIndex !== -1) {
-        setFreeSeatPicks((prev) => prev.filter((_, i) => i !== pickedIndex))
+      const dayIndex = freeSeatPicks.findIndex((p) => p.seatId === seat.id && p.date === date)
+      if (dayIndex !== -1) {
+        setFreeSeatPicks((prev) => prev.filter((_, i) => i !== dayIndex))
         return
       }
       setPickMemberTarget({ seatId: seat.id, seatNo: seat.seat_no })
@@ -476,7 +517,7 @@ export default function Availability() {
   // 工数が多すぎる」との指摘を受けた。対象は各ブロックの中で選択可能な座席〔空き、または既に
   // 選択済み〕のみで、他の予約が入っている等で選択できない座席は対象外のまま残る）
   const onToggleSeatBlock = (seatIds: number[], select: boolean) => {
-    setSeatBlockSelection((prev) => {
+    updateBlockSelection((prev) => {
       const next = new Set(prev)
       seatIds.forEach((id) => { if (select) next.add(id); else next.delete(id) })
       return next
@@ -500,6 +541,66 @@ export default function Availability() {
       setSubmitting(false)
     }
   }
+  const exitSeatBlockBulkMode = () => {
+    setBulkSelections({})
+    setActiveBulkPlanId(null)
+    navigate('.', { replace: true, state: null })
+  }
+  const confirmSeatBlockBulk = async () => {
+    const assignments = Object.entries(bulkSelections)
+      .filter(([, set]) => set.size > 0)
+      .map(([planId, set]) => ({ plan_id: Number(planId), seat_ids: [...set] }))
+    if (assignments.length === 0) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch('/api/project-quarter-plans/seat-block-bulk', {
+        method: 'POST',
+        body: JSON.stringify({ assignments }),
+      })
+      setBulkSelections({})
+      navigate('/project-seats-area', { replace: true })
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '座席の島の一括割当に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  // 座席の島の割当（単一・一括）で、選択内容を実際に登録する前に重複がないか事前確認する
+  // （A-81、2026-09-10新設）。「かぶっている部分があったら登録する前に事前に通知してほしい」との
+  // 要望を受けた。曜日単位の重複はフロアマップの1日表示だけでは気づけないことがあるため、選択が
+  // 変わるたびにこのAPIを呼び、警告バナーとして表示する（実際の登録は行わない読み取り専用チェック）
+  const blockCheckAssignments = seatBlockBulkFor
+    ? Object.entries(bulkSelections)
+        .filter(([, s]) => s.size > 0)
+        .map(([planId, s]) => ({ plan_id: Number(planId), seat_ids: [...s] }))
+    : seatBlockFor && seatBlockSelection.size > 0
+      ? [{ plan_id: seatBlockFor.planId, seat_ids: [...seatBlockSelection] }]
+      : []
+  const blockCheckKey = JSON.stringify(blockCheckAssignments)
+  const [blockConflicts, setBlockConflicts] = useState<string[]>([])
+  useEffect(() => {
+    if (!seatBlockFor && !seatBlockBulkFor) return
+    if (blockCheckAssignments.length === 0) {
+      setBlockConflicts([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      apiFetch<{ conflicts: string[] }>('/api/project-quarter-plans/seat-block-check', {
+        method: 'POST',
+        body: JSON.stringify({ assignments: blockCheckAssignments }),
+      })
+        .then((data) => { if (!cancelled) setBlockConflicts(data.conflicts) })
+        .catch(() => { if (!cancelled) setBlockConflicts([]) })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockCheckKey])
+
   const exitProxyBookingMode = () => navigate('.', { replace: true, state: null })
   // S-04から遷移してきた場合（座席の島の割当）は従来どおりURLを戻す。S-02のボタンから
   // ローカルstateだけで入った場合（freeSeat）は画面遷移せず、そのstateを消すだけにする
@@ -508,7 +609,8 @@ export default function Availability() {
     setMemberPicks({})
     setFreeSeatPicks([])
     setFreeSeatPatternPicks([])
-    setFreeSeatMode('pattern')
+    setPickMemberConfig(null)
+    setPickRecurring(false)
     setMemberAssignResult(null)
     if (memberSeatAssignFromNav) navigate('.', { replace: true, state: null })
     else setMemberSeatAssignOverride(null)
@@ -523,11 +625,10 @@ export default function Availability() {
     setActionError(null)
     try {
       if (memberSeatAssignFor.freeSeat) {
-        // patternモード（既定）: 1件の暫定割当＝1人分の期間全体（start_date〜end_date、繰り返し
-        // パターン）をそのままassignmentとして送る。byDateモード（例外用）: 1件のクリック＝1日分の
-        // assignmentとして送る（start_date=end_date、pattern='daily'固定）。両モードの暫定割当を
-        // 混在して送れる作りにはしていないが（freeSeatModeの切替はどちらも空の間だけ許可）、
-        // 念のためどちらも配列として結合して送る（2026-09-09、patternモード復活）
+        // 繰り返し予約（pickMemberConfigで「繰り返し予約にする」にチェック）: 1件の暫定割当＝1人分の
+        // 期間全体（start_date〜end_date、繰り返しパターン）をそのままassignmentとして送る。単発
+        // （チェックなし）: 1件のクリック＝1日分のassignmentとして送る（start_date=end_date、
+        // pattern='daily'固定）。両方とも1回の確定で混在しうるため、配列として結合して送る
         const patternPicks = freeSeatPatternPicks
         const dayPicks = freeSeatPicks
         const assignments = [
@@ -842,6 +943,24 @@ export default function Availability() {
       })
     })
   })
+  // 座席の島の一括割当モード: 今選んでいるプロジェクト以外が、この一括登録の中で既に選択中の
+  // 座席は、使用中（他プロジェクトが選択中）としてタイルに表示し選べないようにする（2026-09-10追加）。
+  // 既存の「使用中」タイル表示〔グレー・氏名タグ〕をそのまま流用し、専用の見た目は作らない
+  if (seatBlockBulkFor) {
+    const seatIdToNo = new Map(Object.values(seatByNo).map((s) => [s.id, s.seat_no]))
+    Object.entries(bulkSelections).forEach(([planIdStr, ids]) => {
+      const planId = Number(planIdStr)
+      if (planId === activeBulkPlanId) return
+      const claimingPlan = seatBlockBulkFor.plans.find((p) => p.planId === planId)
+      ids.forEach((seatId) => {
+        const seatNo = seatIdToNo.get(seatId)
+        const seat = seatNo ? seatByNo[seatNo] : undefined
+        if (seatNo && seat) {
+          seatByNo[seatNo] = { ...seat, status: 'occupied', display_name: claimingPlan ? `${claimingPlan.projectName}（選択中）` : null }
+        }
+      })
+    })
+  }
   // メンバーへの座席確保モード: 座席の島の範囲内かつ未確定（status='project_pending'）の座席のみ選択可
   // （2026-08-31追加）。暫定割当済みの座席は、割り当てたメンバーの氏名をタイルにプレビュー表示する。
   // freeSeatモード（2026-09-04追加）は座席の島に限らず、表示中の日に空いているフリー座席（status='free'）
@@ -853,10 +972,12 @@ export default function Availability() {
         : memberSeatAssignFor?.allocatedSeatIds.includes(s.id) && s.status === 'project_pending')
       .map((s) => s.id),
   )
-  // 座席タイルへのプレビュー表示（誰が割り当て済みか）。freeSeatモードは日付ごとの暫定割当のため、
-  // 今表示中の日付（date）の分だけをタイルに反映する（2026-09-08修正）
+  // 座席タイルへのプレビュー表示（誰が割り当て済みか）。freeSeatは今表示中の日付（date）に
+  // 実際にかかっている暫定割当だけをタイルに反映する（単発は日付が一致するもの、繰り返しは
+  // 期間・曜日パターンが今表示中の日付を含むもの。2026-09-10修正、繰り返し分も表示するようにした）
   const memberAssignPickedLabels: Record<number, string> = {}
   if (memberSeatAssignFor?.freeSeat) {
+    freeSeatPatternPicks.filter((p) => patternPickCoversDate(p, date)).forEach((p) => { memberAssignPickedLabels[p.seatId] = p.userName })
     freeSeatPicks.filter((p) => p.date === date).forEach((p) => { memberAssignPickedLabels[p.seatId] = p.userName })
   } else {
     Object.entries(memberPicks).forEach(([userId, pick]) => {
@@ -871,8 +992,8 @@ export default function Availability() {
     onCancel: (seat: Seat) => openCancel(seat, seatArea[seat.seat_no]),
     fixedSeatAssignMode: Boolean(assignFixedSeatFor),
     onAssignFixedSeat: (seat: Seat) => openAssignFixedSeat(seat, seatArea[seat.seat_no]),
-    selectedSeatIds: seatBlockFor ? seatBlockSelection : undefined,
-    onToggleBlock: seatBlockFor ? onToggleSeatBlock : undefined,
+    selectedSeatIds: (seatBlockFor || seatBlockBulkFor) ? currentBlockSelection : undefined,
+    onToggleBlock: (seatBlockFor || seatBlockBulkFor) ? onToggleSeatBlock : undefined,
     memberAssignMode: Boolean(memberSeatAssignFor),
     memberAssignEligibleIds: memberSeatAssignFor ? memberAssignEligibleIds : undefined,
     memberAssignPickedLabels: memberSeatAssignFor ? memberAssignPickedLabels : undefined,
@@ -1036,12 +1157,10 @@ export default function Availability() {
             <span>
               <strong>{memberSeatAssignFor.projectName}</strong>のメンバーへの座席を確保中です。
               {memberSeatAssignFor.freeSeat
-                ? (freeSeatMode === 'pattern'
-                    ? '空いているフリー座席をクリックし、相手・曜日パターン・期間を選んでください（1回の操作でその人の期間全体を確保できます）。'
-                    : '上の日付を切り替えながら、その日に空いているフリー座席をクリックして割り当てる相手を選んでください（同じ人に複数の日付・座席を確保できます）。')
+                ? '上の日付を切り替えながら、空いているフリー座席をクリックして割り当てる相手を選んでください。相手を選んだあと「繰り返し予約にする」にチェックを入れると、曜日パターンで期間全体をまとめて確保できます（チェックを入れなければ、その1日だけの確保になります）。'
                 : '座席の島の中から空いている座席をクリックし、割り当てる相手を選んでください。'}
               選択中: {memberSeatAssignFor.freeSeat
-                ? (freeSeatMode === 'pattern' ? freeSeatPatternPicks.length : freeSeatPicks.length)
+                ? freeSeatPatternPicks.length + freeSeatPicks.length
                 : Object.keys(memberPicks).length}
               {memberSeatAssignFor.freeSeat ? '件' : `/${memberSeatAssignFor.members.length}名`}
             </span>
@@ -1061,16 +1180,7 @@ export default function Availability() {
               </button>
             </span>
           </div>
-          {memberSeatAssignFor.freeSeat && freeSeatPatternPicks.length === 0 && freeSeatPicks.length === 0 && (
-            <p className="mt-1.5 text-xs text-blue-700">
-              {freeSeatMode === 'pattern' ? (
-                <>日付ごとに違う座席を選びたい場合は<button type="button" onClick={() => setFreeSeatMode('byDate')} className="underline hover:text-blue-900">こちら</button>。</>
-              ) : (
-                <>曜日パターンでまとめて確保したい場合は<button type="button" onClick={() => setFreeSeatMode('pattern')} className="underline hover:text-blue-900">こちら</button>。</>
-              )}
-            </p>
-          )}
-          {memberSeatAssignFor.freeSeat && freeSeatMode === 'pattern' && freeSeatPatternPicks.length > 0 && (
+          {memberSeatAssignFor.freeSeat && freeSeatPatternPicks.length > 0 && (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {freeSeatPatternPicks.map((p, i) => (
                 <li key={i} className="flex items-center gap-1.5 rounded border border-blue-200 bg-white px-2 py-1 text-xs">
@@ -1090,7 +1200,7 @@ export default function Availability() {
               ))}
             </ul>
           )}
-          {memberSeatAssignFor.freeSeat && freeSeatMode === 'byDate' && freeSeatPicks.length > 0 && (
+          {memberSeatAssignFor.freeSeat && freeSeatPicks.length > 0 && (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {freeSeatPicks.map((p, i) => (
                 <li key={i} className="flex items-center gap-1.5 rounded border border-blue-200 bg-white px-2 py-1 text-xs">
@@ -1113,7 +1223,7 @@ export default function Availability() {
         <p className="border-b border-red-200 bg-red-50 px-8 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
-      <div className={seatBlockFor ? 'lg:flex lg:items-start' : ''}>
+      <div className={(seatBlockFor || seatBlockBulkFor) ? 'lg:flex lg:items-start' : ''}>
       <div className="min-w-0 flex-1 p-6" ref={topRef}>
 
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -1153,7 +1263,7 @@ export default function Availability() {
               </button>
             </div>
             <span className="text-sm text-slate-500">{formatDateJa(date)}</span>
-            {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !memberSeatAssignFor && !placeSeatMode && (
+            {!assignFixedSeatFor && !proxyBookingFor && !seatBlockFor && !seatBlockBulkFor && !memberSeatAssignFor && !placeSeatMode && (
               <FreeSeatProxyBookingButton
                 onStart={(payload) => {
                   setActionError(null)
@@ -1545,6 +1655,11 @@ export default function Availability() {
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
             左のフロアマップで座席をクリックして選択・解除してください。ブロックの見出し名をクリックすると、そのブロックの空き座席をまとめて選択・解除できます。
           </p>
+          {blockConflicts.length > 0 && (
+            <div className="mt-3 space-y-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {blockConflicts.map((c, i) => (<p key={i}>⚠ {c}</p>))}
+            </div>
+          )}
           {actionError && (
             <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{actionError}</p>
           )}
@@ -1560,6 +1675,85 @@ export default function Availability() {
             <button
               type="button"
               onClick={exitSeatBlockMode}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {seatBlockBulkFor && (
+        <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
+          <h2 className="text-sm font-semibold text-slate-800">座席の島の一括割当</h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            プロジェクトを選び、左のフロアマップで座席をクリックして選択・解除してください。プロジェクトを切り替えても選択内容は保持されます。
+          </p>
+          <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+            {seatBlockBulkFor.plans.map((p) => {
+              const count = bulkSelections[p.planId]?.size ?? 0
+              const active = p.planId === activeBulkPlanId
+              return (
+                <li key={p.planId}>
+                  <button
+                    type="button"
+                    onClick={() => pickBulkProject(p.planId)}
+                    className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs ${
+                      active ? 'border-blue-400 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="truncate">{p.projectName}</span>
+                    <span className={`shrink-0 ${count > 0 ? 'text-green-700' : 'text-slate-400'}`}>{count}/{p.requiredSeats}名</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {activeBulkPlan && (
+            <dl className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">プロジェクト</dt>
+                <dd className="text-right font-medium">{activeBulkPlan.projectName}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500">曜日</dt>
+                <dd>{(activeBulkPlan.weekdaysFinalized ?? []).map((w) => RECURRING_WEEKDAYS.find((r) => r.key === w)?.label ?? w).join('') || '未定'}</dd>
+              </div>
+              <div className="flex justify-between"><dt className="text-slate-500">必要座席数</dt><dd>{activeBulkPlan.requiredSeats}名</dd></div>
+              {activeBulkPlan.note && (
+                <div>
+                  <dt className="text-slate-500">備考</dt>
+                  <dd className="mt-0.5 text-slate-700">{activeBulkPlan.note}</dd>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <dt className="text-slate-500">選択中</dt>
+                <dd className={`font-semibold ${currentBlockSelection.size >= activeBulkPlan.requiredSeats ? 'text-green-700' : 'text-amber-700'}`}>
+                  {currentBlockSelection.size}席
+                </dd>
+              </div>
+            </dl>
+          )}
+          {blockConflicts.length > 0 && (
+            <div className="mt-3 space-y-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {blockConflicts.map((c, i) => (<p key={i}>⚠ {c}</p>))}
+            </div>
+          )}
+          {actionError && (
+            <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{actionError}</p>
+          )}
+          <div className="mt-4 flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={submitting || Object.values(bulkSelections).every((s) => s.size === 0)}
+              onClick={confirmSeatBlockBulk}
+              className="rounded bg-blue-800 px-3 py-2 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
+            >
+              この内容でまとめて登録する
+            </button>
+            <button
+              type="button"
+              onClick={exitSeatBlockBulkMode}
               className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
             >
               キャンセル
@@ -1885,40 +2079,33 @@ export default function Availability() {
         </Modal>
       )}
 
-      {pickMemberTarget && memberSeatAssignFor && (
-        <Modal
-          title={memberSeatAssignFor.freeSeat && freeSeatMode === 'pattern'
-            ? `${pickMemberTarget.seatNo} を割り当てる相手`
-            : `${pickMemberTarget.seatNo} を割り当てる相手（${formatDateJa(date)}）`}
-          onClose={() => setPickMemberTarget(null)}
-          footer={<button type="button" onClick={() => setPickMemberTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>}
-        >
-          <div className="space-y-1.5">
-            {memberSeatAssignFor.members
-              .filter((m) => memberSeatAssignFor.freeSeat
-                ? (freeSeatMode === 'pattern'
-                    ? !freeSeatPatternPicks.some((p) => p.userId === m.userId)
-                    : !freeSeatPicks.some((p) => p.userId === m.userId && p.date === date))
-                : memberPicks[m.userId] === undefined)
-              .map((m) => (
+      {pickMemberTarget && memberSeatAssignFor && (() => {
+        // 対象外: 既に曜日パターンで期間全体が確保済みの人（座席を問わず）、または
+        // 今表示中の日付に単発の割当が既にある人
+        const isAvailable = (m: { userId: number }) => memberSeatAssignFor.freeSeat
+          ? !freeSeatPatternPicks.some((p) => p.userId === m.userId) && !freeSeatPicks.some((p) => p.userId === m.userId && p.date === date)
+          : memberPicks[m.userId] === undefined
+        return (
+          <Modal
+            title={`${pickMemberTarget.seatNo} を割り当てる相手（${formatDateJa(date)}）`}
+            onClose={() => setPickMemberTarget(null)}
+            footer={<button type="button" onClick={() => setPickMemberTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>}
+          >
+            <div className="space-y-1.5">
+              {memberSeatAssignFor.members.filter(isAvailable).map((m) => (
                 <button
                   key={m.userId}
                   type="button"
                   onClick={() => {
                     if (memberSeatAssignFor.freeSeat) {
-                      if (freeSeatMode === 'pattern') {
-                        // 相手を選んだ直後に、曜日パターン・終了日をその場で確認してから確定する
-                        // （2026-09-09復活。開始日は今表示中の日付をそのまま使う）
-                        setPatternPickType('weekly')
-                        setPatternPickWeekdays(new Set())
-                        setPatternPickEndDate('')
-                        setPickMemberPatternConfig({ seatId: pickMemberTarget.seatId, seatNo: pickMemberTarget.seatNo, userId: m.userId, userName: m.name, startDate: date })
-                      } else {
-                        // byDateモード: 相手を選んだ直後に、通常の予約モーダルと同じくその場で
-                        // 内容を確認してから確定する（2026-09-07追加、2026-09-08に繰り返しパターンの
-                        // 指定をやめて「今表示中の1日だけ」を確認する内容に変更）
-                        setPickMemberConfig({ seatId: pickMemberTarget.seatId, seatNo: pickMemberTarget.seatNo, userId: m.userId, userName: m.name, date })
-                      }
+                      // 相手を選んだ直後に、通常の座席予約モーダルと同じ作りで内容を確認してから
+                      // 確定する（既定は表示中の1日だけ。「繰り返し予約にする」で期間・曜日パターンに
+                      // 切り替えられる）
+                      setPickRecurring(false)
+                      setPickRecurringType('weekly')
+                      setPickRecurringWeekdays(new Set())
+                      setPickRecurringEndDate('')
+                      setPickMemberConfig({ seatId: pickMemberTarget.seatId, seatNo: pickMemberTarget.seatNo, userId: m.userId, userName: m.name, startDate: date })
                     } else {
                       setMemberPicks((prev) => ({ ...prev, [m.userId]: { seatId: pickMemberTarget.seatId } }))
                     }
@@ -1929,98 +2116,13 @@ export default function Availability() {
                   {m.name}
                 </button>
               ))}
-            {memberSeatAssignFor.members.filter((m) => memberSeatAssignFor.freeSeat
-              ? (freeSeatMode === 'pattern'
-                  ? !freeSeatPatternPicks.some((p) => p.userId === m.userId)
-                  : !freeSeatPicks.some((p) => p.userId === m.userId && p.date === date))
-              : memberPicks[m.userId] === undefined).length === 0 && (
-              <p className="text-sm text-slate-400">割り当て待ちのメンバーはいません</p>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {pickMemberPatternConfig && (
-        <Modal
-          title={`${pickMemberPatternConfig.seatNo} を ${pickMemberPatternConfig.userName} さんに確保`}
-          onClose={() => setPickMemberPatternConfig(null)}
-          footer={
-            <>
-              <button type="button" onClick={() => setPickMemberPatternConfig(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button
-                type="button"
-                disabled={
-                  !patternPickEndDate
-                  || patternPickEndDate < pickMemberPatternConfig.startDate
-                  || (patternPickType === 'weekly' && patternPickWeekdays.size === 0)
-                }
-                onClick={() => {
-                  setFreeSeatPatternPicks((prev) => [...prev, {
-                    userId: pickMemberPatternConfig.userId, userName: pickMemberPatternConfig.userName,
-                    seatId: pickMemberPatternConfig.seatId, seatNo: pickMemberPatternConfig.seatNo,
-                    startDate: pickMemberPatternConfig.startDate,
-                    patternType: patternPickType,
-                    weekdays: patternPickType === 'weekly' ? [...patternPickWeekdays] : undefined,
-                    endDate: patternPickEndDate,
-                  }])
-                  setPickMemberPatternConfig(null)
-                }}
-                className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
-              >
-                この内容で追加する
-              </button>
-            </>
-          }
-        >
-          <dl className="space-y-1.5 text-sm">
-            <div className="flex justify-between"><dt className="text-slate-500">対象者</dt><dd>{pickMemberPatternConfig.userName}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{pickMemberPatternConfig.seatNo}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">開始日</dt><dd>{formatDateJa(pickMemberPatternConfig.startDate)}</dd></div>
-          </dl>
-          <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 text-sm">
-            <div className="flex gap-4">
-              <label className="inline-flex items-center gap-1">
-                <input type="radio" checked={patternPickType === 'weekly'} onChange={() => setPatternPickType('weekly')} />
-                毎週（曜日を選択）
-              </label>
-              <label className="inline-flex items-center gap-1">
-                <input type="radio" checked={patternPickType === 'daily'} onChange={() => setPatternPickType('daily')} />
-                毎日
-              </label>
+              {memberSeatAssignFor.members.filter(isAvailable).length === 0 && (
+                <p className="text-sm text-slate-400">割り当て待ちのメンバーはいません</p>
+              )}
             </div>
-            {patternPickType === 'weekly' && (
-              <div className="flex gap-3">
-                {RECURRING_WEEKDAYS.map((w) => (
-                  <label key={w.key} className="inline-flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={patternPickWeekdays.has(w.key)}
-                      onChange={(e) => {
-                        const next = new Set(patternPickWeekdays)
-                        if (e.target.checked) next.add(w.key)
-                        else next.delete(w.key)
-                        setPatternPickWeekdays(next)
-                      }}
-                    />
-                    {w.label}
-                  </label>
-                ))}
-              </div>
-            )}
-            <label className="block">
-              <span className="mb-1 block text-xs text-slate-500">終了日（この日を含む）</span>
-              <input
-                type="date"
-                min={pickMemberPatternConfig.startDate}
-                max={period?.full_end}
-                value={patternPickEndDate}
-                onChange={(e) => setPatternPickEndDate(e.target.value)}
-                className="h-9 w-44 rounded border border-slate-300 px-3"
-              />
-            </label>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        )
+      })()}
 
       {pickMemberConfig && (
         <Modal
@@ -2031,11 +2133,27 @@ export default function Availability() {
               <button type="button" onClick={() => setPickMemberConfig(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
+                disabled={pickRecurring && (
+                  !pickRecurringEndDate
+                  || pickRecurringEndDate < pickMemberConfig.startDate
+                  || (pickRecurringType === 'weekly' && pickRecurringWeekdays.size === 0)
+                )}
                 onClick={() => {
-                  setFreeSeatPicks((prev) => [...prev, {
-                    userId: pickMemberConfig.userId, userName: pickMemberConfig.userName,
-                    seatId: pickMemberConfig.seatId, seatNo: pickMemberConfig.seatNo, date: pickMemberConfig.date,
-                  }])
+                  if (pickRecurring) {
+                    setFreeSeatPatternPicks((prev) => [...prev, {
+                      userId: pickMemberConfig.userId, userName: pickMemberConfig.userName,
+                      seatId: pickMemberConfig.seatId, seatNo: pickMemberConfig.seatNo,
+                      startDate: pickMemberConfig.startDate,
+                      patternType: pickRecurringType,
+                      weekdays: pickRecurringType === 'weekly' ? [...pickRecurringWeekdays] : undefined,
+                      endDate: pickRecurringEndDate,
+                    }])
+                  } else {
+                    setFreeSeatPicks((prev) => [...prev, {
+                      userId: pickMemberConfig.userId, userName: pickMemberConfig.userName,
+                      seatId: pickMemberConfig.seatId, seatNo: pickMemberConfig.seatNo, date: pickMemberConfig.startDate,
+                    }])
+                  }
                   setPickMemberConfig(null)
                 }}
                 className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50"
@@ -2048,11 +2166,67 @@ export default function Availability() {
           <dl className="space-y-1.5 text-sm">
             <div className="flex justify-between"><dt className="text-slate-500">対象者</dt><dd>{pickMemberConfig.userName}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{pickMemberConfig.seatNo}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(pickMemberConfig.date)}</dd></div>
+            <div className="flex justify-between"><dt className="text-slate-500">{pickRecurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(pickMemberConfig.startDate)}</dd></div>
           </dl>
-          <p className="mt-3 text-sm text-slate-600">
-            この座席をこの1日だけ確保します。別の日にも確保したい場合は、モーダルを閉じたあと画面上部の日付を変えて、同じ操作を繰り返してください。
-          </p>
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={pickRecurring}
+                onChange={(e) => setPickRecurring(e.target.checked)}
+              />
+              繰り返し予約にする
+            </label>
+            {!pickRecurring && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                この座席をこの1日だけ確保します。別の日にも確保したい場合は、モーダルを閉じたあと画面上部の日付を変えて、同じ操作を繰り返してください。
+              </p>
+            )}
+            {pickRecurring && (
+              <div className="mt-3 space-y-3 text-sm">
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-1">
+                    <input type="radio" checked={pickRecurringType === 'weekly'} onChange={() => setPickRecurringType('weekly')} />
+                    毎週（曜日を選択）
+                  </label>
+                  <label className="inline-flex items-center gap-1">
+                    <input type="radio" checked={pickRecurringType === 'daily'} onChange={() => setPickRecurringType('daily')} />
+                    毎日
+                  </label>
+                </div>
+                {pickRecurringType === 'weekly' && (
+                  <div className="flex gap-3">
+                    {RECURRING_WEEKDAYS.map((w) => (
+                      <label key={w.key} className="inline-flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={pickRecurringWeekdays.has(w.key)}
+                          onChange={(e) => {
+                            const next = new Set(pickRecurringWeekdays)
+                            if (e.target.checked) next.add(w.key)
+                            else next.delete(w.key)
+                            setPickRecurringWeekdays(next)
+                          }}
+                        />
+                        {w.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <label className="block">
+                  <span className="mb-1 block text-xs text-slate-500">終了日（この日を含む）</span>
+                  <input
+                    type="date"
+                    min={pickMemberConfig.startDate}
+                    max={period?.full_end}
+                    value={pickRecurringEndDate}
+                    onChange={(e) => setPickRecurringEndDate(e.target.value)}
+                    className="h-9 w-44 rounded border border-slate-300 px-3"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </div>

@@ -346,6 +346,21 @@ export interface SeatBlockFor {
   weekdaysFinalized?: Weekday[] | null
 }
 
+// S-02をS-09から「座席の島の一括割当モード」で開く際にreact-routerのlocation.stateへ積む値
+// （A-80、2026-09-10新設。「座席の割り当てを一括で登録できるようにしてほしい」との要望を受けた）。
+// SeatBlockForと違い、対象は曜日確定済み・未割当（allocated_seat_ids=null）の複数プロジェクトの
+// 一覧のみで、編集〔allocatedSeatIdsあり〕という単一モード特有の概念は持たない
+export interface SeatBlockBulkFor {
+  plans: {
+    planId: number
+    projectName: string
+    requiredSeats: number
+    periodStart: string
+    weekdaysFinalized: Weekday[] | null
+    note: string | null
+  }[]
+}
+
 // S-04をS-02から「メンバーへの座席確保モード」で開く際にreact-routerのlocation.stateへ積む値
 // （2026-08-31追加。「座席表から選択できるようにしてほしい」との要望を受けた）
 export interface MemberSeatAssignFor {
@@ -482,18 +497,6 @@ export interface SeatAssignmentResult {
   reason?: string
   created_days?: number
   excluded_days?: number
-  excluded_dates?: ExcludedDate[]
-}
-
-// POST /project-quarter-plans/{id}/free-seat-bookings（S-04。「代理予約を複数名まとめて、PJの
-// メンバーに対して行いたい」との要望を受けて2026-09-04追加。プロジェクト座席ではなく通常の
-// フリー座席として扱う）
-export interface FreeSeatBookingResult {
-  user_id: number
-  status: 'assigned' | 'excluded'
-  reason?: string
-  created_days: number
-  excluded_days: number
   excluded_dates?: ExcludedDate[]
 }
 

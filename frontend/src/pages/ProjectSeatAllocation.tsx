@@ -3,82 +3,8 @@ import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
-import { useAvailability } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
-import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
-import { LEGEND, STATUS_CSS_CLASS } from './Availability'
-import type { QuarterPlanItem, QuarterPlanStatus, Seat, Weekday, WeekdayAiSuggestion } from '../types'
-
-function toLocalDateStr(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}
-function todayStr(): string {
-  return toLocalDateStr(new Date())
-}
-
-// 出社曜日の調整表（WeekdayMatrix）の左側に置く、本日時点の座席状況プレビュー（2026-09-10追加。
-// 「曜日調整する際、右に調整画面、左に座席表を表示させPJ座席状況がわかるようにする」との要望を
-// 受けた）。調整対象の期間は常に未来のため、その期間の実際の予約状況はまだ存在しない（座席は
-// まだ個人に決まっていない）。参考になるのは今現在すでに固定座席でどれだけ埋まっているかという
-// 情報のため、日付は「本日」固定でよい（バックエンドは未来方向の日付照会を無制限に許可している）。
-// あくまで参考表示で、座席の予約・取消はこの画面からは行えないため座席タイルはinertで無効化し、
-// onReserve/onCancelには空関数を渡す
-function AreaFloorPreview({ area, seatByNo, hasNorth, hasEast, hasWest, isLoading }: {
-  area: 'NORTH' | 'EAST_WEST'
-  seatByNo: Record<string, Seat>
-  hasNorth: boolean
-  hasEast: boolean
-  hasWest: boolean
-  isLoading: boolean
-}) {
-  const noop = () => {}
-  return (
-    <div className="mb-4 lg:mb-0 lg:w-96 lg:shrink-0">
-      <div className="floor-preview-box max-h-[480px] overflow-auto rounded border border-slate-200 bg-white p-2">
-        <p className="mb-1 text-xs text-slate-500">本日（{todayStr()}）時点の座席状況（参考表示・操作不可）</p>
-        {isLoading && <p className="text-xs text-slate-400">読み込み中...</p>}
-        {!isLoading && (
-          <div inert>
-            <div className="floor-overview inline-flex">
-              {area === 'NORTH' && hasNorth && (
-                <div className="panel-north">
-                  <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
-                  <NorthFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
-                </div>
-              )}
-              {area === 'EAST_WEST' && (hasEast || hasWest) && (
-                <div className="floor-overview-stack">
-                  {hasEast && (
-                    <div className="panel-east">
-                      <h2 className="area-heading area-east mb-3">EASTエリア</h2>
-                      <EastFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
-                    </div>
-                  )}
-                  {hasWest && (
-                    <div className="panel-west">
-                      <h2 className="area-heading area-west mb-3">WESTエリア</h2>
-                      <WestFloor seatByNo={seatByNo} onReserve={noop} onCancel={noop} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        <div className="seat-legend mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
-          {LEGEND.map((l) => (
-            <span key={l.status} className="legend-item flex items-center gap-1">
-              <span className={`legend-swatch inline-block h-3 w-3 rounded-sm ${STATUS_CSS_CLASS[l.status]}`} />
-              {l.label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
+import type { QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
@@ -376,6 +302,26 @@ export default function ProjectSeatAllocation() {
     })
   }
 
+  // 座席の島の一括割当（A-80、2026-09-10新設）。「座席の割り当てを一括で登録できるようにしてほしい」
+  // との要望を受けた。対象は行ごとの「座席の島を割り当てる」ボタンと同じ条件（曜日確定済み・未割当）
+  // のプロジェクトのみとし、既に割当済み（座席を編集）は対象外のまま個別の導線を使う
+  const bulkBlockEligiblePlans = useMemo(
+    () => plans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p)),
+    [plans]
+  )
+  const goSeatBlockBulk = () => {
+    navigate('/', {
+      state: {
+        seatBlockBulkFor: {
+          plans: bulkBlockEligiblePlans.map((p) => ({
+            planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
+            periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
+          })),
+        },
+      },
+    })
+  }
+
   return (
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
@@ -383,96 +329,129 @@ export default function ProjectSeatAllocation() {
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-09</span>
       </header>
 
-      <div className="space-y-6 p-6">
+      <div className="space-y-8 p-6">
         {actionMessage && <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{actionMessage}</p>}
         {actionError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
 
-        {unplannedProjects.length > 0 && (
-          <div className="rounded border border-amber-200 bg-amber-50 p-4">
-            <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
-            <p className="mb-3 text-xs text-amber-700">現在・今後にわたる座席期間が1件も設定されていません。全プロジェクトが同じ期間を共有する運用のため、下のボタンからまとめて同じ開始日・終了日を設定してください（設定すると即座に出社曜日アンケートが回答可能になります）。</p>
+        {/* 期間（座席期間の設定）: 2026-09-10、「期間、座席割り当て、曜日調整表がそれぞれどの位置に
+            あるかわかりやすくしてほしい」との要望を受け、ページを3つのセクションに分け、
+            見出し・区切り線を追加した */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">期間</h2>
+          {unplannedProjects.length > 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-4">
+              <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
+              <p className="mb-3 text-xs text-amber-700">現在・今後にわたる座席期間が1件も設定されていません。全プロジェクトが同じ期間を共有する運用のため、下のボタンからまとめて同じ開始日・終了日を設定してください（設定すると即座に出社曜日アンケートが回答可能になります）。</p>
+              <button
+                type="button"
+                onClick={openBulkCreate}
+                className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
+              >
+                期間未設定のプロジェクトへ座席期間を一括設定する
+              </button>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={openBulkCreate}
-              className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
+              onClick={openBulkPeriod}
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
             >
-              期間未設定のプロジェクトへ座席期間を一括設定する
+              プロジェクトを選んで座席期間を一括設定する
             </button>
           </div>
-        )}
+        </section>
 
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={openBulkPeriod}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            プロジェクトを選んで座席期間を一括設定する
-          </button>
-        </div>
+        <hr className="border-slate-200" />
 
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="px-4 py-2">プロジェクト</th>
-                <th className="px-4 py-2">席決め担当</th>
-                <th className="px-4 py-2">対象期間</th>
-                <th className="px-4 py-2">必要座席数</th>
-                <th className="px-4 py-2">状態</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {plans.map((p) => (
-                <tr key={p.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
-                    {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
-                  </td>
-                  <td className="px-4 py-2">{p.seat_assigner_names}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{p.period_start} 〜 {p.period_end}</td>
-                  <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded px-2 py-0.5 text-xs ${statusBadgeClass(p)}`}>{statusLabel(p)}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex justify-end gap-2">
-                      {p.status === 'survey_open' && !noSeatNeeded(p) && (
-                        <button type="button" onClick={() => sendReminder(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">リマインドを送る</button>
-                      )}
-                      {p.status === 'weekdays_finalized' && !noSeatNeeded(p) && (
-                        <button type="button" onClick={() => goSeatBlock(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">座席の島を割り当てる</button>
-                      )}
-                      {p.status !== 'seats_allocated' && (
-                        <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
-                      )}
-                      {(p.status === 'seats_confirmed' || p.status === 'survey_open') && (
-                        <button type="button" onClick={() => openPeriod(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">期間を修正</button>
-                      )}
-                      {p.status === 'seats_allocated' && (
-                        <button type="button" onClick={() => goSeatBlock(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">座席を編集</button>
-                      )}
-                    </div>
-                  </td>
+        {/* 座席割り当て: 一覧（対象期間・状態・行ごとの割当操作）と、一括割当の起点ボタン。
+            一括割当ボタンは従来ページ最上部にあったが、「上に表示されているが下の方に表示してほしい」
+            との要望を受け、この一覧の下（同じ座席割り当てセクション内）へ移動した（2026-09-10） */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">座席割り当て</h2>
+          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="px-4 py-2">プロジェクト</th>
+                  <th className="px-4 py-2">席決め担当</th>
+                  <th className="px-4 py-2">対象期間</th>
+                  <th className="px-4 py-2">必要座席数</th>
+                  <th className="px-4 py-2">状態</th>
+                  <th className="px-4 py-2"></th>
                 </tr>
-              ))}
-              {plans.length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-slate-400">該当する計画がありません</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {plans.map((p) => (
+                  <tr key={p.id} className="border-b border-slate-100">
+                    <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
+                      {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
+                    </td>
+                    <td className="px-4 py-2">{p.seat_assigner_names}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500">{p.period_start} 〜 {p.period_end}</td>
+                    <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
+                    <td className="px-4 py-2">
+                      <span className={`rounded px-2 py-0.5 text-xs ${statusBadgeClass(p)}`}>{statusLabel(p)}</span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex justify-end gap-2">
+                        {p.status === 'survey_open' && !noSeatNeeded(p) && (
+                          <button type="button" onClick={() => sendReminder(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">リマインドを送る</button>
+                        )}
+                        {p.status === 'weekdays_finalized' && !noSeatNeeded(p) && (
+                          <button type="button" onClick={() => goSeatBlock(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">座席の島を割り当てる</button>
+                        )}
+                        {p.status !== 'seats_allocated' && (
+                          <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
+                        )}
+                        {(p.status === 'seats_confirmed' || p.status === 'survey_open') && (
+                          <button type="button" onClick={() => openPeriod(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">期間を修正</button>
+                        )}
+                        {p.status === 'seats_allocated' && (
+                          <button type="button" onClick={() => goSeatBlock(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">座席を編集</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {plans.length === 0 && (
+                  <tr><td colSpan={6} className="py-6 text-center text-slate-400">該当する計画がありません</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        <WeekdayMatrix
-          plans={plans.filter((p) => p.status === 'survey_open')}
-          areaSeatCapacity={areaSeatCapacity}
-          onFinalized={refreshAll}
-        />
+          {bulkBlockEligiblePlans.length > 0 && (
+            <div className="rounded border border-blue-200 bg-blue-50 p-4">
+              <div className="mb-2 text-sm font-semibold text-blue-800">座席の島の割当が必要なプロジェクト（{bulkBlockEligiblePlans.length}件）</div>
+              <p className="mb-3 text-xs text-blue-700">出社曜日が確定し、座席の島の割当を待っているプロジェクトです。下のボタンから空き状況・予約（S-02）へまとめて遷移し、右側の一覧でプロジェクトを切り替えながら座席を選んで、最後に1回でまとめて登録できます。</p>
+              <button
+                type="button"
+                onClick={goSeatBlockBulk}
+                className="rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900"
+              >
+                座席の島の割当をまとめて行う
+              </button>
+            </div>
+          )}
+        </section>
 
-        <ConfirmedWeekdaysTable
-          plans={plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
-          onChanged={refreshAll}
-        />
+        <hr className="border-slate-200" />
+
+        {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧 */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
+          <WeekdayMatrix
+            plans={plans.filter((p) => p.status === 'survey_open')}
+            areaSeatCapacity={areaSeatCapacity}
+            onFinalized={refreshAll}
+          />
+
+          <ConfirmedWeekdaysTable
+            plans={plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
+            onChanged={refreshAll}
+          />
+        </section>
       </div>
 
       {headcountTarget && (
@@ -912,20 +891,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { items: fixedAssignments } = useFixedSeatAssignments()
-  // 座席表プレビュー（2026-09-10追加）用の本日時点の座席状況。既存フロアマップ（Availability.tsx）
-  // と全く同じフックで取得する。NORTH/EAST/WESTで座席番号の重複がないため、エリアごとに分けず
-  // 共通のseatByNoをNORTH用・EAST/WEST用の両方にそのまま渡してよい
-  const { availability: previewAvailability, isLoading: previewLoading } = useAvailability(todayStr(), 'all')
-  const previewSeatByNo: Record<string, Seat> = {}
-  previewAvailability?.areas.forEach((a) => {
-    a.blocks.forEach((b) => {
-      b.seats.forEach((s) => { previewSeatByNo[s.seat_no] = s })
-    })
-  })
-  const previewAreaNames = new Set(previewAvailability?.areas.map((a) => a.area))
-  const previewHasNorth = previewAreaNames.has('NORTH')
-  const previewHasEast = previewAreaNames.has('EAST')
-  const previewHasWest = previewAreaNames.has('WEST')
   // AI提案（FR-03-11、2026-09-08追加）: aiSuggestedはAIが埋めた「未編集の」セルのみを保持し、
   // エリア責任者がセルを直接編集する（toggle）とそのセルだけ取り除く（バッジが消え、通常の
   // 確定操作対象になる）。aiReasoningはプロジェクトごとの判断理由（グループ単位で生成するため、
@@ -1118,20 +1083,8 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
           const totalRequired = g.totalRequired
           const dayTotal = (day: Weekday) =>
             g.plans.reduce((sum, p) => sum + (checked[p.id]?.has(day) ? p.required_seats : 0), 0) + g.fixedSeatCount
-          const hasPreview = g.key === 'NORTH' || g.key === 'EAST_WEST'
           return (
-            <div key={g.key} className={hasPreview ? 'lg:flex lg:items-start lg:gap-4' : ''}>
-              {hasPreview && (
-                <AreaFloorPreview
-                  area={g.key as 'NORTH' | 'EAST_WEST'}
-                  seatByNo={previewSeatByNo}
-                  hasNorth={previewHasNorth}
-                  hasEast={previewHasEast}
-                  hasWest={previewHasWest}
-                  isLoading={previewLoading}
-                />
-              )}
-              <div className={`overflow-x-auto ${hasPreview ? 'lg:min-w-0 lg:flex-1' : ''}`}>
+            <div key={g.key} className="overflow-x-auto">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-slate-600">
                   {g.label}
@@ -1257,7 +1210,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                   </tr>
                 </tfoot>
               </table>
-              </div>
             </div>
           )
         })}

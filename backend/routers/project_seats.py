@@ -1,5 +1,5 @@
-# A-27〜A-29・A-79 プロジェクト・PM管理（S-08、A-79はS-04も使用）、A-38〜A-44・A-74 プロジェクト座席・
-# エリア担当側（S-09）。詳細設計書3.8節・3.9節
+# A-27〜A-29・A-79 プロジェクト・PM管理（S-08、A-79はS-04も使用）、A-38〜A-44・A-74・A-80〜A-81
+# プロジェクト座席・エリア担当側（S-09）。詳細設計書3.8節・3.9節
 import json
 import re
 from datetime import date as Date
@@ -815,7 +815,7 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席保有者または在宅のため不要のいずれかであり、プロジェクト座席は不要です")
 
     seats = await pool.fetch(
-        "SELECT id, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", body.seat_ids
+        "SELECT id, seat_no, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", body.seat_ids
     )
     if (
         len(seats) != len(set(body.seat_ids))
@@ -823,11 +823,13 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         or any(s["seat_type"] != "free" for s in seats)
     ):
         raise HTTPException(404, detail="対象が見つかりません")
+    seat_no_by_id = {s["id"]: s["seat_no"] for s in seats}
 
     other_plans = await pool.fetch(
-        """SELECT allocated_seats, weekdays_finalized FROM project_quarter_plans
-           WHERE status = 'seats_allocated' AND id != $1
-             AND period_start <= $2 AND period_end >= $3""",
+        """SELECT pqp.allocated_seats, pqp.weekdays_finalized, p.name AS project_name
+           FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+           WHERE pqp.status = 'seats_allocated' AND pqp.id != $1
+             AND pqp.period_start <= $2 AND pqp.period_end >= $3""",
         id, plan["period_end"], plan["period_start"],
     )
     # 四半期の期間が重なっていても、確定した出社曜日が1日も重ならない他プロジェクトとは
@@ -836,15 +838,21 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     # 同じく曜日単位で判定するのが実態のため、割当時の重複チェックも期間だけでなく曜日の重なりを
     # 見るようにした。例: 火・水出社のプロジェクトと木・金出社のプロジェクトは同じ座席を割り当てられる）
     my_weekdays = set(json.loads(plan["weekdays_finalized"])) if plan["weekdays_finalized"] else set()
-    already_allocated: set[int] = set()
+    # 座席id→重複先のプロジェクト名（2026-09-10追加。「どのプロジェクトがかぶっているのか
+    # わかるようにできる？」との要望を受け、単に「含まれています」だけでなく、具体的にどの座席が
+    # どのプロジェクトと重複しているかをエラーメッセージに含めるようにした）
+    allocated_owner: dict[int, str] = {}
     for r in other_plans:
         other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
         if not (my_weekdays & other_weekdays):
             continue
         if r["allocated_seats"]:
-            already_allocated |= set(json.loads(r["allocated_seats"]))
-    if already_allocated & set(body.seat_ids):
-        raise HTTPException(409, detail="既に他プロジェクトへ割り当てられている座席が含まれています")
+            for sid in json.loads(r["allocated_seats"]):
+                allocated_owner[sid] = r["project_name"]
+    conflicting_seat_ids = [sid for sid in body.seat_ids if sid in allocated_owner]
+    if conflicting_seat_ids:
+        detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{allocated_owner[sid]}」と重複）" for sid in conflicting_seat_ids)
+        raise HTTPException(409, detail=f"既に他プロジェクトへ割り当てられている座席が含まれています: {detail}")
 
     old_seat_ids = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
     cancel_target_ids = list(set(old_seat_ids) | set(body.seat_ids))
@@ -870,3 +878,206 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
             )
     was_edit = plan["status"] == "seats_allocated"
     return {"detail": "座席の島の割当を更新しました" if was_edit else "座席の島を割り当てました"}
+
+
+class SeatBlockBulkAssignItem(BaseModel):
+    plan_id: int
+    seat_ids: list[int]
+
+
+class SeatBlockBulkAssign(BaseModel):
+    assignments: list[SeatBlockBulkAssignItem]
+
+
+@router.post("/project-quarter-plans/seat-block-bulk")
+async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = Depends(require_roles("admin"))):
+    """A-80: 複数プロジェクトの座席の島をまとめて割り当てる（FR-03-6の一括版、2026-09-10新設）。
+    「S-09で座席の割り当てを一括で登録できるようにしてほしい。右画面にプロジェクト名を並べ、選ぶと
+    備考・曜日・座席数を表示し、左の座席表で割り当てる」との要望を受けた。対象はA-44と異なり
+    status='weekdays_finalized'（未割当）の新規割当のみとし、既存の割当の編集はA-44（1件ずつ）の
+    ままとする（old_seat_idsとの結合が不要になるぶん単純化できる）。
+    検証はプロジェクトごとにA-44と同じ内容を繰り返す（計画の存在・状態、メンバー全員が固定座席／
+    在宅で不要でないか、指定座席が有効なフリー座席か、既にseats_allocatedな他プロジェクトとの
+    曜日重複）のに加え、A-44には無い「この一括リクエスト内の他プロジェクトとの重複」も検証する
+    （isodowごとに、このバッチ内で既に確保された座席id集合を積み上げて後続の項目と突き合わせる）。
+    A-66（period-bulk）・A-68（bulk-create）と同じ「1件でも失敗したら全体を失敗させ、どのプロジェクト
+    も更新しない」方針を踏襲する（部分成功による中途半端な状態を避けるため）。個別の結果配列は返さず、
+    単一のdetailメッセージのみを返す（この2つの既存の一括系APIと同じレスポンス形状）。"""
+    if not body.assignments:
+        raise HTTPException(400, detail="対象プロジェクトを1つ以上選択してください")
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            claimed_by_isodow: dict[int, dict[int, str]] = {}
+            for item in body.assignments:
+                if not item.seat_ids:
+                    raise HTTPException(400, detail="座席を1つ以上選択してください")
+                plan = await conn.fetchrow(
+                    """SELECT pqp.id, pqp.project_id, pqp.status, pqp.period_start, pqp.period_end,
+                              pqp.weekdays_finalized, p.name AS project_name
+                       FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+                       WHERE pqp.id = $1""",
+                    item.plan_id,
+                )
+                if plan is None:
+                    raise HTTPException(404, detail="対象が見つかりません")
+                if plan["status"] != "weekdays_finalized":
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」は出社曜日の確定後（未割当）でなければ一括割当の対象にできません")
+
+                non_fixed_member_count = await conn.fetchval(
+                    """SELECT COUNT(*) FROM project_members pm
+                       WHERE pm.project_id = $1
+                         AND NOT pm.seat_not_required
+                         AND NOT EXISTS (SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.user_id = pm.user_id AND fsa.ended_on IS NULL)""",
+                    plan["project_id"],
+                )
+                if non_fixed_member_count == 0:
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」はメンバーが全員固定座席保有者または在宅のため不要であり、プロジェクト座席は不要です")
+
+                seats = await conn.fetch(
+                    "SELECT id, seat_no, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", item.seat_ids
+                )
+                if (
+                    len(seats) != len(set(item.seat_ids))
+                    or any(s["status"] != "active" for s in seats)
+                    or any(s["seat_type"] != "free" for s in seats)
+                ):
+                    raise HTTPException(404, detail=f"「{plan['project_name']}」の対象座席が見つかりません")
+                seat_no_by_id = {s["id"]: s["seat_no"] for s in seats}
+
+                my_weekdays = set(json.loads(plan["weekdays_finalized"])) if plan["weekdays_finalized"] else set()
+                other_plans = await conn.fetch(
+                    """SELECT pqp.allocated_seats, pqp.weekdays_finalized, p.name AS project_name
+                       FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+                       WHERE pqp.status = 'seats_allocated' AND pqp.id != $1
+                         AND pqp.period_start <= $2 AND pqp.period_end >= $3""",
+                    item.plan_id, plan["period_end"], plan["period_start"],
+                )
+                # 座席id→重複先のプロジェクト名（2026-09-10追加。「どのプロジェクトがかぶっているのか
+                # わかるようにできる？」との要望を受け、A-44と同様にエラーメッセージへ座席番号・
+                # 重複先のプロジェクト名を含めるようにした）
+                allocated_owner: dict[int, str] = {}
+                for r in other_plans:
+                    other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
+                    if not (my_weekdays & other_weekdays):
+                        continue
+                    if r["allocated_seats"]:
+                        for sid in json.loads(r["allocated_seats"]):
+                            allocated_owner[sid] = r["project_name"]
+                conflicting_seat_ids = [sid for sid in item.seat_ids if sid in allocated_owner]
+                if conflicting_seat_ids:
+                    detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{allocated_owner[sid]}」と重複）" for sid in conflicting_seat_ids)
+                    raise HTTPException(409, detail=f"「{plan['project_name']}」に、既に他プロジェクトへ割り当てられている座席が含まれています: {detail}")
+
+                my_isodows = [_WEEKDAY_ISODOW[w] for w in my_weekdays]
+                batch_conflict_owner: dict[int, str] = {}
+                for sid in item.seat_ids:
+                    for isodow in my_isodows:
+                        owner = claimed_by_isodow.get(isodow, {}).get(sid)
+                        if owner and owner != plan["project_name"]:
+                            batch_conflict_owner[sid] = owner
+                if batch_conflict_owner:
+                    detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{owner}」と重複）" for sid, owner in batch_conflict_owner.items())
+                    raise HTTPException(409, detail=f"「{plan['project_name']}」に、この一括登録内の他のプロジェクトと重複する座席が含まれています: {detail}")
+                for isodow in my_isodows:
+                    claimants = claimed_by_isodow.setdefault(isodow, {})
+                    for sid in item.seat_ids:
+                        claimants.setdefault(sid, plan["project_name"])
+
+                await conn.execute(
+                    """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                       WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3
+                         AND EXTRACT(ISODOW FROM date)::int = ANY($4::int[])""",
+                    item.seat_ids, plan["period_start"], plan["period_end"], my_isodows,
+                )
+                await conn.execute(
+                    """UPDATE project_quarter_plans
+                       SET allocated_seats = $1, status = 'seats_allocated', decided_by = $2, updated_at = now()
+                       WHERE id = $3""",
+                    json.dumps(item.seat_ids), user.id, item.plan_id,
+                )
+    return {"detail": f"{len(body.assignments)}件のプロジェクトへ座席の島を割り当てました"}
+
+
+class SeatBlockCheckItem(BaseModel):
+    plan_id: int
+    seat_ids: list[int]
+
+
+class SeatBlockCheck(BaseModel):
+    assignments: list[SeatBlockCheckItem]
+
+
+@router.post("/project-quarter-plans/seat-block-check")
+async def check_seat_block(body: SeatBlockCheck, user: CurrentUser = Depends(require_roles("admin"))):
+    """A-81: 座席の島の割当（A-44・A-80）を実際に登録する前に、重複がないか事前確認する
+    （FR-03-6関連、2026-09-10新設）。「座席の島の割当を行う際、かぶっている部分があったら登録する前に
+    事前にかぶっていますと通知してほしい」との要望を受けた。A-44・A-80の重複判定は曜日単位（3.9節参照）
+    のため、S-02のフロアマップで表示中の1日だけを見ていても、別の曜日で既に確保されている座席との
+    重複には気づけず、実際に登録して初めて409エラーで判明する形になっていた。本APIはA-44・A-80と
+    同じ重複判定ロジック（既にseats_allocatedな他プロジェクトとの曜日重複、および本リクエスト内の
+    複数プロジェクト間の重複）だけを行い、更新は一切行わない読み取り専用のチェックであり、S-02側で
+    座席選択が変わるたびに呼び出して警告バナーとして表示する用途に使う。単一プロジェクト（A-44）・
+    一括（A-80）のどちらの画面からも、assignmentsを1件または複数件渡して共用する。返す警告文には
+    座席番号・重複先のプロジェクト名を含める（2026-09-10追加。「もしかぶっていたら時どのプロジェクトが
+    かぶっているのかわかるようにできる？」との要望を受けた。あわせてA-44・A-80自体の409エラー
+    メッセージにも同じ詳細を追加した）。"""
+    conflicts: list[str] = []
+    if not body.assignments:
+        return {"conflicts": conflicts}
+    pool = get_pool()
+    all_seat_ids = {sid for item in body.assignments for sid in item.seat_ids}
+    seat_no_by_id: dict[int, str] = {}
+    if all_seat_ids:
+        seat_rows = await pool.fetch("SELECT id, seat_no FROM seats WHERE id = ANY($1::bigint[])", list(all_seat_ids))
+        seat_no_by_id = {r["id"]: r["seat_no"] for r in seat_rows}
+
+    claimed_by_isodow: dict[int, dict[int, str]] = {}
+    for item in body.assignments:
+        if not item.seat_ids:
+            continue
+        plan = await pool.fetchrow(
+            """SELECT pqp.id, pqp.period_start, pqp.period_end, pqp.weekdays_finalized,
+                      p.name AS project_name
+               FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+               WHERE pqp.id = $1""",
+            item.plan_id,
+        )
+        if plan is None:
+            continue
+        my_weekdays = set(json.loads(plan["weekdays_finalized"])) if plan["weekdays_finalized"] else set()
+        other_plans = await pool.fetch(
+            """SELECT pqp.allocated_seats, pqp.weekdays_finalized, p.name AS project_name
+               FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+               WHERE pqp.status = 'seats_allocated' AND pqp.id != $1
+                 AND pqp.period_start <= $2 AND pqp.period_end >= $3""",
+            item.plan_id, plan["period_end"], plan["period_start"],
+        )
+        allocated_owner: dict[int, str] = {}
+        for r in other_plans:
+            other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
+            if not (my_weekdays & other_weekdays):
+                continue
+            if r["allocated_seats"]:
+                for sid in json.loads(r["allocated_seats"]):
+                    allocated_owner[sid] = r["project_name"]
+        conflicting_seat_ids = [sid for sid in item.seat_ids if sid in allocated_owner]
+        if conflicting_seat_ids:
+            detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{allocated_owner[sid]}」と重複）" for sid in conflicting_seat_ids)
+            conflicts.append(f"「{plan['project_name']}」に、既に他プロジェクトへ割り当てられている座席が含まれています: {detail}")
+
+        my_isodows = [_WEEKDAY_ISODOW[w] for w in my_weekdays]
+        batch_conflict_owner: dict[int, str] = {}
+        for sid in item.seat_ids:
+            for isodow in my_isodows:
+                owner = claimed_by_isodow.get(isodow, {}).get(sid)
+                if owner and owner != plan["project_name"]:
+                    batch_conflict_owner[sid] = owner
+        if batch_conflict_owner:
+            detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{owner}」と重複）" for sid, owner in batch_conflict_owner.items())
+            conflicts.append(f"「{plan['project_name']}」に、この選択内の他のプロジェクトと重複する座席が含まれています: {detail}")
+        for isodow in my_isodows:
+            claimants = claimed_by_isodow.setdefault(isodow, {})
+            for sid in item.seat_ids:
+                claimants.setdefault(sid, plan["project_name"])
+    return {"conflicts": conflicts}
