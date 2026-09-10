@@ -1442,19 +1442,28 @@ export default function Availability() {
           {periodLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
           {period && (
-            <div className="max-h-[70vh] overflow-auto rounded border border-slate-300 bg-white">
+            <div className="overflow-x-auto rounded border border-slate-300 bg-white">
               <table className="text-sm">
                 <thead>
+                  {/* 期間ビューを「箱の中でスクロール」から「ページ全体のスクロール」に変更した
+                      （2026-09-10、「全期間見れるようにしてほしい」との要望を受けた。従来は
+                      max-h-[70vh]の箱の中に全期間を収めていたため、パッと見では今月あたりまでしか
+                      見えず「1ヶ月しか見れない」と誤解されやすかった）。横スクロール用の
+                      overflow-x-autoを維持したまま縦方向もsticky top-0で追従させることはCSSの
+                      仕様上できない（overflow-xを visible 以外にすると overflow-y も自動的に
+                      auto 扱いになり、この要素自身が縦のスクロールコンテナになってページ全体の
+                      スクロールを追従できなくなる）ため、ヘッダーの縦方向のstickyは諦め、
+                      左端の列（日付・曜日・予約数・空席）の横方向のstickyのみ残した */}
                   <tr className="text-left text-slate-500">
                     <th
-                      className="sticky top-0 left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
+                      className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
                       style={{ minWidth: PERIOD_COL_DATE_W }}
                     >
                       日付
                     </th>
                     {!isMobile && (
                       <th
-                        className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: PERIOD_COL_DATE_W, minWidth: PERIOD_COL_WD_W }}
                       >
                         曜日
@@ -1462,14 +1471,14 @@ export default function Availability() {
                     )}
                     {!isMobile && (
                       <th
-                        className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: PERIOD_COL_DATE_W + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                       >
                         予約数
                       </th>
                     )}
                     <th
-                      className="sticky top-0 z-30 whitespace-nowrap border-r border-b border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                      className="sticky z-30 whitespace-nowrap border-r border-b border-slate-300 bg-slate-100 px-2 py-2 text-center"
                       style={{ left: periodVacantLeftOffset, minWidth: PERIOD_COL_VAC_W }}
                     >
                       空席
@@ -1477,7 +1486,7 @@ export default function Availability() {
                     {period.seats.map((seat) => (
                       <th
                         key={seat.id}
-                        className="sticky top-0 z-20 min-w-[64px] whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
+                        className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
                       >
                         <div className="font-semibold text-slate-700">{seat.seat_no}</div>
                         <div className="text-slate-400">{SEAT_TYPE_JA[seat.seat_type]}</div>
