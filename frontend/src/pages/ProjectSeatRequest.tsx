@@ -6,7 +6,6 @@ import { useMyProjects } from '../hooks/useMyProjects'
 import { useProjectPlanDetail } from '../hooks/useProjectPlanDetail'
 import { useProjects } from '../hooks/useProjects'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
-import Modal from '../components/Modal'
 import ProjectEditModal, { ProjectDeleteConfirmModal, type ProjectForm } from '../components/ProjectEditModal'
 import type {
   FreeSeatBookingResult, MyProjectItem, PreviousPlanDetail, ProjectListItem, ProjectPlanDetail, ProjectPlanMember,
