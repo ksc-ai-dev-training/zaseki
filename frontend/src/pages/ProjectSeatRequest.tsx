@@ -70,7 +70,53 @@ export default function ProjectSeatRequest() {
   // 欲しい」との要望を受けた）。A-27は非adminの場合は自分が作成したプロジェクトのみ返すため、
   // 一般ユーザーがこの画面で呼んでも他人のプロジェクトは含まれない
   const { items: allProjects, refresh: refreshProjects } = useProjects()
-  const [showCreate, setShowCreate] = useState(false)
+  const { me } = useMe()
+
+  // 新しいプロジェクトを作成する際にメンバーも追加できるようにする（2026-09-10追加。「新しい
+  // プロジェクトを作成するときメンバーの追加できるようにしてほしい」との要望を受けた）。従来は
+  // プロジェクト名のみのフォームで、作成後に「編集」から改めてメンバーを追加する必要があった。
+  // 編集で使っているのと同じProjectEditModal（S-08と共通）をそのまま流用し、作成（A-78）に
+  // 続けてメンバー構成の保存（A-29、2026-09-10のcreated_by=自分バイパスにより自分が作成した
+  // 直後のプロジェクトへも呼べる）を行う
+  const [createForm, setCreateForm] = useState<ProjectForm | null>(null)
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const openCreate = () => {
+    if (!me) return
+    setCreateError(null)
+    setCreateForm({
+      id: null, name: '',
+      members: [{ user_id: me.id, name: `${me.last_name} ${me.first_name}`, project_title: 'PM' }],
+      proxyUserId: null, createdBy: me.id,
+    })
+  }
+  const submitCreate = async () => {
+    if (!createForm) return
+    if (!createForm.name.trim()) { setCreateError('プロジェクト名を入力してください'); return }
+    setCreateSubmitting(true)
+    setCreateError(null)
+    try {
+      const { id } = await apiFetch<{ id: number }>('/api/projects/mine', {
+        method: 'POST', body: JSON.stringify({ name: createForm.name }),
+      })
+      await apiFetch(`/api/projects/${id}/members`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: createForm.name,
+          members: createForm.members.map((m) => ({ user_id: m.user_id, project_title: m.project_title })),
+          proxy_user_id: createForm.proxyUserId,
+          created_by: createForm.createdBy,
+        }),
+      })
+      setCreateForm(null)
+      refresh()
+      refreshProjects()
+    } catch (e) {
+      setCreateError(e instanceof ApiError ? e.message : '作成に失敗しました')
+    } finally {
+      setCreateSubmitting(false)
+    }
+  }
 
   // 対象四半期タブ（S-09と同様の考え方）。自分が所属する全プロジェクトのplansに現れる
   // period_startの和集合をタブとし、初期表示は最も新しいもの（＝次の期間）を自動選択する
@@ -98,20 +144,23 @@ export default function ProjectSeatRequest() {
         <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-04</span>
         <button
           type="button"
-          onClick={() => setShowCreate(true)}
-          className="ml-auto rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900"
+          disabled={!me}
+          onClick={openCreate}
+          className="ml-auto rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
         >
           ＋ 新しいプロジェクトを作成
         </button>
       </header>
 
-      {showCreate && (
-        <CreateProjectModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => {
-            setShowCreate(false)
-            refresh()
-          }}
+      {createForm && (
+        <ProjectEditModal
+          form={createForm}
+          setForm={setCreateForm}
+          onClose={() => setCreateForm(null)}
+          onSubmit={submitCreate}
+          submitting={createSubmitting}
+          error={createError}
+          addTitle="新しいプロジェクトを作成"
         />
       )}
 
@@ -154,62 +203,6 @@ export default function ProjectSeatRequest() {
         </div>
       </div>
     </div>
-  )
-}
-
-// プロジェクトの自己申告作成（A-78、2026-09-09追加）。千田さんの案によるワークフロー変更
-// （「プロジェクト作成は誰でも、アンケート回答・席決めは作成した人が行う」）を受けた。作成者は
-// このプロジェクトのPMとして自動登録され、アンケート回答・席決めの実権限（is_project_creator）を持つ。
-function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const submit = async () => {
-    if (!name.trim()) {
-      setError('プロジェクト名を入力してください')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    try {
-      await apiFetch('/api/projects/mine', { method: 'POST', body: JSON.stringify({ name }) })
-      onCreated()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '作成に失敗しました')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      title="新しいプロジェクトを作成"
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-          <button type="button" disabled={submitting} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-            作成する
-          </button>
-        </>
-      }
-    >
-      <label className="block">
-        <span className="mb-1 block text-xs text-slate-500">プロジェクト名</span>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
-          autoFocus
-        />
-      </label>
-      <p className="mt-3 text-xs text-slate-500">
-        作成すると、あなたがこのプロジェクトのPMとして登録され、出社曜日アンケートの回答・メンバーへの座席確保をあなたが行えるようになります。
-      </p>
-      {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-    </Modal>
   )
 }
 

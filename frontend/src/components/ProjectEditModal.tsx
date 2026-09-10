@@ -25,13 +25,16 @@ export interface ProjectForm {
 // 2026-09-10にS-04「プロジェクト座席」（プロジェクトの作成者向け）でも「S-08と同じ編集機能が
 // 欲しい」との要望を受けて共有化した。両画面で見た目・操作内容が完全に同一になるよう、この
 // ファイルを唯一の実装として両ページからimportする。
-export default function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error }: {
+export default function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error, addTitle }: {
   form: ProjectForm
   setForm: (f: ProjectForm) => void
   onClose: () => void
   onSubmit: () => void
   submitting: boolean
   error: string | null
+  /** 新規追加時（form.id === null）のモーダルタイトル。省略時は「プロジェクトを追加」（S-08と同じ）。
+   * S-04は元のボタン文言「新しいプロジェクトを作成」に揃えるため、これを渡して上書きする（2026-09-10追加） */
+  addTitle?: string
 }) {
   const [query, setQuery] = useState('')
   const { items: candidates } = useUserSearch(query)
@@ -58,7 +61,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
 
   return (
     <Modal
-      title={form.id === null ? 'プロジェクトを追加' : `プロジェクトを編集（${form.name}）`}
+      title={form.id === null ? (addTitle ?? 'プロジェクトを追加') : `プロジェクトを編集（${form.name}）`}
       onClose={onClose}
       footer={
         <>
