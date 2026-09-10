@@ -924,6 +924,27 @@ export default function Availability() {
   const panelRefs = useRef<Record<'NORTH' | 'EAST' | 'WEST', HTMLDivElement | null>>({ NORTH: null, EAST: null, WEST: null })
   const [draggingSeat, setDraggingSeat] = useState<{ seat: Seat; clientX: number; clientY: number } | null>(null)
 
+  // 座席の位置を自動で整列（グリッドスナップ・近くの座席への吸着）させる機能を2026-09-10に
+  // 試験的に追加したが、「絶妙にずれていて整列することができません」「その整列にできるのは
+  // 却下でいいです。消してください」との指摘を受け、同日中に撤回した。ドロップした位置を
+  // そのままpos_x/pos_yとして使う、素朴な実装に戻している
+  const findDropPoint = (clientX: number, clientY: number) => {
+    const target = (['NORTH', 'EAST', 'WEST'] as const)
+      .map((areaName) => ({ areaName, el: panelRefs.current[areaName] }))
+      .find(({ el }) => {
+        if (!el) return false
+        const rect = el.getBoundingClientRect()
+        return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+      })
+    if (!target?.el) return null
+    const rect = target.el.getBoundingClientRect()
+    return {
+      areaName: target.areaName,
+      posX: ((clientX - rect.left) / rect.width) * 100,
+      posY: ((clientY - rect.top) / rect.height) * 100,
+    }
+  }
+
   const onSeatDragPointerDown = (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     setDraggingSeat({ seat, clientX: e.clientX, clientY: e.clientY })
@@ -936,23 +957,14 @@ export default function Availability() {
     if (!draggingSeat) return
     const seat = draggingSeat.seat
     setDraggingSeat(null)
-    const target = (['NORTH', 'EAST', 'WEST'] as const)
-      .map((areaName) => ({ areaName, el: panelRefs.current[areaName] }))
-      .find(({ el }) => {
-        if (!el) return false
-        const rect = el.getBoundingClientRect()
-        return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
-      })
-    if (!target?.el) return
-    const area = areas.find((a) => a.name === target.areaName)
+    const dropPoint = findDropPoint(e.clientX, e.clientY)
+    if (!dropPoint) return
+    const area = areas.find((a) => a.name === dropPoint.areaName)
     if (!area) return
-    const rect = target.el.getBoundingClientRect()
-    const posX = ((e.clientX - rect.left) / rect.width) * 100
-    const posY = ((e.clientY - rect.top) / rect.height) * 100
     try {
       await apiFetch(`/api/seats/${seat.id}/position`, {
         method: 'PATCH',
-        body: JSON.stringify({ area_id: area.id, pos_x: posX, pos_y: posY }),
+        body: JSON.stringify({ area_id: area.id, pos_x: dropPoint.posX, pos_y: dropPoint.posY }),
       })
       await refreshAvailability()
     } catch (err) {
