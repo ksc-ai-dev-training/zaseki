@@ -1938,16 +1938,13 @@ export default function Availability() {
               </dl>
               {!proxyBookingFor && !recurring && existingSameDayReservation && (
                 <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  <p>
-                    「変更する」を押すと、現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
-                  </p>
                   <button
                     type="button"
                     disabled={submitting}
                     onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                    className="mt-2 rounded border border-amber-300 bg-white px-3 py-1 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                    className="rounded border border-amber-300 bg-white px-3 py-1 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                   >
-                    両方予約する（現在の予約（{existingSameDayReservation.seat_no}）はそのまま残す）
+                    複数座席 予約
                   </button>
                 </div>
               )}

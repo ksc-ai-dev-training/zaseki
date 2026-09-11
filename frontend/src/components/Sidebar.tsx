@@ -11,16 +11,16 @@ interface SidebarProps {
 // （2026-09-09追加。「メニューを折り畳み出来るようにしてほしい」との要望を受けた）
 const COLLAPSE_STORAGE_KEY = 'zaseki_sidebar_collapsed'
 
-const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean; systemOperatorOnly?: boolean }[] = [
-  { to: '/', label: '空き状況・予約' },
-  { to: '/project-seats', label: 'プロジェクト座席' },
-  { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', adminOnly: true },
-  { to: '/admin', label: '管理メニュー', adminOnly: true },
-  { to: '/profile', label: 'マイプロフィール' },
-  { to: '/help', label: 'ヘルプ' },
+const NAV_ITEMS: { to: string; label: string; emoji: string; adminOnly?: boolean; systemOperatorOnly?: boolean }[] = [
+  { to: '/', label: '空き状況・予約', emoji: '💺' },
+  { to: '/project-seats', label: 'プロジェクト座席', emoji: '🧩' },
+  { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', emoji: '🗺️', adminOnly: true },
+  { to: '/admin', label: '管理メニュー', emoji: '⚙️', adminOnly: true },
+  { to: '/profile', label: 'マイプロフィール', emoji: '👤' },
+  { to: '/help', label: 'ヘルプ', emoji: '❓' },
   // フィードバック一覧は管理部（role='admin'）ではなくシステム運用担当のみに見せる
   // （FR-09-3、2026-09-01追加。「管理部ではなくシステムを運用している人に見れるようにしてほしい」）
-  { to: '/feedback', label: 'フィードバック一覧', systemOperatorOnly: true },
+  { to: '/feedback', label: 'フィードバック一覧', emoji: '💬', systemOperatorOnly: true },
 ]
 
 const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '一般' }
@@ -50,14 +50,14 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
 
   if (collapsed) {
     return (
-      <aside className="hidden w-14 shrink-0 flex-col items-center gap-3 border-r border-slate-200 bg-white py-4 sm:sticky sm:top-0 sm:flex sm:h-screen">
-        <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-800 text-sm font-bold text-white">Z</div>
+      <aside className="hidden w-14 shrink-0 flex-col items-center gap-3 bg-gradient-to-b from-[#26346f] to-[#10173a] py-4 sm:sticky sm:top-0 sm:flex sm:h-screen">
+        <div className="flex h-8 w-8 items-center justify-center rounded bg-white text-sm font-bold text-[#1b2a5e]">Z</div>
         <button
           type="button"
           onClick={toggleCollapsed}
           title="メニューを開く"
           aria-label="メニューを開く"
-          className="rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+          className="rounded p-1.5 text-slate-300 hover:bg-white/10 hover:text-white"
         >
           »
         </button>
@@ -66,19 +66,19 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
   }
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:sticky sm:top-0 sm:flex sm:h-screen">
-      <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 px-5 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-800 text-sm font-bold text-white">Z</div>
+    <aside className="hidden w-60 shrink-0 flex-col bg-gradient-to-b from-[#26346f] to-[#10173a] sm:sticky sm:top-0 sm:flex sm:h-screen">
+      <div className="shrink-0 flex items-center gap-2 border-b border-white/10 px-5 py-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded bg-white text-sm font-bold text-[#1b2a5e]">Z</div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-slate-800">Zaseki</div>
-          <div className="text-[11px] text-slate-400">本社座席予約システム</div>
+          <div className="text-sm font-bold text-white">Zaseki</div>
+          <div className="text-[11px] text-indigo-200/60">本社座席予約システム</div>
         </div>
         <button
           type="button"
           onClick={toggleCollapsed}
           title="メニューを折り畳む"
           aria-label="メニューを折り畳む"
-          className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+          className="shrink-0 rounded p-1.5 text-slate-300 hover:bg-white/10 hover:text-white"
         >
           «
         </button>
@@ -93,39 +93,46 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `block rounded px-3 py-2 text-sm ${
-                isActive ? 'bg-blue-50 font-semibold text-blue-800' : 'text-slate-600 hover:bg-slate-50'
+              `flex items-center gap-2 rounded px-3 py-2 text-sm ${
+                isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/80 hover:bg-white/10 hover:text-white'
               }`
             }
           >
+            <span aria-hidden="true">{item.emoji}</span>
             {item.label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-slate-200 p-3">
+      <div className="shrink-0 border-t border-white/10 bg-black/10 p-3">
         <div className="flex items-center gap-2">
           {me.avatar_image ? (
             <img src={me.avatar_image} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
           ) : (
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
               {me.last_name.slice(0, 1)}
             </div>
           )}
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
               {me.last_name} {me.first_name}
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">{ROLE_LABEL[me.role]}</span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-normal ${
+                  me.role === 'admin' ? 'bg-fuchsia-400/20 text-fuchsia-200' : 'bg-white/10 text-indigo-100'
+                }`}
+              >
+                {ROLE_LABEL[me.role]}
+              </span>
             </div>
-            <div className="truncate text-[11px] text-slate-400">{me.email}</div>
+            <div className="truncate text-[11px] text-indigo-200/50">{me.email}</div>
           </div>
         </div>
         <button
           type="button"
           onClick={onLogout}
-          className="mt-3 w-full rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+          className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs text-indigo-100 hover:bg-white/10 hover:text-white"
         >
-          ログアウト
+          🚪 ログアウト
         </button>
       </div>
     </aside>
