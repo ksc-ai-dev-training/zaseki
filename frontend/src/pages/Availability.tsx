@@ -806,9 +806,15 @@ export default function Availability() {
           replace_existing: Boolean(existingSameDayReservation),
         }),
       })
+      // upcoming.mutate()（自分の予約一覧の再取得）が完了する前にモーダルを閉じると、閉じた直後に
+      // 別の座席をクリックして次の予約モーダルを開いた際、existingSameDayReservation/
+      // anySameDayReservationがまだ古いupcoming.itemsを参照してしまい、「現在の予約」として
+      // 実際より前の（既に置き換え済みの）座席が表示されることがあった（2026-09-11修正。
+      // 「B2という表示...共通点がわからないのですが検討違いの席が表示されています」との報告を受けた）。
+      // refreshAll完了後にモーダルを閉じることで、次のクリック時には必ず最新のupcoming.itemsを使う
+      await refreshAll()
       setReserveTarget(null)
       setMultiSeatNotice(data.multi_seat_warning)
-      await refreshAll()
     } catch (e) {
       const message = e instanceof ApiError ? e.message : '予約に失敗しました'
       setActionError(message)
@@ -838,10 +844,11 @@ export default function Availability() {
           replace_existing: mode === 'replace', keep_both: mode === 'keep_both',
         }),
       })
+      // 上のconfirmReserveと同じ理由でrefreshAll完了後にモーダルを閉じる（2026-09-11修正）
+      await refreshAll()
       setReserveTarget(null)
       setDuplicateSeatError(false)
       setMultiSeatNotice(data.multi_seat_warning)
-      await refreshAll()
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '予約に失敗しました')
     } finally {
@@ -855,8 +862,9 @@ export default function Availability() {
     setActionError(null)
     try {
       await apiFetch(`/api/reservations/${cancelTarget.seat.reservation_id}`, { method: 'DELETE' })
-      setCancelTarget(null)
+      // confirmReserve等と同じ理由でrefreshAll完了後にモーダルを閉じる（2026-09-11修正）
       await refreshAll()
+      setCancelTarget(null)
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '取消に失敗しました')
     } finally {

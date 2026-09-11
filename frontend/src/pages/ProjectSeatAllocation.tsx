@@ -11,6 +11,14 @@ const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
 ]
 
+// 出社曜日の確定・変更を「この内容で変更しますか」の確認画面に表示するための要約文字列
+// （2026-09-11追加。「曜日調整の変更がわかりにくい。確認欄に各プロジェクトが何曜日に出社するか
+// わかるようにしてほしい」との要望を受けた。それまでは確認なしに直接送信していた）
+function weekdaysSummary(days: Set<Weekday> | undefined): string {
+  const selected = WEEKDAYS.filter((w) => days?.has(w.key)).map((w) => w.label)
+  return selected.length > 0 ? selected.join('・') : '（出社日なし）'
+}
+
 // 座席期間の入力補助（開始月＋か月数→開始日・終了日を自動計算、2026-09-07追加）。
 // 「開始月と何か月、という入力で自動計算の方が使いやすそう」との要望を受けた。期間は必ずしも
 // 月初〜月末に揃うとは限らない（A-65の備考どおり任意の開始日・終了日を指定できる）ため、既存の
@@ -684,6 +692,9 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 「この内容で変更する」を押した直後に送信せず、変更後の各プロジェクトの出社曜日を一覧で
+  // 確認してから実行できるようにする確認モーダル（2026-09-11追加、上記weekdaysSummary参照）
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [cancelSelected, setCancelSelected] = useState<Set<number>>(new Set())
@@ -720,6 +731,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           plans: editablePlans.map((p) => ({ plan_id: p.id, weekdays_finalized: [...(checked[p.id] ?? [])] })),
         }),
       })
+      setConfirmModalOpen(false)
       await onChanged()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '変更に失敗しました')
@@ -840,10 +852,43 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
               プロジェクトの確定を取り消す
             </button>
           )}
-          <button type="button" disabled={submitting} onClick={submitChanges} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+          <button type="button" disabled={submitting} onClick={() => setConfirmModalOpen(true)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
             この内容で変更する
           </button>
         </div>
+      )}
+
+      {confirmModalOpen && (
+        <Modal
+          title="この内容で変更しますか"
+          onClose={() => setConfirmModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setConfirmModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" disabled={submitting} onClick={submitChanges} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+                この内容で変更する
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-500">変更後、各プロジェクトは次の曜日に出社する扱いになります。</p>
+            <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+              {editablePlans.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">
+                  <span className="font-semibold">{p.project_name}</span>
+                  <span className="text-slate-600">{weekdaysSummary(checked[p.id])}</span>
+                </li>
+              ))}
+            </ul>
+            {hasSeatsAllocatedEdit && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                座席割当済みのプロジェクトが含まれています。変更すると該当プロジェクトは座席の島の割当前の状態に戻り、「座席の島を割り当てる」からの再割当が必要になります（割り当て済みだった座席は初期選択状態のまま残ります）。
+              </p>
+            )}
+            {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+          </div>
+        </Modal>
       )}
 
       {cancelModalOpen && (
@@ -890,6 +935,9 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ConfirmedWeekdaysTableと同じ理由（weekdaysSummary参照）で、確定前に各プロジェクトの
+  // 出社曜日を一覧確認できる確認モーダルを設ける（2026-09-11追加）
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const { items: fixedAssignments } = useFixedSeatAssignments()
   // AI提案（FR-03-11、2026-09-08追加）: aiSuggestedはAIが埋めた「未編集の」セルのみを保持し、
   // エリア責任者がセルを直接編集する（toggle）とそのセルだけ取り除く（バッジが消え、通常の
@@ -1065,6 +1113,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
           plans: plans.map((p) => ({ plan_id: p.id, weekdays_finalized: [...(checked[p.id] ?? [])] })),
         }),
       })
+      setConfirmModalOpen(false)
       await onFinalized()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '確定に失敗しました')
@@ -1216,10 +1265,38 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
       </div>
       {error && <p className="mx-4 mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <div className="border-t border-slate-200 p-4 text-right">
-        <button type="button" disabled={submitting} onClick={confirmWeekdays} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+        <button type="button" disabled={submitting} onClick={() => setConfirmModalOpen(true)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
           この内容で全プロジェクトの曜日を確定する
         </button>
       </div>
+
+      {confirmModalOpen && (
+        <Modal
+          title="この内容で確定しますか"
+          onClose={() => setConfirmModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setConfirmModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" disabled={submitting} onClick={confirmWeekdays} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+                この内容で確定する
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-500">確定すると、各プロジェクトは次の曜日に出社する扱いになります。</p>
+            <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+              {plans.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">
+                  <span className="font-semibold">{p.project_name}</span>
+                  <span className="text-slate-600">{weekdaysSummary(checked[p.id])}</span>
+                </li>
+              ))}
+            </ul>
+            {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
