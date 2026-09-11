@@ -1468,7 +1468,10 @@ export default function Availability() {
         <div className="mb-6 rounded border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center gap-2">
             <h3 className="font-semibold">追加座席</h3>
-            <span className="text-xs text-slate-400">座席マスタ管理で追加された座席（配置図には未反映）</span>
+            <span className="text-xs text-slate-400">
+              座席マスタ管理で追加された座席（配置図には未反映）
+              {placeSeatMode && '。ドラッグして配置図に配置できます'}
+            </span>
           </div>
           <div className="flex flex-wrap gap-4">
             {[...extraSeatGroups.entries()].map(([label, seats]) => (
@@ -1483,6 +1486,10 @@ export default function Availability() {
                       onCancel={floorProps.onCancel}
                       fixedSeatAssignMode={floorProps.fixedSeatAssignMode}
                       onAssignFixedSeat={floorProps.onAssignFixedSeat}
+                      positionEditMode={floorProps.positionEditMode}
+                      onSeatDragPointerDown={floorProps.onSeatDragPointerDown}
+                      onSeatDragPointerMove={floorProps.onSeatDragPointerMove}
+                      onSeatDragPointerUp={floorProps.onSeatDragPointerUp}
                     />
                   ))}
                 </div>

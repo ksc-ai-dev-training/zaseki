@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 1.08（ドラフト・作成中）</span>
+      <span>版数: 1.09（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -334,6 +334,7 @@ footer.doc-footer {
       <tr><td>1.06</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、APIの変更なし）: v1.05で短縮した「複数座席 予約」ボタンについて、「複数座席 予約の位置が無理なので、変更するボタンとキャンセルボタンの間に作成してほしい」との指摘を受けた。従来はモーダル本文側（案内欄の下）に単独の黄色いボックスとして配置していたが、フッターの「キャンセル」ボタンと「変更する」ボタンの間に、同じフッター内のボタンとして並べる配置に変更した（本文側のボックスは削除）。表示条件（<code>!proxyBookingFor &amp;&amp; !recurring &amp;&amp; existingSameDayReservation</code>）・動作は変更していない。詳細は基本設計書2.2節（S-02）参照。</td></tr>
       <tr><td>1.07</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、A-69のBody・Response・認可は変更なし。基本設計書v2.85）: 「座席の予約・割当を代理で取り消す・変更するで既に日が経っている人はボタンを押せないようにしてほしいです」との要望を受けた。S-11（<code>frontend/src/pages/ProxyBooking.tsx</code>）の期間ビュー（A-69）で、セルの日付が本日（<code>todayStr()</code>、ブラウザのローカル日付）より前の場合は、従来のクリック可能な<code>&lt;button&gt;</code>（<code>openGridCell</code>を呼び取消・変更確認モーダルを開く）ではなく、同じ色分け・氏名表示のまま非活性の<code>&lt;span&gt;</code>（下線・ホバー反応なし、半透明表示）でレンダリングするよう修正した。バックエンド側の検証は追加していない（A-48・A-21・A-73・A-76自体は過去日を拒否する検証を持たないままだが、代理操作の起点となるS-11の画面上でクリックできなくすることで対応した）。本日・未来日のセルの挙動・A-69自体のレスポンス形状は変更していない。3.11節（A-69）を修正。</td></tr>
       <tr><td>1.08</td><td>2026-09-11</td><td>訂正反映（画面表示のみ、機能・データモデルに変更なし。基本設計書v2.86）: 「権限・役割管理という名前を権限・PJ管理にしてほしい」との要望を受け、S-08の画面名を「権限・役割管理」から「権限・PJ管理」に改称した。<code>frontend/src/pages/RoleManagement.tsx</code>の見出し・<code>AdminMenu.tsx</code>のカード名・<code>Help.tsx</code>の言及箇所を修正。タブ構成・API（A-25〜A-29等）・権限判定は変更していない。改訂履歴（本表）に登場する過去の記述は当時の画面名のままとし変更していない。3.8節・4.6節・5.5.6節の見出し・言及箇所を修正。</td></tr>
+      <tr><td>1.09</td><td>2026-09-11</td><td>不具合修正（フロントエンドのみ、A-82のBody・Response・認可は変更なし。基本設計書v2.87）: 「座席マスタ管理で追加された座席（配置図には未反映）これを配置図に配置できるようにしたいです」との要望を受けて調査したところ、v0.94（A-82新設）のドラッグ配置は<code>Availability.tsx</code>のフロアマップ本体（固定レイアウト・自由配置オーバーレイ）の<code>SeatTile</code>にのみ<code>positionEditMode</code>・ドラッグハンドラを渡しており、まだ座標を持たない座席を一覧表示する「追加座席」ボックス（<code>extraSeatGroups</code>）側の<code>SeatTile</code>には渡し忘れていたため、座席配置モード中でもこの一覧の座席はドラッグできない実装漏れがあったことが判明した。「追加座席」ボックスの<code>SeatTile</code>にも同じ<code>positionEditMode</code>・<code>onSeatDragPointerDown</code>等を渡すよう修正し、ドラッグしてフロアマップのエリアパネルへドロップすると、既存の座席と同じくA-82（<code>PATCH /seats/{id}/position</code>）が呼ばれて配置されるようにした。A-82自体の仕様・<code>findDropPoint</code>等の座標計算ロジックは変更していない。3.7節（A-82）の備考を修正。</td></tr>
     </tbody>
   </table>
   </details>
@@ -974,7 +975,7 @@ footer.doc-footer {
       <tr><td><code>A-22</code></td><td><span class="method get">GET</span><code>/seats?area=&status=&q=</code></td><td>座席一覧。</td><td>role='admin'</td><td><code>q</code>は座席番号の部分一致検索（2026-08-27追加、4.5節の絞り込み欄の裏付け）。各行に固定座席割当（T-04）の有無を含め、編集時の警告表示に使う。応答生成前に<code>release_expired_fixed_seats()</code>を呼ぶ（2026-08-28追加）。</td></tr>
       <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, pos_x?, pos_y?}</code>。<code>pos_x</code>・<code>pos_y</code>はS-02「座席配置モード」でのクリック位置（2026-08-27追加、両方指定するか両方省略する）。</td></tr>
       <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status, pos_x?, pos_y?}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
-      <tr><td><code>A-82</code></td><td><span class="method patch">PATCH</span><code>/seats/{id}/position</code></td><td>フロアマップ上での座席のドラッグによる位置変更（座席番号・タイプ・状態は変更しない）。</td><td>role='admin'</td><td>2026-09-10新設。「座席表にある席なのですが、これがもし座席の位置が変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。Body: <code>{area_id, pos_x, pos_y}</code>（全て必須。ドロップ先のパネルから一意に決まるためフロントエンドは常に確定した値を送る）。座席番号・座席タイプ・状態はA-24と異なり変更しないため、これらが必須のA-24を毎回のドラッグで呼ぶ必要がなく、再検証コストを抑えた軽量専用API。実際のオフィス配置を再現した既存83席（S-02のFloorAreas.tsxにハードコードされた固定レイアウト）はDB上pos_x/pos_yが常にNULLだったが、本APIで一度でも位置を更新すると、以後はS-07で後から追加した座席と同じ座標ベースのオーバーレイ表示（<code>.free-placed-seat</code>）に切り替わり、固定レイアウト側の元のマス目には何も表示されなくなる（FloorAreas.tsx側で<code>pos_x != null</code>の座席を描画しないよう対応）。「座席の列をそろえるように並ばせたい」との要望を受け、ドロップ位置を近くの座席へ磁石のように吸着させる、あるいはグリッドへスナップする自動整列を同日中に2案試みたが、いずれも「絶妙にずれていて整列することができません」「それでもまだ列にすることはできない」との指摘が続き、「その整列にできるのは却下でいいです。消してください」との申し出を受けて撤回した。ドロップ位置（パネルに対する%座標）はスナップ・吸着を一切行わずそのまま<code>pos_x</code>・<code>pos_y</code>として送る。</td></tr>
+      <tr><td><code>A-82</code></td><td><span class="method patch">PATCH</span><code>/seats/{id}/position</code></td><td>フロアマップ上での座席のドラッグによる位置変更（座席番号・タイプ・状態は変更しない）。</td><td>role='admin'</td><td>2026-09-10新設。「座席表にある席なのですが、これがもし座席の位置が変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。Body: <code>{area_id, pos_x, pos_y}</code>（全て必須。ドロップ先のパネルから一意に決まるためフロントエンドは常に確定した値を送る）。座席番号・座席タイプ・状態はA-24と異なり変更しないため、これらが必須のA-24を毎回のドラッグで呼ぶ必要がなく、再検証コストを抑えた軽量専用API。実際のオフィス配置を再現した既存83席（S-02のFloorAreas.tsxにハードコードされた固定レイアウト）はDB上pos_x/pos_yが常にNULLだったが、本APIで一度でも位置を更新すると、以後はS-07で後から追加した座席と同じ座標ベースのオーバーレイ表示（<code>.free-placed-seat</code>）に切り替わり、固定レイアウト側の元のマス目には何も表示されなくなる（FloorAreas.tsx側で<code>pos_x != null</code>の座席を描画しないよう対応）。「座席の列をそろえるように並ばせたい」との要望を受け、ドロップ位置を近くの座席へ磁石のように吸着させる、あるいはグリッドへスナップする自動整列を同日中に2案試みたが、いずれも「絶妙にずれていて整列することができません」「それでもまだ列にすることはできない」との指摘が続き、「その整列にできるのは却下でいいです。消してください」との申し出を受けて撤回した。ドロップ位置（パネルに対する%座標）はスナップ・吸着を一切行わずそのまま<code>pos_x</code>・<code>pos_y</code>として送る。まだ座標を持たない座席を一覧表示する「追加座席」ボックス側の座席タイルには、当初ドラッグの仕組みが結線されておらずドラッグできない実装漏れがあったため、2026-09-11に他の座席タイルと同じ<code>positionEditMode</code>・ドラッグハンドラを渡すよう修正した（改訂履歴v1.09参照。本APIのBody・Response自体に変更はない）。</td></tr>
       <tr><td><code>A-53</code></td><td><span class="method delete">DELETE</span><code>/seats/{id}</code></td><td>座席の完全削除。</td><td>role='admin'</td><td>A-24の<code>status='retired'</code>（廃止）とは別の操作で、座席データ自体を物理削除する（2026-08-28追加）。固定座席割当（T-04）または予約履歴（T-08、キャンセル済みを含む）が残る座席は409で拒否する。</td></tr>
       <tr><td><code>A-77</code></td><td><span class="method post">POST</span><code>/seats/bulk</code></td><td>座席の一括追加。</td><td>role='admin'</td><td>Body: <code>{seat_nos: string[], area_id, seat_type}</code>。「1件ずつしか登録できず新設フロアの初期投入や増設のたびに工数がかかる」との指摘を受け2026-09-09追加。同一エリア・同一座席タイプの座席番号をまとめて登録する。既存または入力内で重複する座席番号は個別にスキップし、作成できた分だけ登録した上で<code>{created_count, skipped: string[]}</code>を返す（1件でも重複があると全体を失敗させるA-66等の方針とは異なり、あえて部分成功を許容する。座席登録はどの座席が重複かを個別に探す手間の方が大きいため）。</td></tr>
     </tbody>
@@ -1509,7 +1510,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 1.08 / 2026-09-11</span>
+    <span>版数 1.09 / 2026-09-11</span>
   </footer>
 
 </div>
