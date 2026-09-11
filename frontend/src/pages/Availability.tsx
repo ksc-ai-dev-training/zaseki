@@ -2077,14 +2077,6 @@ export default function Availability() {
           footer={
             <>
               <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">戻る</button>
-              {/* 「変更する」は内部的には「予約を取り消す」と同じ取消処理（confirmCancel）を呼ぶだけで
-                  ボタンを分けている（2026-09-11追加。「座席の変更の場合は変更するボタンを作成してほしい」
-                  との要望を受けた）。S-11の代理予約（別画面へ遷移してから新しい座席を選ぶ）と異なり、
-                  ここでは既にS-02のフロアマップ上にいるため、取り消した直後にそのまま別の座席をクリック
-                  すれば予約し直せる。そのため「変更のための特別な処理」は不要で、「単に手放したい」
-                  （取消）と「別の座席にしたい」（変更）という利用者の意図の違いに応じて、押すボタンを
-                  選びやすくする目的でラベルのみ分けている */}
-              <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-800 disabled:opacity-50">変更する</button>
               <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">予約を取り消す</button>
             </>
           }
@@ -2094,7 +2086,6 @@ export default function Availability() {
             <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{cancelTarget.area}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(date)}</dd></div>
           </dl>
-          <p className="mt-3 text-xs text-slate-500">「変更する」を選ぶと、この予約を取り消したうえで、フロアマップから別の座席をクリックして予約し直せます。</p>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
         </Modal>
       )}
