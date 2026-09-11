@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type SVGProps } from 'react'
 import { NavLink } from 'react-router'
 import type { Me } from '../types'
 
@@ -11,16 +11,75 @@ interface SidebarProps {
 // （2026-09-09追加。「メニューを折り畳み出来るようにしてほしい」との要望を受けた）
 const COLLAPSE_STORAGE_KEY = 'zaseki_sidebar_collapsed'
 
-const NAV_ITEMS: { to: string; label: string; emoji: string; adminOnly?: boolean; systemOperatorOnly?: boolean }[] = [
-  { to: '/', label: '空き状況・予約', emoji: '💺' },
-  { to: '/project-seats', label: 'プロジェクト座席', emoji: '🧩' },
-  { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', emoji: '🗺️', adminOnly: true },
-  { to: '/admin', label: '管理メニュー', emoji: '⚙️', adminOnly: true },
-  { to: '/profile', label: 'マイプロフィール', emoji: '👤' },
-  { to: '/help', label: 'ヘルプ', emoji: '❓' },
+// ナビ項目のアイコンは色付き絵文字ではなく、currentColorで塗られる線画SVGにする
+// （2026-09-11変更。「絵文字は色を付けないで文字と同じ色にできる？」との要望を受けた。
+// 色付き絵文字グリフはCSSのcolorでは着色できないため、線画アイコンに置き換えて対応した）
+function IconIllust({ children, ...props }: SVGProps<SVGSVGElement> & { children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      {children}
+    </svg>
+  )
+}
+const MapIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6-13l6 3m0 0l5.447-2.724A1 1 0 0121 5.618v10.764a1 1 0 01-.553.894L15 20m0-13v13m0-13l-6-3" />
+  </IconIllust>
+)
+const BriefcaseIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </IconIllust>
+)
+const LocationMarkerIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+  </IconIllust>
+)
+const CogIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </IconIllust>
+)
+const UserIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </IconIllust>
+)
+const QuestionMarkCircleIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </IconIllust>
+)
+const ChatIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+  </IconIllust>
+)
+const LogoutIcon = (props: SVGProps<SVGSVGElement>) => (
+  <IconIllust {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+  </IconIllust>
+)
+
+const NAV_ITEMS: {
+  to: string
+  label: string
+  Icon: (props: SVGProps<SVGSVGElement>) => React.ReactElement
+  adminOnly?: boolean
+  systemOperatorOnly?: boolean
+}[] = [
+  { to: '/', label: '空き状況・予約', Icon: MapIcon },
+  { to: '/project-seats', label: 'プロジェクト座席', Icon: BriefcaseIcon },
+  { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', Icon: LocationMarkerIcon, adminOnly: true },
+  { to: '/admin', label: '管理メニュー', Icon: CogIcon, adminOnly: true },
+  { to: '/profile', label: 'マイプロフィール', Icon: UserIcon },
+  { to: '/help', label: 'ヘルプ', Icon: QuestionMarkCircleIcon },
   // フィードバック一覧は管理部（role='admin'）ではなくシステム運用担当のみに見せる
   // （FR-09-3、2026-09-01追加。「管理部ではなくシステムを運用している人に見れるようにしてほしい」）
-  { to: '/feedback', label: 'フィードバック一覧', emoji: '💬', systemOperatorOnly: true },
+  { to: '/feedback', label: 'フィードバック一覧', Icon: ChatIcon, systemOperatorOnly: true },
 ]
 
 const ROLE_LABEL: Record<Me['role'], string> = { admin: '管理部', general: '一般' }
@@ -98,7 +157,7 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
               }`
             }
           >
-            <span aria-hidden="true">{item.emoji}</span>
+            <item.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {item.label}
           </NavLink>
         ))}
@@ -130,9 +189,10 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
         <button
           type="button"
           onClick={onLogout}
-          className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs text-indigo-100 hover:bg-white/10 hover:text-white"
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded border border-white/15 px-3 py-1.5 text-xs text-indigo-100 hover:bg-white/10 hover:text-white"
         >
-          🚪 ログアウト
+          <LogoutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          ログアウト
         </button>
       </div>
     </aside>
