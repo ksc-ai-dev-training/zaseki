@@ -40,6 +40,12 @@ const PERIOD_COL_WD_W = 44
 const PERIOD_COL_RES_W = 56
 const PERIOD_COL_VAC_W = 56
 
+function todayStr(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
 function formatDateJa(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`)
   return `${dateStr}（${WEEKDAY_JA[d.getDay()]}）`
@@ -364,6 +370,7 @@ export default function ProxyBooking() {
                       const reserved = grid.seats.filter((s) => (s.days[d]?.status ?? 'free') !== 'free').length
                       const vacant = grid.seats.length - reserved
                       const { wd } = formatDateShort(d)
+                      const isPast = d < todayStr()
                       return (
                         <tr key={d} className="border-b border-slate-300">
                           <td className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-300 bg-white px-3 py-1.5 font-semibold">
@@ -398,6 +405,19 @@ export default function ProxyBooking() {
                               <td key={seat.id} className="border-r border-slate-200 px-1 py-1.5 text-center">
                                 {status === 'free' ? (
                                   <span className="whitespace-nowrap text-[11px] text-slate-300">空き</span>
+                                ) : isPast ? (
+                                  <span
+                                    title="過去の日付は取消・変更できません"
+                                    className={`whitespace-nowrap text-[11px] opacity-50 ${
+                                      status === 'fixed'
+                                        ? 'text-violet-700'
+                                        : status === 'fixed_absent'
+                                          ? 'text-emerald-700'
+                                          : cell?.project_name ? 'text-amber-700' : 'text-slate-600'
+                                    }`}
+                                  >
+                                    {status === 'fixed_absent' ? `${cell?.user_name}（解除中）` : cell?.user_name}
+                                  </span>
                                 ) : (
                                   <button
                                     type="button"

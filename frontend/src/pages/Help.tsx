@@ -165,7 +165,7 @@ export default function Help() {
             <Section title="ログイン">
               <ol className="list-decimal space-y-1 pl-5">
                 <li>ログイン画面で「Googleでログイン」ボタンを押します（会社の許可されたドメインのアカウントを使用）。</li>
-                <li>初回ログイン時は、Googleアカウントの氏名から姓・名が自動的に登録されます。氏名に誤りがある場合は管理部に連絡してください（権限・役割管理から訂正できます）。</li>
+                <li>初回ログイン時は、Googleアカウントの氏名から姓・名が自動的に登録されます。氏名に誤りがある場合は管理部に連絡してください（権限・PJ管理から訂正できます）。</li>
               </ol>
             </Section>
 
@@ -310,7 +310,7 @@ export default function Help() {
               </ul>
             </Section>
 
-            <Section title="権限・役割管理">
+            <Section title="権限・PJ管理">
               <ul className="list-disc space-y-1 pl-5">
                 <li><strong>利用者ロール管理:</strong> 役割・氏名・雇用形態・在籍状況の設定、エリア責任者・副責任者の指定など。</li>
                 <li><strong>プロジェクト・PM管理:</strong> プロジェクトの追加・編集・削除、PM／PL／SL・PJ席決担当・作成者の設定（アンケート回答・メンバーへの座席確保を実際に行えるのは作成者のみで、PJ席決担当は表示用の項目）。</li>

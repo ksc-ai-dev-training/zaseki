@@ -60,7 +60,7 @@ export default function RoleManagement() {
   return (
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
-        <h1 className="text-xl font-bold">権限・役割管理</h1>
+        <h1 className="text-xl font-bold">権限・PJ管理</h1>
       </header>
 
       <div className="border-b border-slate-200 bg-white px-6">

@@ -5,7 +5,7 @@ const CARDS: { id: string; to: string; name: string }[] = [
   { id: 'S-05', to: '/fixed-seats', name: '固定座席の指定' },
   { id: 'S-11', to: '/proxy-booking', name: '代理予約・取消' },
   { id: 'S-07', to: '/seat-master', name: '座席マスタ管理' },
-  { id: 'S-08', to: '/roles', name: '権限・役割管理' },
+  { id: 'S-08', to: '/roles', name: '権限・PJ管理' },
   { id: 'S-09', to: '/project-seats-area', name: 'プロジェクト座席（エリア担当）' },
 ]
 // S-10（座席状況の履歴照会）は2026-09-07に廃止した。空き状況・予約（S-02）が過去31日

@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 1.06（ドラフト・作成中）</span>
+      <span>版数: 1.08（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -332,6 +332,8 @@ footer.doc-footer {
       <tr><td>1.04</td><td>2026-09-11</td><td>廃止（フロントエンドのみ、APIの変更なし。基本設計書v2.80）: v1.02で追加したS-02の「予約の取消」モーダルの「変更する」ボタンについて、「この画面がでたとき変更ボタンが取り消しと同じ機能になっているので変更ボタンを削除するようにお願いします」との指摘を受けた。「変更する」は内部的に「予約を取り消す」（A-11）と全く同じ処理を呼ぶだけの設計だったため、両方のボタンを並べて表示すると同じ結果になる2つのボタンがあるように見え、紛らわしいとの判断で「変更する」ボタンと案内文を削除し、v1.02以前の「戻る」「予約を取り消す」の2ボタン構成に戻した。v1.03で追加した、既存予約と競合する座席をクリックした際の予約確認モーダルの「変更する」ボタン（こちらは「予約する」から表示だけを変えたもので、取消専用のボタンと並存する構成ではない）は、今回の指摘の対象外のため変更していない。詳細は基本設計書2.2節（S-02）参照。</td></tr>
       <tr><td>1.05</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、A-09のBody・Response・認可は変更なし。基本設計書v2.81）: S-02の予約確認モーダルで、既に同じ日に別のフリー座席の予約がある状態で新しい座席をクリックした際に表示される案内文（「'変更する'を押すと、現在の予約（C2）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。」）と、<code>keep_both</code>を選ぶボタンのラベル（「両方予約する（現在の予約（C2）はそのまま残す）」）を画面に貼り付けたうえで、「説明文をなくしてボタンの名前を複数座席 予約という風にしてほしい」との指摘を受けた。案内文（<code>&lt;p&gt;</code>）を削除し、ボタンラベルを「両方予約する（現在の予約（座席番号）はそのまま残す）」から「複数座席 予約」に短縮した。ボタンの動作（<code>confirmReserveResolveDuplicate('keep_both')</code>、A-09を<code>keep_both=true</code>で呼ぶ）自体は変更していない。あわせてヘルプ画面（S-13）内の同ボタンの案内文言も新しいラベルに合わせて修正した。詳細は基本設計書2.2節（S-02）参照。</td></tr>
       <tr><td>1.06</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、APIの変更なし）: v1.05で短縮した「複数座席 予約」ボタンについて、「複数座席 予約の位置が無理なので、変更するボタンとキャンセルボタンの間に作成してほしい」との指摘を受けた。従来はモーダル本文側（案内欄の下）に単独の黄色いボックスとして配置していたが、フッターの「キャンセル」ボタンと「変更する」ボタンの間に、同じフッター内のボタンとして並べる配置に変更した（本文側のボックスは削除）。表示条件（<code>!proxyBookingFor &amp;&amp; !recurring &amp;&amp; existingSameDayReservation</code>）・動作は変更していない。詳細は基本設計書2.2節（S-02）参照。</td></tr>
+      <tr><td>1.07</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、A-69のBody・Response・認可は変更なし。基本設計書v2.85）: 「座席の予約・割当を代理で取り消す・変更するで既に日が経っている人はボタンを押せないようにしてほしいです」との要望を受けた。S-11（<code>frontend/src/pages/ProxyBooking.tsx</code>）の期間ビュー（A-69）で、セルの日付が本日（<code>todayStr()</code>、ブラウザのローカル日付）より前の場合は、従来のクリック可能な<code>&lt;button&gt;</code>（<code>openGridCell</code>を呼び取消・変更確認モーダルを開く）ではなく、同じ色分け・氏名表示のまま非活性の<code>&lt;span&gt;</code>（下線・ホバー反応なし、半透明表示）でレンダリングするよう修正した。バックエンド側の検証は追加していない（A-48・A-21・A-73・A-76自体は過去日を拒否する検証を持たないままだが、代理操作の起点となるS-11の画面上でクリックできなくすることで対応した）。本日・未来日のセルの挙動・A-69自体のレスポンス形状は変更していない。3.11節（A-69）を修正。</td></tr>
+      <tr><td>1.08</td><td>2026-09-11</td><td>訂正反映（画面表示のみ、機能・データモデルに変更なし。基本設計書v2.86）: 「権限・役割管理という名前を権限・PJ管理にしてほしい」との要望を受け、S-08の画面名を「権限・役割管理」から「権限・PJ管理」に改称した。<code>frontend/src/pages/RoleManagement.tsx</code>の見出し・<code>AdminMenu.tsx</code>のカード名・<code>Help.tsx</code>の言及箇所を修正。タブ構成・API（A-25〜A-29等）・権限判定は変更していない。改訂履歴（本表）に登場する過去の記述は当時の画面名のままとし変更していない。3.8節・4.6節・5.5.6節の見出し・言及箇所を修正。</td></tr>
     </tbody>
   </table>
   </details>
@@ -978,7 +980,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>3.8 権限・役割管理（S-08）</h3>
+  <h3>3.8 権限・PJ管理（S-08）</h3>
   <table>
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
@@ -1059,7 +1061,7 @@ footer.doc-footer {
       <tr><td><code>A-46</code></td><td><span class="method get">GET</span><code>/reservations/search?user_name=&seat_type=&start=&end=</code></td><td>座席の予約・割当を代理で取消・解除する対象の検索（予約・割当単位の一覧、座席種別問わず）。</td><td>role='admin'</td><td><code>start</code>・<code>end</code>（YYYY-MM、表示期間）は2026-08-28追加。4.11節の絞り込み欄の裏付け。固定座席（T-04、恒久的な割当で日付を持たない）は対象外。<code>seat_type</code>は<code>'all'/'free'/'fixed'/'project'</code>（2026-09-01訂正、後述のバグ修正で追加）。<strong>2026-09-01訂正:</strong> 「PJ席を利用しているのにフリー座席の表示になっている」との報告を受け、プロジェクト座席を正しく区別するよう修正した。プロジェクト座席の専有は座席自体のseat_typeを変更しない設計（3.3節・3.9節参照）のため、T-08の行は元々プロジェクト座席であっても<code>seats.seat_type='free'</code>のまま記録される。従来のクエリはこれを区別せずすべて<code>seat_type='free'</code>として返していたため、実際にはプロジェクト座席を使っている利用者もフリー座席として表示される不具合があった（2026-08-28時点の「プロジェクト座席は別の専用フローで扱うため対象外」という記載は、T-05〜T-07が未実装だった当時のまま更新されておらず、実装後もこの区別が行われていなかった）。修正後は、フリー座席のクエリ結果それぞれについて、その(seat_id, date)が座席の島の割当期間（<code>project_quarter_plans.status='seats_allocated'</code>のperiod_start〜period_end・allocated_seats）に含まれるかをアプリケーション層で突き合わせ、該当すれば<code>seat_type='project'</code>として分類し直す（該当するプロジェクト名を<code>project_name</code>として応答に含める。それ以外の行は<code>project_name: null</code>）。<strong>2026-09-02再訂正:</strong> 割当期間内であっても、予約日の曜日が確定した出社曜日（weekdays_finalized）に含まれない場合は<code>'project'</code>に分類しないよう修正した（<code>database.project_blocked_seats()</code>と同じ考え方、3.3節A-06参照）。「プロジェクト席決め担当の吉村さん・竹本さんの予約がフリー座席の表示になっている」との報告を調査した際、当該予約自体は実際にはどのプロジェクトの割当座席とも一致しない無関係な個人予約だったため表示自体は正しかったが、調査の過程で、逆に割当期間内かつ確定曜日以外の日に行われた無関係な個人予約は誤って'project'に分類されてしまう対称的な不具合が見つかったため、あわせて修正した。<strong>2026-09-03:</strong> このプロジェクト名判定ロジックを<code>_project_name_lookup()</code>としてルーター内の関数に切り出し、新設のA-69（下記）と共有するようにした（本APIの挙動自体に変更はない）。</td></tr>
       <tr><td><code>A-47</code></td><td><span class="method post">POST</span><code>/reservations/proxy</code></td><td>フリー座席の代理予約（新規はフリー座席のみ、FR-01-5）。</td><td>role='admin'</td><td>Body: <code>{user_id, seat_id, date, replace_existing}</code>。単発のみ対応し、周期予約相当のBody（A-10 <code>/reservations/recurring</code>と同形）は対象外（2026-08-28追加時点のスコープ。A-10自体は0.24で実装済みだが、A-47を周期対応させる要望は本フェーズでは発生しなかったため据え置き。S-04のPJ席決担当によるメンバーへの座席確保はA-47ではなくA-18〔3.4節〕が担う）。RULE-02・RULE-07・RULE-03は呼び出し者（管理部）ではなく対象者（<code>user_id</code>）の状態で判定する。A-09と同様、指定した<code>date</code>が座席の島の割当（T-07）の期間中の座席は予約を拒否する（2026-08-28追加、3.3節A-06参照）。A-09と同様、対象者の固定座席がT-18により当日だけ解除されていればRULE-07の対象外とし、その固定座席自体もその日はフリー座席同様に予約を受け付ける（2026-09-09追加）。RULE-02の拒否文言は<code>database.DUPLICATE_SEAT_MESSAGE</code>を使う（A-09参照）。</td></tr>
       <tr><td><code>A-48</code></td><td><span class="method delete">DELETE</span><code>/reservations/proxy/{id}</code></td><td>座席の予約を代理で取消する（対象者を問わない）。</td><td>role='admin'</td><td><code>id</code>はreservations.id。固定座席の解除は本APIに統合せず、既存のA-21（<code>DELETE /fixed-seat-assignments/{seat_id}</code>）をそのまま使う（2026-08-28訂正。ロジックの重複を避けるため、S-11の一覧はkind='fixed'の行についてA-21を呼ぶ）。実装自体はreservations.idのみで判定し座席種別を問わないため、プロジェクト座席の予約もそのまま取り消せる（2026-09-01のA-46修正でプロジェクト座席も一覧・検索対象になったことに伴い、2026-08-28時点の「プロジェクト座席は対象外」という記載が実装と食い違っていたため訂正。本APIのコード自体は当初から変更していない）。S-11の「この期間の予約をまとめて取り消す」（2026-09-02追加）は、絞り込み条件に一致した複数の予約についてこのAPIを1件ずつ呼び出す（バックエンドに専用のバッチAPIは追加していない）。</td></tr>
-      <tr><td><code>A-69</code></td><td><span class="method get">GET</span><code>/reservations/period-grid?start=&end=&area=</code></td><td>代理予約・取消（S-11）の期間ビュー。座席×日付のマトリクスで、対象者を代理で取消・変更する起点となる。</td><td>role='admin'</td><td>2026-09-03新設。「座席の予約・割当を代理で取り消すをこのような画面〔S-02の期間ビュー〕にしたい」との要望を受けた（v0.71・v0.72で新設したS-11の日付×予約グリッドは中間案で、本来の期間ビューとは異なる形式だったため作り直した）。A-07（<code>/seats/availability/period</code>、S-02の期間ビュー）とほぼ同じクエリ・レスポンス形状（<code>{start, end, full_start, full_end, dates, seats: [{id, seat_no, area, seat_type, days: {日付: セル}}]}</code>）だが、管理部が任意の利用者を代理操作するための画面のため、A-07のような氏名の匿名化（姓のみ表示・「自分」表記・他者のreservation_id秘匿）は行わず、セルは常に<code>{status: 'free'|'reserved'|'fixed'|'fixed_absent', kind: 'reservation'|'fixed'|'fixed_absent'|null, id, user_id, user_name, project_name}</code>を返す（<code>id</code>はkind='reservation'ならreservations.id、kind='fixed'／'fixed_absent'ならseats.id、A-48・A-21・A-76の呼び出しにそのまま使う）。固定座席（T-04）はA-07のような「初日のみ氏名表示・以降は'-'」という表示圧縮を行わず、どの日をクリックしても同じ操作ができるよう対象期間の全日に同じ氏名・idを返す。<code>status: 'fixed_absent'</code>（2026-09-09追加）は、T-18（fixed_seat_absences）により1日だけ解除されているがまだ誰にも予約されていない日を表し、ProxyBooking.tsxはこのセルをクリックするとA-76（解除の取り消し）を呼べるようにする（誰かに既に予約されている場合はreservationsループが設定した'reserved'を優先し、'fixed_absent'にはしない）。プロジェクト座席の判定（<code>project_name</code>）はA-46の座席の島の割当・確定曜日にもとづく再判定ロジックを<code>_project_name_lookup()</code>として切り出し共有する。start・end省略時の既定値（RULE-05の予約可能期間全体）・areaフィルタ（all/north/east/west）はA-07と同じ。指定時にRULE-05の範囲へクランプすることの廃止・366日超過時の400も、2026-09-10にA-07と同時に対応した。フロントエンド（ProxyBooking.tsx）の期間ビュー表も、A-07と同じくスマホ幅では日付列を年なし表記・列幅縮小にした（2026-09-11、改訂履歴v1.00参照。本APIのBody・Response自体に変更はない）。</td></tr>
+      <tr><td><code>A-69</code></td><td><span class="method get">GET</span><code>/reservations/period-grid?start=&end=&area=</code></td><td>代理予約・取消（S-11）の期間ビュー。座席×日付のマトリクスで、対象者を代理で取消・変更する起点となる。</td><td>role='admin'</td><td>2026-09-03新設。「座席の予約・割当を代理で取り消すをこのような画面〔S-02の期間ビュー〕にしたい」との要望を受けた（v0.71・v0.72で新設したS-11の日付×予約グリッドは中間案で、本来の期間ビューとは異なる形式だったため作り直した）。A-07（<code>/seats/availability/period</code>、S-02の期間ビュー）とほぼ同じクエリ・レスポンス形状（<code>{start, end, full_start, full_end, dates, seats: [{id, seat_no, area, seat_type, days: {日付: セル}}]}</code>）だが、管理部が任意の利用者を代理操作するための画面のため、A-07のような氏名の匿名化（姓のみ表示・「自分」表記・他者のreservation_id秘匿）は行わず、セルは常に<code>{status: 'free'|'reserved'|'fixed'|'fixed_absent', kind: 'reservation'|'fixed'|'fixed_absent'|null, id, user_id, user_name, project_name}</code>を返す（<code>id</code>はkind='reservation'ならreservations.id、kind='fixed'／'fixed_absent'ならseats.id、A-48・A-21・A-76の呼び出しにそのまま使う）。固定座席（T-04）はA-07のような「初日のみ氏名表示・以降は'-'」という表示圧縮を行わず、どの日をクリックしても同じ操作ができるよう対象期間の全日に同じ氏名・idを返す。<code>status: 'fixed_absent'</code>（2026-09-09追加）は、T-18（fixed_seat_absences）により1日だけ解除されているがまだ誰にも予約されていない日を表し、ProxyBooking.tsxはこのセルをクリックするとA-76（解除の取り消し）を呼べるようにする（誰かに既に予約されている場合はreservationsループが設定した'reserved'を優先し、'fixed_absent'にはしない）。プロジェクト座席の判定（<code>project_name</code>）はA-46の座席の島の割当・確定曜日にもとづく再判定ロジックを<code>_project_name_lookup()</code>として切り出し共有する。start・end省略時の既定値（RULE-05の予約可能期間全体）・areaフィルタ（all/north/east/west）はA-07と同じ。指定時にRULE-05の範囲へクランプすることの廃止・366日超過時の400も、2026-09-10にA-07と同時に対応した。フロントエンド（ProxyBooking.tsx）の期間ビュー表も、A-07と同じくスマホ幅では日付列を年なし表記・列幅縮小にした（2026-09-11、改訂履歴v1.00参照。本APIのBody・Response自体に変更はない）。過去日（本日より前）のセルはクリックできないただの文字表示にし、取消・変更確認モーダルを開けないようにした（2026-09-11、改訂履歴v1.07参照。本APIのBody・Response自体に変更はない）。</td></tr>
     </tbody>
   </table>
 
@@ -1151,7 +1153,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h3>4.6 S-08 権限・役割管理</h3>
+  <h3>4.6 S-08 権限・PJ管理</h3>
   <table>
     <thead><tr><th>項目</th><th>種別</th><th>必須</th><th>入力チェック内容</th></tr></thead>
     <tbody>
@@ -1343,7 +1345,7 @@ footer.doc-footer {
     </tbody>
   </table>
 
-  <h4>5.5.6 権限・役割管理（S-08）</h4>
+  <h4>5.5.6 権限・PJ管理（S-08）</h4>
   <table>
     <thead><tr><th>ID</th><th>追加条件</th><th>備考</th></tr></thead>
     <tbody>
@@ -1507,7 +1509,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 1.06 / 2026-09-11</span>
+    <span>版数 1.08 / 2026-09-11</span>
   </footer>
 
 </div>
