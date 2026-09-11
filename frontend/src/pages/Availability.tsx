@@ -1884,6 +1884,16 @@ export default function Availability() {
             ) : (
               <>
                 <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                {!proxyBookingFor && !recurring && existingSameDayReservation && (
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                    className="rounded border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    複数座席 予約
+                  </button>
+                )}
                 <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                   {recurring
                     ? 'この内容で登録する'
@@ -1936,18 +1946,6 @@ export default function Availability() {
                 <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">{recurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
               </dl>
-              {!proxyBookingFor && !recurring && existingSameDayReservation && (
-                <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                    className="rounded border border-amber-300 bg-white px-3 py-1 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    複数座席 予約
-                  </button>
-                </div>
-              )}
               {!proxyBookingFor && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <label className="flex items-center gap-1.5 text-sm">
