@@ -85,7 +85,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
         <div>
           <span className="mb-1 block text-slate-500">メンバー・PM／PL・PJ席決担当・作成者</span>
           <p className="mb-2 text-xs text-slate-400">
-            PJ席決担当は表示用の項目です。アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです（2026-09-09変更）。
+            PJ席決担当は表示用の項目です。アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです。
           </p>
           <div className="overflow-x-auto rounded border border-slate-200">
             <table className="w-full text-sm">

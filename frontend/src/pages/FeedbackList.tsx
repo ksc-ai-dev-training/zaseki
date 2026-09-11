@@ -34,7 +34,6 @@ export default function FeedbackList() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">フィードバック一覧</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-14</span>
       </header>
 
       <div className="p-6">

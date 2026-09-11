@@ -334,7 +334,6 @@ export default function ProjectSeatAllocation() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">プロジェクト座席（エリア担当）</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-09</span>
       </header>
 
       <div className="space-y-8 p-6">
@@ -432,7 +431,7 @@ export default function ProjectSeatAllocation() {
           {bulkBlockEligiblePlans.length > 0 && (
             <div className="rounded border border-blue-200 bg-blue-50 p-4">
               <div className="mb-2 text-sm font-semibold text-blue-800">座席の島の割当が必要なプロジェクト（{bulkBlockEligiblePlans.length}件）</div>
-              <p className="mb-3 text-xs text-blue-700">出社曜日が確定し、座席の島の割当を待っているプロジェクトです。下のボタンから空き状況・予約（S-02）へまとめて遷移し、右側の一覧でプロジェクトを切り替えながら座席を選んで、最後に1回でまとめて登録できます。</p>
+              <p className="mb-3 text-xs text-blue-700">出社曜日が確定し、座席の島の割当を待っているプロジェクトです。下のボタンから空き状況・予約へまとめて遷移し、右側の一覧でプロジェクトを切り替えながら座席を選んで、最後に1回でまとめて登録できます。</p>
               <button
                 type="button"
                 onClick={goSeatBlockBulk}

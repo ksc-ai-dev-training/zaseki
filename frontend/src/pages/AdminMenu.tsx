@@ -1,37 +1,12 @@
 import { Link } from 'react-router'
 import { useAdminSummary } from '../hooks/useAdminSummary'
 
-const CARDS: { id: string; to: string; name: string; desc: string }[] = [
-  {
-    id: 'S-05',
-    to: '/fixed-seats',
-    name: '固定座席の指定',
-    desc: '固定座席利用者の座席を指定する（FR-01-5）。プロジェクトメンバーへの代理予約はプロジェクト座席画面（S-04）で行う。',
-  },
-  {
-    id: 'S-11',
-    to: '/proxy-booking',
-    name: '代理予約・取消',
-    desc: 'プロジェクトメンバー・固定座席利用者のいずれにも該当しない利用者について、通常の座席（フリー座席）を一時的に代理予約・代理取消する（FR-01-5・FR-01-7）。',
-  },
-  {
-    id: 'S-07',
-    to: '/seat-master',
-    name: '座席マスタ管理',
-    desc: '座席の追加・編集・廃止を行う（FR-06-1, FR-06-2）。',
-  },
-  {
-    id: 'S-08',
-    to: '/roles',
-    name: '権限・役割管理',
-    desc: '利用者への役割（管理部）の割当、プロジェクトメンバーへのPM・PL設定、PJ席決担当の指定、エリア責任者・副責任者の指定を行う。',
-  },
-  {
-    id: 'S-09',
-    to: '/project-seats-area',
-    name: 'プロジェクト座席（エリア担当）',
-    desc: '必要座席数の確認・出社曜日アンケートの実施・調整・座席の島の割当（FR-03-2〜6）を行う（四半期計画データはシステムが自動作成する）。',
-  },
+const CARDS: { id: string; to: string; name: string }[] = [
+  { id: 'S-05', to: '/fixed-seats', name: '固定座席の指定' },
+  { id: 'S-11', to: '/proxy-booking', name: '代理予約・取消' },
+  { id: 'S-07', to: '/seat-master', name: '座席マスタ管理' },
+  { id: 'S-08', to: '/roles', name: '権限・役割管理' },
+  { id: 'S-09', to: '/project-seats-area', name: 'プロジェクト座席（エリア担当）' },
 ]
 // S-10（座席状況の履歴照会）は2026-09-07に廃止した。空き状況・予約（S-02）が過去31日
 // （D12・S-10と同じ上限）に加えて未来も無制限に見られ、S-10はその完全な部分集合でしか
@@ -55,7 +30,6 @@ export default function AdminMenu() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">管理メニュー</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-06</span>
       </header>
 
       <div className="space-y-8 p-6">
@@ -87,11 +61,7 @@ export default function AdminMenu() {
                 to={c.to}
                 className="rounded border border-slate-200 bg-white p-4 hover:border-blue-300 hover:shadow-sm"
               >
-                <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">
-                  {c.id}
-                </span>
-                <div className="mt-2 font-semibold text-slate-800">{c.name}</div>
-                <div className="mt-1 text-xs leading-relaxed text-slate-500">{c.desc}</div>
+                <div className="font-semibold text-slate-800">{c.name}</div>
               </Link>
             ))}
           </div>

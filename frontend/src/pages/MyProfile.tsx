@@ -185,7 +185,6 @@ export default function MyProfile() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">マイプロフィール</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-12</span>
       </header>
 
       <div className="max-w-md p-6">
@@ -257,7 +256,7 @@ export default function MyProfile() {
                 )}
               </div>
               <p className="mt-2 text-xs text-slate-400">
-                年は登録しません。登録すると、その月日に空き状況・予約（S-02）の座席タイルに誕生日であることが表示されます。
+                年は登録しません。登録すると、その月日に空き状況・予約の座席タイルに誕生日であることが表示されます。
               </p>
             </div>
 

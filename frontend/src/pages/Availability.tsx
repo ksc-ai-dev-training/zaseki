@@ -125,6 +125,10 @@ const DUPLICATE_SEAT_MESSAGE = '同じ日に複数の座席は予約できませ
 // 期間ビュー（S-02）の表: 縦軸=日付・予約数・空席、横軸=座席番号・種別（現行スプレッドシート準拠）。
 // 左側の日付系4列・上部の座席ヘッダー行はスクロール中も見えるよう固定する（position: sticky）
 const PERIOD_COL_DATE_W = 96
+// スマホ幅では日付列に年を表示しない（下記PERIOD_COL_DATE_Wの説明・isMobile分岐参照）ため、
+// 列幅も「09/11」相当まで狭める（2026-09-11追加。「期間ビューなのですが年を非表示にすることは
+// できますか」との要望を受けた）
+const PERIOD_COL_DATE_W_MOBILE = 64
 const PERIOD_COL_WD_W = 44
 const PERIOD_COL_RES_W = 56
 const PERIOD_COL_VAC_W = 56
@@ -1081,7 +1085,9 @@ export default function Availability() {
   // 期間ビューの「曜日」「予約数」列はスマホ幅では非表示にする（2026-09-03追加。「スマホ版限定で
   // 期間ビューが見づらいので予約数と曜日の表示をなくしてほしい」との要望を受けた）。非表示にした分、
   // 後続の「空席」列（sticky）のleftオフセットも詰める
-  const periodVacantLeftOffset = isMobile ? PERIOD_COL_DATE_W : PERIOD_COL_DATE_W + PERIOD_COL_WD_W + PERIOD_COL_RES_W
+  // 日付列自体もスマホ幅では年を省略して「09/11」のみ表示し、列幅を狭める（2026-09-11追加）
+  const periodDateColW = isMobile ? PERIOD_COL_DATE_W_MOBILE : PERIOD_COL_DATE_W
+  const periodVacantLeftOffset = isMobile ? periodDateColW : periodDateColW + PERIOD_COL_WD_W + PERIOD_COL_RES_W
 
   // S-07から追加した座席のうち、フロアマップの固定レイアウト（実際の配置図）に含まれないものは
   // 通常のフロアマップの図には現れない。座席配置モード（pos_x/pos_yあり）で配置済みのものは
@@ -1133,7 +1139,6 @@ export default function Availability() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">空き状況・予約</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-02</span>
       </header>
 
       {multiSeatNotice && (
@@ -1463,7 +1468,7 @@ export default function Availability() {
         <div className="mb-6 rounded border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center gap-2">
             <h3 className="font-semibold">追加座席</h3>
-            <span className="text-xs text-slate-400">座席マスタ管理（S-07）で追加された座席（配置図には未反映）</span>
+            <span className="text-xs text-slate-400">座席マスタ管理で追加された座席（配置図には未反映）</span>
           </div>
           <div className="flex flex-wrap gap-4">
             {[...extraSeatGroups.entries()].map(([label, seats]) => (
@@ -1554,14 +1559,14 @@ export default function Availability() {
                   <tr className="text-left text-slate-500">
                     <th
                       className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
-                      style={{ minWidth: PERIOD_COL_DATE_W }}
+                      style={{ minWidth: periodDateColW }}
                     >
                       日付
                     </th>
                     {!isMobile && (
                       <th
                         className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
-                        style={{ left: PERIOD_COL_DATE_W, minWidth: PERIOD_COL_WD_W }}
+                        style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                       >
                         曜日
                       </th>
@@ -1569,7 +1574,7 @@ export default function Availability() {
                     {!isMobile && (
                       <th
                         className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
-                        style={{ left: PERIOD_COL_DATE_W + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
+                        style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                       >
                         予約数
                       </th>
@@ -1601,12 +1606,12 @@ export default function Availability() {
                         <td
                           className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-300 bg-white px-3 py-1.5 font-semibold"
                         >
-                          {d.replaceAll('-', '/')}
+                          {isMobile ? d.slice(5).replaceAll('-', '/') : d.replaceAll('-', '/')}
                         </td>
                         {!isMobile && (
                           <td
                             className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-500"
-                            style={{ left: PERIOD_COL_DATE_W }}
+                            style={{ left: periodDateColW }}
                           >
                             {wd}
                           </td>
@@ -1614,7 +1619,7 @@ export default function Availability() {
                         {!isMobile && (
                           <td
                             className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
-                            style={{ left: PERIOD_COL_DATE_W + PERIOD_COL_WD_W }}
+                            style={{ left: periodDateColW + PERIOD_COL_WD_W }}
                           >
                             {reserved}
                           </td>

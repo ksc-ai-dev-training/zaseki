@@ -34,6 +34,8 @@ const AREA_TABS: { key: AreaFilter; label: string }[] = [
 // 期間ビュー（S-02のusePeriodAvailabilityと同じ表）の列幅。左側の日付系4列はスクロール中も
 // 見えるよう固定する（position: sticky、S-02を踏襲）
 const PERIOD_COL_DATE_W = 96
+// スマホ幅では日付列の年を非表示にする（S-02と同じ理由、2026-09-11追加）ため列幅も狭める
+const PERIOD_COL_DATE_W_MOBILE = 64
 const PERIOD_COL_WD_W = 44
 const PERIOD_COL_RES_W = 56
 const PERIOD_COL_VAC_W = 56
@@ -65,7 +67,8 @@ export default function ProxyBooking() {
   const gridPeriodEnd = gridPeriodOverride?.end ?? grid?.end ?? ''
   const resetGridPeriod = () => setGridPeriodOverride(null)
   const isMobile = useIsMobile()
-  const periodVacantLeftOffset = isMobile ? PERIOD_COL_DATE_W : PERIOD_COL_DATE_W + PERIOD_COL_WD_W + PERIOD_COL_RES_W
+  const periodDateColW = isMobile ? PERIOD_COL_DATE_W_MOBILE : PERIOD_COL_DATE_W
+  const periodVacantLeftOffset = isMobile ? periodDateColW : periodDateColW + PERIOD_COL_WD_W + PERIOD_COL_RES_W
 
   // 氏名・期間でまとめて取り消す（一括取消、既存のA-46・A-48はそのまま流用）。上の期間ビューとは
   // 独立した検索条件（表示期間はYYYY-MM単位）で対象を絞り込む
@@ -201,7 +204,6 @@ export default function ProxyBooking() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">代理予約・取消（対象者選択）</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-11</span>
       </header>
 
       <div className="space-y-6 p-6">
@@ -320,14 +322,14 @@ export default function ProxyBooking() {
                     <tr className="text-left text-slate-500">
                       <th
                         className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
-                        style={{ minWidth: PERIOD_COL_DATE_W }}
+                        style={{ minWidth: periodDateColW }}
                       >
                         日付
                       </th>
                       {!isMobile && (
                         <th
                           className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
-                          style={{ left: PERIOD_COL_DATE_W, minWidth: PERIOD_COL_WD_W }}
+                          style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                         >
                           曜日
                         </th>
@@ -335,7 +337,7 @@ export default function ProxyBooking() {
                       {!isMobile && (
                         <th
                           className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
-                          style={{ left: PERIOD_COL_DATE_W + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
+                          style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                         >
                           予約数
                         </th>
@@ -365,12 +367,12 @@ export default function ProxyBooking() {
                       return (
                         <tr key={d} className="border-b border-slate-300">
                           <td className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-300 bg-white px-3 py-1.5 font-semibold">
-                            {d.replaceAll('-', '/')}
+                            {isMobile ? d.slice(5).replaceAll('-', '/') : d.replaceAll('-', '/')}
                           </td>
                           {!isMobile && (
                             <td
                               className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-500"
-                              style={{ left: PERIOD_COL_DATE_W }}
+                              style={{ left: periodDateColW }}
                             >
                               {wd}
                             </td>
@@ -378,7 +380,7 @@ export default function ProxyBooking() {
                           {!isMobile && (
                             <td
                               className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
-                              style={{ left: PERIOD_COL_DATE_W + PERIOD_COL_WD_W }}
+                              style={{ left: periodDateColW + PERIOD_COL_WD_W }}
                             >
                               {reserved}
                             </td>

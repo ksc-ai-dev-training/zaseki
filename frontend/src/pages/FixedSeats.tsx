@@ -52,7 +52,6 @@ export default function FixedSeats() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">固定座席の指定（対象者選択）</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-05</span>
       </header>
 
       <div className="space-y-6 p-6">

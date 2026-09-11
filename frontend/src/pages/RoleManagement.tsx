@@ -61,7 +61,6 @@ export default function RoleManagement() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">権限・役割管理</h1>
-        <span className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-400">S-08</span>
       </header>
 
       <div className="border-b border-slate-200 bg-white px-6">
@@ -285,7 +284,7 @@ function UsersTab() {
             </label>
             {form.employmentStatus === 'retired' && (
               <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                「退職済み」に変更して保存すると、この利用者は論理削除され、以後ログイン・予約ができなくなります。あわせて固定座席の割当があれば解除し、今後の予約（フリー座席・プロジェクト座席）はすべて取消扱いになります（RULE-06）。
+                「退職済み」に変更して保存すると、この利用者は論理削除され、以後ログイン・予約ができなくなります。あわせて固定座席の割当があれば解除し、今後の予約（フリー座席・プロジェクト座席）はすべて取消扱いになります。
               </p>
             )}
             {formError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{formError}</p>}
@@ -509,7 +508,7 @@ function NotificationsTab() {
       </label>
 
       <div className="mt-6 space-y-4">
-        <div className="text-sm font-semibold text-slate-700">通知文言（2026-09-02追加。「実際の通知の文言を編集できる機能を追加してほしい」との要望を受けた）</div>
+        <div className="text-sm font-semibold text-slate-700">通知文言</div>
         {MESSAGE_FIELDS.map((f) => (
           <label key={f.key} className="block text-sm">
             <span className="mb-1 block text-slate-500">{f.label}</span>
