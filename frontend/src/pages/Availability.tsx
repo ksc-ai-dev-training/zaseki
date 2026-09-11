@@ -1885,7 +1885,11 @@ export default function Availability() {
               <>
                 <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
                 <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-                  {recurring ? 'この内容で登録する' : '予約する'}
+                  {recurring
+                    ? 'この内容で登録する'
+                    : !proxyBookingFor && existingSameDayReservation
+                      ? '変更する'
+                      : '予約する'}
                 </button>
               </>
             )
@@ -1935,7 +1939,7 @@ export default function Availability() {
               {!proxyBookingFor && !recurring && existingSameDayReservation && (
                 <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   <p>
-                    「予約する」を押すと、現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
+                    「変更する」を押すと、現在の予約（{existingSameDayReservation.seat_no}）は自動的に取り消され、この座席に変更されます。先に取り消す必要はありません。
                   </p>
                   <button
                     type="button"
