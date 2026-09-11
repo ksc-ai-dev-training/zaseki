@@ -379,7 +379,6 @@ export default function SeatMaster() {
                 >
                   <option value="free">フリー</option>
                   <option value="fixed">固定</option>
-                  <option value="project">プロジェクト</option>
                 </select>
               </label>
             </div>
@@ -451,7 +450,6 @@ export default function SeatMaster() {
                   >
                     <option value="free">フリー</option>
                     <option value="fixed">固定</option>
-                    <option value="project">プロジェクト</option>
                   </select>
                 </label>
               </div>

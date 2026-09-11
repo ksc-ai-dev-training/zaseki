@@ -213,7 +213,7 @@ footer.doc-footer {
     <p class="subtitle">東京本社 座席利用予約（コードネーム: Zaseki）</p>
     <div class="meta">
       <span>作成日: 2026-08-26</span>
-      <span>版数: 1.09（ドラフト・作成中）</span>
+      <span>版数: 1.11（ドラフト・作成中）</span>
       <span>作成: AI開発研修</span>
     </div>
     <p class="note">本書は「座席予約システム_基本設計書」を受けて、実装できるレベルまでテーブル定義・API設計・画面項目定義・権限判定・エラー時の動きを具体化するものである。章単位で段階的に作成する。</p>
@@ -335,6 +335,8 @@ footer.doc-footer {
       <tr><td>1.07</td><td>2026-09-11</td><td>訂正反映（フロントエンドのみ、A-69のBody・Response・認可は変更なし。基本設計書v2.85）: 「座席の予約・割当を代理で取り消す・変更するで既に日が経っている人はボタンを押せないようにしてほしいです」との要望を受けた。S-11（<code>frontend/src/pages/ProxyBooking.tsx</code>）の期間ビュー（A-69）で、セルの日付が本日（<code>todayStr()</code>、ブラウザのローカル日付）より前の場合は、従来のクリック可能な<code>&lt;button&gt;</code>（<code>openGridCell</code>を呼び取消・変更確認モーダルを開く）ではなく、同じ色分け・氏名表示のまま非活性の<code>&lt;span&gt;</code>（下線・ホバー反応なし、半透明表示）でレンダリングするよう修正した。バックエンド側の検証は追加していない（A-48・A-21・A-73・A-76自体は過去日を拒否する検証を持たないままだが、代理操作の起点となるS-11の画面上でクリックできなくすることで対応した）。本日・未来日のセルの挙動・A-69自体のレスポンス形状は変更していない。3.11節（A-69）を修正。</td></tr>
       <tr><td>1.08</td><td>2026-09-11</td><td>訂正反映（画面表示のみ、機能・データモデルに変更なし。基本設計書v2.86）: 「権限・役割管理という名前を権限・PJ管理にしてほしい」との要望を受け、S-08の画面名を「権限・役割管理」から「権限・PJ管理」に改称した。<code>frontend/src/pages/RoleManagement.tsx</code>の見出し・<code>AdminMenu.tsx</code>のカード名・<code>Help.tsx</code>の言及箇所を修正。タブ構成・API（A-25〜A-29等）・権限判定は変更していない。改訂履歴（本表）に登場する過去の記述は当時の画面名のままとし変更していない。3.8節・4.6節・5.5.6節の見出し・言及箇所を修正。</td></tr>
       <tr><td>1.09</td><td>2026-09-11</td><td>不具合修正（フロントエンドのみ、A-82のBody・Response・認可は変更なし。基本設計書v2.87）: 「座席マスタ管理で追加された座席（配置図には未反映）これを配置図に配置できるようにしたいです」との要望を受けて調査したところ、v0.94（A-82新設）のドラッグ配置は<code>Availability.tsx</code>のフロアマップ本体（固定レイアウト・自由配置オーバーレイ）の<code>SeatTile</code>にのみ<code>positionEditMode</code>・ドラッグハンドラを渡しており、まだ座標を持たない座席を一覧表示する「追加座席」ボックス（<code>extraSeatGroups</code>）側の<code>SeatTile</code>には渡し忘れていたため、座席配置モード中でもこの一覧の座席はドラッグできない実装漏れがあったことが判明した。「追加座席」ボックスの<code>SeatTile</code>にも同じ<code>positionEditMode</code>・<code>onSeatDragPointerDown</code>等を渡すよう修正し、ドラッグしてフロアマップのエリアパネルへドロップすると、既存の座席と同じくA-82（<code>PATCH /seats/{id}/position</code>）が呼ばれて配置されるようにした。A-82自体の仕様・<code>findDropPoint</code>等の座標計算ロジックは変更していない。3.7節（A-82）の備考を修正。</td></tr>
+      <tr><td>1.10</td><td>2026-09-11</td><td>不具合修正（基本設計書v2.88）: 「全ての画面からすべての機能を使って要件違いな部分または整合性が合わないものがあれば報告してください」との依頼を受けた点検で見つかった。座席マスタ管理（S-07）の座席タイプ選択に「フリー」「固定」に加えて「プロジェクト」があり、選ぶと<code>seats.seat_type='project'</code>の座席が作成できたが、2026-08-28にプロジェクト座席の専有方式を本列の恒久変更から四半期計画にもとづく動的判定（<code>database.project_blocked_seats()</code>）に切り替えて以降、この値は予約系API（A-09・A-47は<code>seat_type!='free'</code>を拒否）・座席の島の割当（A-44・A-80）・A-75のいずれからも扱えなくなっており、フロアマップ上は「空き」座席として表示されるにもかかわらず誰も予約できず、座席の島にも組み込めない、実質的に使えない座席が作成時のエラーなく生まれてしまう不具合があった。本番・開発いずれのDBにも該当行が存在しないことを確認したうえで、S-07のフロントエンド（座席の新規追加・編集・まとめて追加の3つの<code>&lt;select&gt;</code>）から「プロジェクト」の選択肢を削除し、あわせてA-23・A-24・A-77（3.7節）のBodyの<code>seat_type</code>を受け付ける値も<code>Literal["free", "fixed"]</code>に制限した（直接APIを呼んだ場合も作成できないようにするため）。T-03（2.5節）のCHECK制約自体は<code>'project'</code>を含む3値のまま変更していない（真に不要というより、将来また必要になった際の設計判断を残すため。3.7節・2.5節を修正）。</td></tr>
+      <tr><td>1.11</td><td>2026-09-11</td><td>訂正反映（画面表示・記載のみ、機能・データモデルに変更なし）: 同じ点検で見つかった、2.6節T-04 fixed_seat_assignmentsのテーブル定義の記載漏れを修正した。実装（<code>database.py</code>）は2026-09-04に、(1)<code>valid_from</code>・<code>ended_on</code>列を追加、(2)<code>seat_id</code>の単純なUNIQUE制約を「現在有効な割当（<code>ended_on IS NULL</code>）は座席1つにつき1件まで」という部分ユニークインデックスに変更、(3)変更・解除（A-20・A-21・RULE-06退職処理）と期限到来時の自動解除を、行の物理DELETEから<code>ended_on</code>設定による履歴保持方式に変更、という3点の変更を行っていたが、2.6節のテーブル定義は追加された列・UNIQUE制約の変更・解除方式の変更のいずれにも追従しておらず、<code>valid_from</code>・<code>ended_on</code>は詳細設計書全体でA-73の備考（3.5節）に一度触れられているのみで2.6節には未反映のままだった。<code>valid_from</code>・<code>ended_on</code>の行を追加し、<code>seat_id</code>の説明・末尾の作成/更新日時の注記を実装に合わせて書き直した。2.6節を修正。</td></tr>
     </tbody>
   </table>
   </details>
@@ -669,7 +671,7 @@ footer.doc-footer {
     <tbody>
       <tr><td><code>seat_no</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>UNIQUE</td><td>座席番号（例: A1、C4、M7）。</td></tr>
       <tr><td><code>area_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→areas</td><td>所属エリア。座席の物理的な位置を示す固定区分（S-07）。</td></tr>
-      <tr><td><code>seat_type</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>CHECK</td><td><code>'free' / 'fixed' / 'project'</code>。</td></tr>
+      <tr><td><code>seat_type</code></td><td>VARCHAR(10)</td><td>不可</td><td>—</td><td>CHECK</td><td><code>'free' / 'fixed' / 'project'</code>（CHECK制約は3値のまま）。ただし<code>'project'</code>は2026-08-28にプロジェクト座席の専有方式を本列の恒久変更から四半期計画にもとづく動的判定（3.9節<code>project_blocked_seats()</code>）に切り替えて以降アプリケーション層では使わない値になっており、A-23・A-24・A-77（3.7節）は2026-09-11よりBodyでこの値を受け付けない（選ぶと予約にも座席の島の割当にも使えない座席ができてしまう不具合があったため。改訂履歴v1.10参照）。既存行に対する遡及的なデータ移行・CHECK制約自体の変更は行っていない（本番環境に該当行が存在しないことを確認済み）。</td></tr>
       <tr><td><code>status</code></td><td>VARCHAR(10)</td><td>不可</td><td><code>'active'</code></td><td>CHECK</td><td><code>'active' / 'retired'</code>。廃止済み座席は空き状況・座席選択に表示しない（RULE-01）。</td></tr>
       <tr><td><code>pos_x</code></td><td>DOUBLE PRECISION</td><td>可</td><td>NULL</td><td></td><td>フロアマップ上の自由配置座標（横方向、所属エリアパネルに対する%、0〜100）。既存の固定レイアウト83席はNULLのままS-02のFloorAreas.tsxの手作業配置を使う。S-02の「座席配置モード」でクリック配置した座席のみ設定される（2026-08-27追加）。</td></tr>
       <tr><td><code>pos_y</code></td><td>DOUBLE PRECISION</td><td>可</td><td>NULL</td><td></td><td>フロアマップ上の自由配置座標（縦方向、%）。pos_xと同時に設定・参照する（2026-08-27追加）。</td></tr>
@@ -681,13 +683,15 @@ footer.doc-footer {
   <table>
     <thead><tr><th>列名</th><th>型</th><th>NULL</th><th>デフォルト</th><th>PK/FK/UNIQUE</th><th>説明</th></tr></thead>
     <tbody>
-      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→seats, UNIQUE</td><td>1固定座席＝1利用者のため、seat_idはUNIQUE。</td></tr>
+      <tr><td><code>seat_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→seats</td><td>固定座席として割り当てる座席。1座席が同時に持てる「現在有効な」割当は1件のみだが、履歴（後述の<code>ended_on</code>）を複数件残せるよう、単純な列UNIQUEではなく部分ユニークインデックス<code>fixed_seat_assignments_active_seat ON (seat_id) WHERE ended_on IS NULL</code>で「現在有効な割当は座席1つにつき1件まで」を保証する（2026-09-04変更。従来はseat_id列そのものにUNIQUE制約を付けていたが、履歴を残す方式〔ended_on〕への変更にあわせて外した）。</td></tr>
       <tr><td><code>user_id</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>固定座席の利用者。</td></tr>
       <tr><td><code>assigned_by</code></td><td>BIGINT</td><td>不可</td><td>—</td><td>FK→users</td><td>割り当てた管理部担当者。</td></tr>
-      <tr><td><code>valid_until</code></td><td>DATE</td><td>可</td><td>—</td><td>—</td><td>任意の有効期限（FR-01-5、2026-08-28追加）。NULLは従来どおり無期限。期限を過ぎた行は<code>release_expired_fixed_seats()</code>により自動的に削除され、当該座席のseat_typeは'free'に戻る。</td></tr>
+      <tr><td><code>valid_from</code></td><td>DATE</td><td>不可</td><td><code>CURRENT_DATE</code></td><td>—</td><td>この割当が有効になる日（2026-09-04追加。「何日から固定座席の指定ができるようにしたい」との要望を受け、開始日を未来日にした事前登録に対応。過去日照会でこの日より前は対象外とする）。開始日を迎えると<code>release_expired_fixed_seats()</code>が座席のseat_typeを'fixed'へ切り替える。</td></tr>
+      <tr><td><code>valid_until</code></td><td>DATE</td><td>可</td><td>—</td><td>—</td><td>任意の有効期限（FR-01-5、2026-08-28追加）。NULLは無期限。期限を過ぎると<code>release_expired_fixed_seats()</code>が座席のseat_typeを'free'に戻し、この行の<code>ended_on</code>に同じ日付を設定する（2026-09-04変更。従来は行を物理DELETEしていた）。</td></tr>
+      <tr><td><code>ended_on</code></td><td>DATE</td><td>可</td><td>—</td><td>—</td><td>この割当が実際に終了した日（2026-09-04追加）。NULLはまだ有効中で、「現在有効な割当」はこの列がNULLであることで判定する。S-11からの解除（A-21）・<code>valid_until</code>到来時の自動解除のいずれも、この列に終了日を設定するだけで行自体は削除しない（過去日の空き状況照会〔A-06・A-07・A-45〕が常に「今の」割当を参照する作りと組み合わさり、固定座席を変更・解除すると過去の表示まで書き換わってしまう不具合があったため、履歴を残す方式に改めた）。</td></tr>
     </tbody>
   </table>
-  <p class="callout">作成・更新日時: 作成日時のみ。日次のreservation行は作らない。解除（S-11から、または<code>valid_until</code>到来時の自動解除）は行の<strong>物理DELETE</strong>で表現する（履歴保持の必要性が薄いため。基本設計書3.2節T-04参照）。</p>
+  <p class="callout">作成・更新日時: 作成日時のみ。日次のreservation行は作らない。<strong>2026-09-04変更:</strong> 変更・解除（A-20・A-21、RULE-06の退職処理も含め、いずれも共通関数<code>close_fixed_seat_assignment()</code>を使う）・期限到来時の自動解除は、行の物理DELETEではなく<code>ended_on</code>を設定する形に改めた（履歴保持のため。上記<code>ended_on</code>列の説明を参照）。例外的に、対象の割当がまだ開始日（<code>valid_from</code>）を迎えていない（本日以降）場合のみ、終了日が開始日を下回り履歴として残す意味がないため物理DELETEする。2026-09-11、本節の記載がこの変更に追従していなかった記載漏れ（改訂履歴v1.11参照）を修正した。</p>
 
   <h3>2.7 T-05 projects（プロジェクト）</h3>
   <table>
@@ -973,11 +977,11 @@ footer.doc-footer {
     <thead><tr><th>ID</th><th>メソッド・パス</th><th>概要</th><th>認可</th><th>備考</th></tr></thead>
     <tbody>
       <tr><td><code>A-22</code></td><td><span class="method get">GET</span><code>/seats?area=&status=&q=</code></td><td>座席一覧。</td><td>role='admin'</td><td><code>q</code>は座席番号の部分一致検索（2026-08-27追加、4.5節の絞り込み欄の裏付け）。各行に固定座席割当（T-04）の有無を含め、編集時の警告表示に使う。応答生成前に<code>release_expired_fixed_seats()</code>を呼ぶ（2026-08-28追加）。</td></tr>
-      <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, pos_x?, pos_y?}</code>。<code>pos_x</code>・<code>pos_y</code>はS-02「座席配置モード」でのクリック位置（2026-08-27追加、両方指定するか両方省略する）。</td></tr>
-      <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status, pos_x?, pos_y?}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。</td></tr>
+      <tr><td><code>A-23</code></td><td><span class="method post">POST</span><code>/seats</code></td><td>座席の新規追加。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, pos_x?, pos_y?}</code>。<code>pos_x</code>・<code>pos_y</code>はS-02「座席配置モード」でのクリック位置（2026-08-27追加、両方指定するか両方省略する）。<code>seat_type</code>は<code>'free'</code>・<code>'fixed'</code>のみを受け付ける（T-03のCHECK制約自体は<code>'project'</code>も許容するが、2026-08-28にプロジェクト座席の専有方式を<code>seats.seat_type</code>の恒久変更から四半期計画にもとづく動的判定〔<code>database.project_blocked_seats()</code>〕に変更して以降、アプリケーション層では<code>'project'</code>を使わない。2026-09-11修正、<code>'project'</code>を選ぶと予約・座席の島の割当のいずれにも使えない座席が作られてしまう不具合〔詳細は改訂履歴v1.10〕を受け、Pydanticの<code>Literal</code>を制限した）。</td></tr>
+      <tr><td><code>A-24</code></td><td><span class="method put">PUT</span><code>/seats/{id}</code></td><td>座席の編集（座席番号・エリア・座席タイプ・有効／廃止）。</td><td>role='admin'</td><td>Body: <code>{seat_no, area_id, seat_type, status, pos_x?, pos_y?}</code>。<code>status='retired'</code>への変更で廃止扱いになる（RULE-01）。<code>seat_type</code>は<code>'free'</code>・<code>'fixed'</code>のみ（A-23参照、2026-09-11修正）。</td></tr>
       <tr><td><code>A-82</code></td><td><span class="method patch">PATCH</span><code>/seats/{id}/position</code></td><td>フロアマップ上での座席のドラッグによる位置変更（座席番号・タイプ・状態は変更しない）。</td><td>role='admin'</td><td>2026-09-10新設。「座席表にある席なのですが、これがもし座席の位置が変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。Body: <code>{area_id, pos_x, pos_y}</code>（全て必須。ドロップ先のパネルから一意に決まるためフロントエンドは常に確定した値を送る）。座席番号・座席タイプ・状態はA-24と異なり変更しないため、これらが必須のA-24を毎回のドラッグで呼ぶ必要がなく、再検証コストを抑えた軽量専用API。実際のオフィス配置を再現した既存83席（S-02のFloorAreas.tsxにハードコードされた固定レイアウト）はDB上pos_x/pos_yが常にNULLだったが、本APIで一度でも位置を更新すると、以後はS-07で後から追加した座席と同じ座標ベースのオーバーレイ表示（<code>.free-placed-seat</code>）に切り替わり、固定レイアウト側の元のマス目には何も表示されなくなる（FloorAreas.tsx側で<code>pos_x != null</code>の座席を描画しないよう対応）。「座席の列をそろえるように並ばせたい」との要望を受け、ドロップ位置を近くの座席へ磁石のように吸着させる、あるいはグリッドへスナップする自動整列を同日中に2案試みたが、いずれも「絶妙にずれていて整列することができません」「それでもまだ列にすることはできない」との指摘が続き、「その整列にできるのは却下でいいです。消してください」との申し出を受けて撤回した。ドロップ位置（パネルに対する%座標）はスナップ・吸着を一切行わずそのまま<code>pos_x</code>・<code>pos_y</code>として送る。まだ座標を持たない座席を一覧表示する「追加座席」ボックス側の座席タイルには、当初ドラッグの仕組みが結線されておらずドラッグできない実装漏れがあったため、2026-09-11に他の座席タイルと同じ<code>positionEditMode</code>・ドラッグハンドラを渡すよう修正した（改訂履歴v1.09参照。本APIのBody・Response自体に変更はない）。</td></tr>
       <tr><td><code>A-53</code></td><td><span class="method delete">DELETE</span><code>/seats/{id}</code></td><td>座席の完全削除。</td><td>role='admin'</td><td>A-24の<code>status='retired'</code>（廃止）とは別の操作で、座席データ自体を物理削除する（2026-08-28追加）。固定座席割当（T-04）または予約履歴（T-08、キャンセル済みを含む）が残る座席は409で拒否する。</td></tr>
-      <tr><td><code>A-77</code></td><td><span class="method post">POST</span><code>/seats/bulk</code></td><td>座席の一括追加。</td><td>role='admin'</td><td>Body: <code>{seat_nos: string[], area_id, seat_type}</code>。「1件ずつしか登録できず新設フロアの初期投入や増設のたびに工数がかかる」との指摘を受け2026-09-09追加。同一エリア・同一座席タイプの座席番号をまとめて登録する。既存または入力内で重複する座席番号は個別にスキップし、作成できた分だけ登録した上で<code>{created_count, skipped: string[]}</code>を返す（1件でも重複があると全体を失敗させるA-66等の方針とは異なり、あえて部分成功を許容する。座席登録はどの座席が重複かを個別に探す手間の方が大きいため）。</td></tr>
+      <tr><td><code>A-77</code></td><td><span class="method post">POST</span><code>/seats/bulk</code></td><td>座席の一括追加。</td><td>role='admin'</td><td>Body: <code>{seat_nos: string[], area_id, seat_type}</code>。「1件ずつしか登録できず新設フロアの初期投入や増設のたびに工数がかかる」との指摘を受け2026-09-09追加。同一エリア・同一座席タイプの座席番号をまとめて登録する。既存または入力内で重複する座席番号は個別にスキップし、作成できた分だけ登録した上で<code>{created_count, skipped: string[]}</code>を返す（1件でも重複があると全体を失敗させるA-66等の方針とは異なり、あえて部分成功を許容する。座席登録はどの座席が重複かを個別に探す手間の方が大きいため）。<code>seat_type</code>は<code>'free'</code>・<code>'fixed'</code>のみ（A-23参照、2026-09-11修正）。</td></tr>
     </tbody>
   </table>
 
@@ -1510,7 +1514,7 @@ footer.doc-footer {
 
   <footer class="doc-footer">
     <span>本社座席予約システム（Zaseki）詳細設計書</span>
-    <span>版数 1.09 / 2026-09-11</span>
+    <span>版数 1.11 / 2026-09-11</span>
   </footer>
 
 </div>

@@ -59,7 +59,11 @@ async def list_seat_master(
 class SeatCreate(BaseModel):
     seat_no: str
     area_id: int
-    seat_type: Literal["free", "fixed", "project"]
+    # DBのCHECK制約は'project'も許容するが、2026-08-28にプロジェクト座席の専有方式を
+    # seats.seat_type恒久変更から四半期計画にもとづく動的判定（database.project_blocked_seats()）
+    # に変更して以降、'project'は使われなくなった。ここで作成・変更できる値をfree/fixedのみに
+    # 制限し、選ぶと二度と予約できなくなる座席が生まれる不具合を防ぐ（2026-09-11修正）
+    seat_type: Literal["free", "fixed"]
     # S-02「座席配置モード」でのクリック位置（所属エリアパネルに対する%、0〜100）。
     # 両方指定するか両方省略する（2026-08-27追加）
     pos_x: float | None = None
@@ -89,7 +93,7 @@ async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("
 class SeatBulkCreate(BaseModel):
     seat_nos: list[str]
     area_id: int
-    seat_type: Literal["free", "fixed", "project"]
+    seat_type: Literal["free", "fixed"]
 
 
 @router.post("/bulk")
@@ -128,7 +132,7 @@ async def bulk_create_seats(body: SeatBulkCreate, _: CurrentUser = Depends(requi
 class SeatUpdate(BaseModel):
     seat_no: str
     area_id: int
-    seat_type: Literal["free", "fixed", "project"]
+    seat_type: Literal["free", "fixed"]
     status: Literal["active", "retired"]
     pos_x: float | None = None
     pos_y: float | None = None
