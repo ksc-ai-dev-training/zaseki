@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import get_pool, release_expired_fixed_seats
+from routers.seats import AREA_ORDER, _seat_sort_key
 
 router = APIRouter(prefix="/api/seats", tags=["seat-master"])
 areas_router = APIRouter(prefix="/api/areas", tags=["seat-master"])
@@ -29,7 +30,11 @@ async def list_seat_master(
     _: CurrentUser = Depends(require_roles("admin")),
 ):
     """A-22: 座席一覧（座席マスタ管理）。areaは既存のA-06/A-07と同じ規約、statusとqは
-    画面モックアップの絞り込み（状態、座席番号検索）の裏付けとして2026-08-27追加。"""
+    画面モックアップの絞り込み（状態、座席番号検索）の裏付けとして2026-08-27追加。
+    座席番号はSQLのORDER BYではVARCHARの文字列比較になり「F10」が「F2」より前に来てしまうため、
+    Python側で英字プレフィックス＋数値の自然順（_seat_sort_key、A-06と同じ考え方）に並べ替える
+    （2026-09-14修正。「番号の順番がおかしい。1〜10の順にしたいのに1,2,4,3のようになる」との
+    報告を受けた）。"""
     await release_expired_fixed_seats()
     rows = await get_pool().fetch(
         """SELECT s.id, s.seat_no, s.area_id, a.name AS area_name, s.seat_type, s.status,
@@ -39,10 +44,10 @@ async def list_seat_master(
            JOIN areas a ON a.id = s.area_id
            WHERE ($1 = 'all' OR lower(a.name) = $1)
              AND ($2 = 'all' OR s.status = $2)
-             AND ($3 = '' OR s.seat_no ILIKE '%' || $3 || '%')
-           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no""",
+             AND ($3 = '' OR s.seat_no ILIKE '%' || $3 || '%')""",
         area, status, q,
     )
+    rows = sorted(rows, key=lambda r: (AREA_ORDER.get(r["area_name"], 99), _seat_sort_key(r["seat_no"])))
     return {
         "items": [
             {

@@ -24,3 +24,17 @@ export function blockLabelOf(seatNo: string): string {
   const m = /^([A-Za-z]+)/.exec(seatNo)
   return m ? `${m[1]}ブロック` : seatNo
 }
+
+// 座席番号の自然順ソートキー（英字プレフィックス＋数値）。backend/routers/seats.pyの
+// _seat_sort_keyと同じ考え方。localeCompare等の文字列比較だと「F10」が「F2」より前に
+// 来てしまう（2026-09-14修正。「番号の順番がおかしい。1〜10の順にしたいのに1,2,4,3のように
+// なる」との報告を受けた。「追加座席」一覧〔Availability.tsx〕がこの文字列比較のバグを持っていた）
+export function seatSortKey(seatNo: string): [string, number] {
+  const m = /^([A-Za-z]+)(\d+)$/.exec(seatNo)
+  return m ? [m[1], Number(m[2])] : [seatNo, 0]
+}
+export function compareSeatNo(a: string, b: string): number {
+  const [ka, na] = seatSortKey(a)
+  const [kb, nb] = seatSortKey(b)
+  return ka === kb ? na - nb : ka.localeCompare(kb)
+}

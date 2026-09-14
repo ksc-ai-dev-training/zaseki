@@ -12,7 +12,7 @@ import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
-import { FLOOR_LAYOUT_SEATS, blockLabelOf } from '../lib/floorLayout'
+import { FLOOR_LAYOUT_SEATS, blockLabelOf, compareSeatNo } from '../lib/floorLayout'
 import type {
   AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
   RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockBulkFor, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
@@ -1118,7 +1118,7 @@ export default function Availability() {
     if (!extraSeatGroups.has(label)) extraSeatGroups.set(label, [])
     extraSeatGroups.get(label)!.push(seat)
   })
-  extraSeatGroups.forEach((seats) => seats.sort((a, b) => a.seat_no.localeCompare(b.seat_no)))
+  extraSeatGroups.forEach((seats) => seats.sort((a, b) => compareSeatNo(a.seat_no, b.seat_no)))
 
   const renderFreePositionedSeats = (area: 'NORTH' | 'EAST' | 'WEST') =>
     freePositionedByArea[area].map((seat) => (

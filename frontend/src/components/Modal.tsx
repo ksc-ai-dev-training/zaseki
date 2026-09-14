@@ -14,7 +14,11 @@ export default function Modal({ title, onClose, children, footer }: ModalProps) 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-sm flex-col rounded-lg bg-white shadow-lg">
+      {/* 2026-09-14修正: 「ポップアップが出てくるとき横幅がなさすぎて文字がわかりづらい」との
+          指摘を受け、max-w-sm（384px）からmax-w-xl（576px）へ広げた。全画面共通コンポーネントの
+          ためこの1箇所の変更で全てのモーダルに反映される。スマホ幅（外側のp-4を差し引いた幅が
+          576pxを下回る画面）ではw-fullが優先されるため、この変更による影響はない */}
+      <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-lg">
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3">
           <div className="font-semibold">{title}</div>
           <button

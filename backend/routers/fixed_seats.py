@@ -6,13 +6,18 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_roles
 from database import close_fixed_seat_assignment, get_pool, release_expired_fixed_seats, users_with_current_project_seat
+from routers.seats import AREA_ORDER, _seat_sort_key
 
 router = APIRouter(prefix="/api/fixed-seat-assignments", tags=["fixed-seat-assignments"])
 
 
 @router.get("")
 async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
-    """A-19: 固定座席の割当一覧（現在の割当パネル）"""
+    """A-19: 固定座席の割当一覧（現在の割当パネル）。座席番号はSQLのORDER BYではVARCHARの文字列
+    比較になり「F10」が「F2」より前に来てしまうため、Python側で英字プレフィックス＋数値の
+    自然順（_seat_sort_key、A-06と同じ考え方）に並べ替える（2026-09-14修正。「番号の順番が
+    おかしい。1〜10の順にしたいのに1,2,4,3のようになる」との報告を受けた）。
+    SQLのORDER BYはエリアの表示順（NORTH→EAST→WEST）を保つためだけに残す。"""
     await release_expired_fixed_seats()
     rows = await get_pool().fetch(
         """SELECT fsa.seat_id, s.seat_no, a.name AS area_name, u.id AS user_id, u.last_name, u.first_name,
@@ -21,9 +26,9 @@ async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
            JOIN seats s ON s.id = fsa.seat_id
            JOIN areas a ON a.id = s.area_id
            JOIN users u ON u.id = fsa.user_id
-           WHERE fsa.ended_on IS NULL
-           ORDER BY CASE a.name WHEN 'NORTH' THEN 1 WHEN 'EAST' THEN 2 WHEN 'WEST' THEN 3 END, s.seat_no"""
+           WHERE fsa.ended_on IS NULL"""
     )
+    rows = sorted(rows, key=lambda r: (AREA_ORDER.get(r["area_name"], 99), _seat_sort_key(r["seat_no"])))
     return {
         "items": [
             {

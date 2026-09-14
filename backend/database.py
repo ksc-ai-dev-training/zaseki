@@ -256,6 +256,10 @@ CREATE TABLE IF NOT EXISTS project_quarter_plans (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (project_id, period_start)
 );
+-- admin_note（2026-09-14追加）: 管理部・エリア責任者がS-09の出社曜日の調整表で入力する備考。
+-- T-11.noteはPM/PLがアンケート回答時に入力する備考で別物（読み取り専用でS-09に表示するのみ）。
+-- こちらは調整表を使う管理部・エリア責任者自身が入力・保存する独立したメモ欄
+ALTER TABLE project_quarter_plans ADD COLUMN IF NOT EXISTS admin_note TEXT;
 
 -- T-11 project_weekday_responses。1計画につき1回答（再送信はUPSERT、共通created_at/updated_atは持たない）
 CREATE TABLE IF NOT EXISTS project_weekday_responses (

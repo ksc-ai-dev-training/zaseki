@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useUserSearch, type UserSearchItem } from '../hooks/useUserSearch'
+import { useMe } from '../hooks/useMe'
 import Modal from './Modal'
 import type { ProjectTitle } from '../types'
 
@@ -25,7 +26,7 @@ export interface ProjectForm {
 // 2026-09-10にS-04「プロジェクト座席」（プロジェクトの作成者向け）でも「S-08と同じ編集機能が
 // 欲しい」との要望を受けて共有化した。両画面で見た目・操作内容が完全に同一になるよう、この
 // ファイルを唯一の実装として両ページからimportする。
-export default function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error, addTitle }: {
+export default function ProjectEditModal({ form, setForm, onClose, onSubmit, submitting, error, addTitle, showCreatorColumn = true }: {
   form: ProjectForm
   setForm: (f: ProjectForm) => void
   onClose: () => void
@@ -35,11 +36,27 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
   /** 新規追加時（form.id === null）のモーダルタイトル。省略時は「プロジェクトを追加」（S-08と同じ）。
    * S-04は元のボタン文言「新しいプロジェクトを作成」に揃えるため、これを渡して上書きする（2026-09-10追加） */
   addTitle?: string
+  /** メンバー表の「作成者」列（誰がアンケート回答・座席確保の実権限を持つか）を表示するかどうか。
+   * 既定はtrue（S-04向け）。S-08「プロジェクト・PM管理」は管理部がプロジェクトを都度作成・管理する
+   * 画面で、「作成者」という自己申告的な概念がそぐわないため非表示にする（2026-09-14修正。
+   * 「管理部側で作成するプロジェクトはプロジェクトメンバー内の作成者は必要ないので削除してほしい。
+   * これはプロジェクト座席の画面で誰かがプロジェクトを作成したときに見たいもの」との指摘を受けた） */
+  showCreatorColumn?: boolean
 }) {
   const [query, setQuery] = useState('')
   const { items: candidates } = useUserSearch(query)
+  const { me } = useMe()
   const memberIds = new Set(form.members.map((m) => m.user_id))
   const searchResults = query ? candidates.filter((c) => !memberIds.has(c.id)).slice(0, 6) : []
+  // 作成者（form.createdBy）は新規作成時点で既にログイン中の本人に既定設定されている
+  // （RoleManagement.tsx等の呼び出し元がopenAdd()で自動設定する）。ただし本人をメンバーとして
+  // 追加していない間は、メンバー表の「作成者」列にはその選択状態を表示するラジオボタン自体が
+  // 存在せず、何も選ばれていないように見えてしまう（2026-09-14修正。「作成しているのはログイン
+  // している自分なのになぜプロジェクトメンバーの誰かを指定する必要があるのか」との指摘を受けた。
+  // 実際には指定不要で、既に自動設定されているだけだったが、UI上その事実が全く見えなかった）。
+  // メンバー表に作成者が現れない間は、代わりにこの案内文で現在の設定を明示し、変更が必要な
+  // 場合のみメンバーを選べば良いことを伝える
+  const creatorInMemberTable = form.members.some((m) => m.user_id === form.createdBy)
 
   const addMember = (u: UserSearchItem) => {
     setForm({ ...form, members: [...form.members, { user_id: u.id, name: `${u.last_name} ${u.first_name}`, project_title: null }] })
@@ -83,10 +100,48 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
         </label>
 
         <div>
-          <span className="mb-1 block text-slate-500">メンバー・PM／PL・PJ席決担当・作成者</span>
+          <span className="mb-1 block text-slate-500">
+            メンバー・PM／PL・PJ席決担当{showCreatorColumn && '・作成者'}
+          </span>
           <p className="mb-2 text-xs text-slate-400">
-            PJ席決担当は表示用の項目です。アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです。
+            PJ席決担当は表示用の項目です。
+            {showCreatorColumn && 'アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです。'}
           </p>
+          {showCreatorColumn && !creatorInMemberTable && (
+            <p className="mb-2 rounded border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
+              {form.createdBy === me?.id
+                ? `作成者は既定であなた自身（${me.last_name} ${me.first_name}）に設定されています。変更が必要な場合のみ、下のメンバー一覧から対象者を選んでください。`
+                : '作成者は現在メンバー一覧にない利用者に設定されています。変更する場合は対象のメンバーを追加してから「作成者」列で選び直してください。'}
+            </p>
+          )}
+          {/* 検索欄はメンバー一覧の上に置く（2026-09-14修正。「ポップアップで人を検索するとき
+              フッターが原因で予測変換の人が隠れています」との報告を受けた。メンバーが増えて表の
+              下に検索欄があると、モーダル下部のフッターに近づき、下に開く候補一覧がモーダルの
+              スクロール領域からはみ出して見えなくなっていた。検索欄を表より上に固定することで、
+              メンバー数によらず候補一覧の表示スペースを確保する） */}
+          <div className="relative mb-3">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="氏名で検索してメンバーを追加"
+              className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow">
+                {searchResults.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => addMember(u)}
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                  >
+                    {u.last_name} {u.first_name} <span className="text-xs text-slate-400">{u.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="overflow-x-auto rounded border border-slate-200">
             <table className="w-full text-sm">
               <thead>
@@ -94,7 +149,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
                   <th className="px-3 py-1.5">氏名</th>
                   <th className="px-3 py-1.5">役割</th>
                   <th className="px-3 py-1.5">PJ席決担当</th>
-                  <th className="px-3 py-1.5">作成者</th>
+                  {showCreatorColumn && <th className="px-3 py-1.5">作成者</th>}
                   <th className="px-3 py-1.5"></th>
                 </tr>
               </thead>
@@ -125,14 +180,16 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
                           onChange={() => setForm({ ...form, proxyUserId: m.user_id })}
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="radio"
-                          name="created-by-user"
-                          checked={form.createdBy === m.user_id}
-                          onChange={() => setForm({ ...form, createdBy: m.user_id })}
-                        />
-                      </td>
+                      {showCreatorColumn && (
+                        <td className="px-3 py-1.5 text-center">
+                          <input
+                            type="radio"
+                            name="created-by-user"
+                            checked={form.createdBy === m.user_id}
+                            onChange={() => setForm({ ...form, createdBy: m.user_id })}
+                          />
+                        </td>
+                      )}
                       <td className="px-3 py-1.5 text-right">
                         <button type="button" onClick={() => removeMember(m.user_id)} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">削除</button>
                       </td>
@@ -140,33 +197,10 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
                   )
                 })}
                 {form.members.length === 0 && (
-                  <tr><td colSpan={5} className="px-3 py-3 text-center text-xs text-slate-400">メンバーがいません</td></tr>
+                  <tr><td colSpan={showCreatorColumn ? 5 : 4} className="px-3 py-3 text-center text-xs text-slate-400">メンバーがいません</td></tr>
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="relative mt-2">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="氏名で検索してメンバーを追加"
-              className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
-            />
-            {searchResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow">
-                {searchResults.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => addMember(u)}
-                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                  >
-                    {u.last_name} {u.first_name} <span className="text-xs text-slate-400">{u.email}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 

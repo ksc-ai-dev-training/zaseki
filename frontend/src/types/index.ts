@@ -312,6 +312,9 @@ export interface QuarterPlanItem {
   choice1_weekdays: Weekday[] | null
   choice2_weekdays: Weekday[] | null
   note: string | null
+  /** 管理部・エリア責任者がS-09の出社曜日の調整表に入力する備考（2026-09-14追加、A-83で更新）。
+   * noteとは別物（noteはPM/PLがアンケート回答時に入力する読み取り専用の備考） */
+  admin_note: string | null
   previous_area: 'NORTH' | 'EAST' | 'WEST' | null
   /** 同一プロジェクトに、この計画より前の期間の計画が存在するか（2026-09-10追加、
    * 「前回の確定曜日をコピーする」ボタンの表示条件に使う） */

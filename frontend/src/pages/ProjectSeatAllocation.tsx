@@ -795,6 +795,64 @@ function weekdayBadge(p: QuarterPlanItem, day: Weekday, confirmed: Set<Weekday>)
 // 開いたモーダルで対象プロジェクトを選んでから実行する順序に変更した（2026-09-02）。A-62自体は
 // status='seats_allocated'を引き続き対象外とするため（座席割当後の「取り消し」はA-44の「座席を編集」
 // で行う別の操作のまま）、その選択候補（unfinalizeCandidates）は下記editablePlansとは別に絞り込む。
+// 曜日調整表・確定した出社曜日の両テーブルで使う「備考」欄（A-83、2026-09-14新設）。既存のnote
+// （T-11、PM/PLがアンケート回答時に入力する読み取り専用の備考）とは別物で、こちらは調整表を使う
+// 管理部・エリア責任者自身が入力・保存するメモ。プロジェクトごとに独立して保存するため、行の再描画で
+// 編集中の内容が失われないよう、propの変更時（別の計画への切り替え・保存後の再取得）のみ
+// ローカルstateを同期する
+function AdminNoteField({ planId, initialValue }: { planId: number; initialValue: string | null }) {
+  const [value, setValue] = useState(initialValue ?? '')
+  const [saving, setSaving] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 1行の<input>だと、長文を入力したとき先頭部分しか見えず後半が読めなくなるため
+  // （2026-09-14修正。「たくさん入力するとき最初の部分は読めるが後半部分はほぼ読めない」との
+  // 報告を受けた）、内容の折り返しに合わせて縦に自動で伸びる<textarea>に変更した。備考が
+  // 短い（未入力の）行は1行分の高さのまま変わらず、長文を入力した行だけが必要な分だけ
+  // 縦に伸びる（他の行の高さには影響しない）
+  const resize = () => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }
+
+  useEffect(() => {
+    setValue(initialValue ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planId, initialValue])
+
+  useEffect(() => {
+    resize()
+  }, [value])
+
+  const save = async () => {
+    if (value === (initialValue ?? '')) return
+    setSaving(true)
+    try {
+      await apiFetch(`/api/project-quarter-plans/${planId}/admin-note`, {
+        method: 'PUT',
+        body: JSON.stringify({ admin_note: value || null }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      disabled={saving}
+      rows={1}
+      placeholder="備考を入力"
+      className="w-56 resize-none overflow-hidden rounded border border-slate-200 px-1.5 py-0.5 text-xs leading-snug disabled:opacity-50"
+    />
+  )
+}
+
 function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]; onChanged: () => void }) {
   const editablePlans = useMemo(
     () => plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated'),
@@ -894,8 +952,9 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="pb-2 pr-3">プロジェクト</th>
-              {WEEKDAYS.map((w) => <th key={w.key} className="pb-2 px-2 text-center">{w.label}</th>)}
+              <th className="pb-1 pr-3">プロジェクト</th>
+              <th className="pb-1 pr-3">備考</th>
+              {WEEKDAYS.map((w) => <th key={w.key} className="pb-1 px-2 text-center">{w.label}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -904,41 +963,55 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
               const confirmed = editable ? (checked[p.id] ?? new Set<Weekday>()) : new Set(p.weekdays_finalized ?? [])
               return (
                 <tr key={p.id} className="border-b border-slate-100">
-                  <td className="py-2 pr-3 font-semibold">
+                  <td className="py-1 pr-3 font-semibold align-top">
                     {p.project_name}
-                    <div className="text-xs font-normal text-slate-400">{p.period_start} 〜 {p.period_end}</div>
-                    {p.note && <div className="text-xs font-normal text-slate-400">備考: {p.note}</div>}
-                    {p.status === 'seats_allocated' && (
-                      <div className="text-[10px] font-normal text-amber-600">座席割当済み（変更すると座席の再割当が必要）</div>
+                    {p.note && (
+                      <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
+                        備考あり
+                      </span>
                     )}
+                    {p.status === 'seats_allocated' && (
+                      <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title="変更すると座席の再割当が必要になります">
+                        割当済み
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1 pr-3 align-top">
+                    <AdminNoteField planId={p.id} initialValue={p.admin_note} />
                   </td>
                   {WEEKDAYS.map((w) => {
                     const badge = weekdayBadge(p, w.key, confirmed)
                     if (editable) {
                       const isChecked = confirmed.has(w.key)
                       return (
-                        <td key={w.key} className="px-2 py-2 text-center">
+                        <td key={w.key} className="px-2 py-1 text-center align-top">
+                          {/* バッジの有無で行ごとに高さが変わりチェックボックスの縦位置がずれるため、
+                              固定高さのスロットに入れる（2026-09-14修正、WeekdayMatrixと同じ対応） */}
                           <label className="inline-flex flex-col items-center gap-0.5">
-                            <input type="checkbox" checked={isChecked} onChange={() => toggle(p.id, w.key)} />
-                            {badge && (
-                              <span className={`rounded px-1 text-[10px] ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                                {badge}
-                              </span>
-                            )}
+                            <input type="checkbox" checked={isChecked} onChange={() => toggle(p.id, w.key)} className="h-3.5 w-3.5" />
+                            <span className="flex h-3.5 items-center justify-center">
+                              {badge && (
+                                <span className={`rounded px-1 text-xs ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                                  {badge}
+                                </span>
+                              )}
+                            </span>
                           </label>
                         </td>
                       )
                     }
                     const isConfirmed = confirmed.has(w.key)
                     return (
-                      <td key={w.key} className="px-2 py-2 text-center">
+                      <td key={w.key} className="px-2 py-1 text-center align-top">
                         <div className="flex flex-col items-center gap-0.5">
                           <span className={isConfirmed ? 'text-blue-800' : 'text-slate-300'}>{isConfirmed ? '✓' : '−'}</span>
-                          {badge && (
-                            <span className={`rounded px-1 text-[10px] ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                              {badge}
-                            </span>
-                          )}
+                          <span className="flex h-3.5 items-center justify-center">
+                            {badge && (
+                              <span className={`rounded px-1 text-xs ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                                {badge}
+                              </span>
+                            )}
+                          </span>
                         </div>
                       </td>
                     )
@@ -1241,7 +1314,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
       <div className="border-b border-slate-200 px-4 py-3 font-semibold">
         出社曜日の調整表
       </div>
-      <div className="space-y-6 p-4">
+      <div className="space-y-4 p-4">
         {groups.map((g) => {
           const totalRequired = g.totalRequired
           const dayTotal = (day: Weekday) =>
@@ -1275,59 +1348,75 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="pb-2 pr-3">プロジェクト</th>
-                    <th className="pb-2 pr-3">人数</th>
-                    {WEEKDAYS.map((w) => <th key={w.key} className="pb-2 px-2 text-center">{w.label}</th>)}
+                    <th className="pb-1 pr-3">プロジェクト</th>
+                    {/* 「人数」という表記だとメンバーの現在の人数と誤解されやすいため、実際に表示している
+                        値（required_seats）に合わせて「必要座席数」に改めた（2026-09-14修正。「まず人数を
+                        見るのではなく必要座席の数をしりたい」との指摘を受けた。表示値自体は元から
+                        required_seatsのままで変更していない） */}
+                    <th className="pb-1 pr-3">必要座席数</th>
+                    <th className="pb-1 pr-3">備考</th>
+                    {WEEKDAYS.map((w) => <th key={w.key} className="pb-1 px-2 text-center">{w.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {g.plans.map((p) => (
                     <tr key={p.id} className="border-b border-slate-100">
-                      <td className="py-2 pr-3 font-semibold">
+                      <td className="py-1 pr-3 font-semibold align-top">
                         {p.project_name}
-                        {aiReasoning[p.id] && (
-                          <span
-                            className="ml-1 cursor-help rounded bg-purple-50 px-1 text-[10px] font-normal text-purple-600"
-                            title={`AI提案の理由: ${aiReasoning[p.id]}`}
-                          >
-                            AI提案の理由
+                        {p.note && (
+                          <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
+                            備考あり
                           </span>
                         )}
-                        <div className="text-xs font-normal text-slate-400">{p.period_start} 〜 {p.period_end}</div>
-                        {p.note && <div className="text-xs font-normal text-slate-400">備考: {p.note}</div>}
+                        {aiReasoning[p.id] && (
+                          <span
+                            className="ml-1 cursor-help rounded bg-purple-50 px-1 text-xs font-normal text-purple-600"
+                            title={`AI提案の理由: ${aiReasoning[p.id]}`}
+                          >
+                            AI提案
+                          </span>
+                        )}
                         {p.has_previous_plan && (
-                          <div className="mt-0.5">
-                            <button
-                              type="button"
-                              disabled={copyingPlanId === p.id}
-                              onClick={() => copyPreviousWeekdays(p.id)}
-                              className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-normal text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              {copyingPlanId === p.id ? 'コピー中...' : '前回の確定曜日をコピーする'}
-                            </button>
-                            {copyErrorByPlan[p.id] && (
-                              <span className="ml-1 text-[10px] text-red-600">{copyErrorByPlan[p.id]}</span>
-                            )}
-                          </div>
+                          <button
+                            type="button"
+                            disabled={copyingPlanId === p.id}
+                            onClick={() => copyPreviousWeekdays(p.id)}
+                            className="ml-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs font-normal text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            {copyingPlanId === p.id ? 'コピー中...' : '前回の確定曜日をコピーする'}
+                          </button>
+                        )}
+                        {copyErrorByPlan[p.id] && (
+                          <span className="ml-1 text-xs text-red-600">{copyErrorByPlan[p.id]}</span>
                         )}
                       </td>
-                      <td className="py-2 pr-3">{p.required_seats}名</td>
+                      <td className="py-1 pr-3 align-top">{p.required_seats}名</td>
+                      <td className="py-1 pr-3 align-top">
+                        <AdminNoteField planId={p.id} initialValue={p.admin_note} />
+                      </td>
                       {WEEKDAYS.map((w) => {
                         const badge = badgeFor(p, w.key)
                         const isChecked = checked[p.id]?.has(w.key) ?? false
                         const isAiSuggested = aiSuggested[p.id]?.has(w.key) ?? false
                         return (
-                          <td key={w.key} className="px-2 py-2 text-center">
+                          <td key={w.key} className="px-2 py-1 text-center align-top">
+                            {/* AI・希望バッジは行によって有無が分かれるため、常に同じ高さのスロットに
+                                入れてチェックボックスの縦位置がセルごとにずれないようにする
+                                （2026-09-14修正。「チェックマークの配置が所々ずれている」との報告を受けた） */}
                             <label className="inline-flex flex-col items-center gap-0.5">
-                              {isAiSuggested && (
-                                <span className="rounded bg-purple-50 px-1 text-[9px] text-purple-600">AI提案</span>
-                              )}
-                              <input type="checkbox" checked={isChecked} onChange={() => toggle(p.id, w.key)} />
-                              {badge && (
-                                <span className={`rounded px-1 text-[10px] ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                                  {badge}
-                                </span>
-                              )}
+                              <span className="flex h-3.5 items-center justify-center">
+                                {isAiSuggested && (
+                                  <span className="rounded bg-purple-50 px-1 text-xs text-purple-600">AI</span>
+                                )}
+                              </span>
+                              <input type="checkbox" checked={isChecked} onChange={() => toggle(p.id, w.key)} className="h-3.5 w-3.5" />
+                              <span className="flex h-3.5 items-center justify-center">
+                                {badge && (
+                                  <span className={`rounded px-1 text-xs ${badge === '例外' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                                    {badge}
+                                  </span>
+                                )}
+                              </span>
                             </label>
                           </td>
                         )
@@ -1335,18 +1424,24 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                     </tr>
                   ))}
                   {g.plans.length === 0 && (
-                    <tr><td colSpan={2 + WEEKDAYS.length} className="py-4 text-center text-slate-400">曜日調整が必要なプロジェクトはありません（固定座席のみ）</td></tr>
+                    <tr><td colSpan={3 + WEEKDAYS.length} className="py-4 text-center text-slate-400">曜日調整が必要なプロジェクトはありません（固定座席のみ）</td></tr>
                   )}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 font-semibold">
-                    <td className="py-2 pr-3">
-                      曜日ごとの合計
+                    {/* 「曜日ごとの合計」という行名だったが、必要座席数列に表示している値
+                        （totalRequired）は曜日ごとの値ではなく、全プロジェクトの必要座席数＋固定座席数を
+                        合計した目標値（各曜日の実際のチェック合計と比較するための基準）だったため、
+                        「これはどの人数なのか」との指摘を受けた（2026-09-14修正）。行名を目標値である
+                        ことがわかる表記に改め、目標値のセルにも同じ説明をtitleツールチップで補足した */}
+                    <td className="py-1 pr-3" title="全プロジェクトの必要座席数と固定座席の利用者数を合計した目標値。各曜日の実際のチェック合計人数がこの数に達すると、その曜日は緑色で✓表示になる">
+                      必要座席数の合計（各曜日と比較する目標値）
                       <span className="ml-1 text-xs font-normal text-slate-400">
                         （固定座席{g.fixedSeatCount}名{g.key === 'UNKNOWN' ? '＝全エリア合計' : ''}を含む）
                       </span>
                     </td>
-                    <td className="py-2 pr-3">{totalRequired}名</td>
+                    <td className="py-1 pr-3" title="全プロジェクトの必要座席数と固定座席の利用者数を合計した目標値">{totalRequired}名</td>
+                    <td className="py-1 pr-3"></td>
                     {WEEKDAYS.map((w) => {
                       const total = dayTotal(w.key)
                       const filled = totalRequired > 0 && total === totalRequired
@@ -1360,7 +1455,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                         <td
                           key={w.key}
                           title={over > 0 ? `座席総数${g.seatCapacity}席に対して${total}名。${over}席不足しています` : undefined}
-                          className={`px-2 py-2 text-center ${
+                          className={`px-2 py-1 text-center ${
                             over > 0 ? 'rounded bg-red-50 text-red-700' : filled ? 'rounded bg-green-50 text-green-700' : ''
                           }`}
                         >

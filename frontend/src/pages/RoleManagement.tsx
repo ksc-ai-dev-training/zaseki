@@ -296,8 +296,8 @@ function UsersTab() {
 }
 
 function ProjectsTab() {
-  const { items, isLoading, refresh } = useProjects()
   const { me } = useMe()
+  const { items, isLoading, refresh } = useProjects()
   const [form, setForm] = useState<ProjectForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -322,9 +322,13 @@ function ProjectsTab() {
 
   const openAdd = () => {
     setFormError(null)
-    // 作成者は既定でこの画面を操作している管理部自身にする（A-28がcreated_byを呼び出し者に設定する
-    // のと揃える。ここで指定しないと、直後のA-29呼び出しでcreated_byがnullに上書きされてしまう）。
-    // 追加後にメンバーを選んで作成者を変更することもできる
+    // 2026-09-14修正:「管理部側で作成するプロジェクトはプロジェクトメンバー内の作成者は必要ない」
+    // との指摘を受け、この画面（S-08）では「作成者」欄自体を表示しない（showCreatorColumn={false}、
+    // 下記参照）。ただしcreated_by自体は「ログインした（今作成している）本人が作った」という
+    // 扱いのまま自動設定する（2026-09-14再修正。表示欄は不要だが、作成者という記録自体は
+    // 引き続き必要とのこと）。A-28がINSERT時点でcreated_byを呼び出した管理部自身に設定するが、
+    // 直後のA-29呼び出しでbody.created_byの値により無条件に上書きされるため、ここでも
+    // 明示的にme.idを設定しておく
     setForm({ id: null, name: '', members: [], proxyUserId: null, createdBy: me?.id ?? null })
   }
   const openEdit = (p: ProjectListItem) => {
@@ -431,6 +435,7 @@ function ProjectsTab() {
           onSubmit={submitForm}
           submitting={submitting}
           error={formError}
+          showCreatorColumn={false}
         />
       )}
 

@@ -87,10 +87,12 @@ async def list_projects(user: CurrentUser = Depends(require_auth)):
                       'member_id', pm.id, 'user_id', pm.user_id,
                       'name', u.last_name || ' ' || u.first_name,
                       'project_title', pm.project_title
-                  ) ORDER BY pm.id) FILTER (WHERE pm.id IS NOT NULL), '[]') AS members_json
+                  ) ORDER BY pm.id) FILTER (WHERE pm.id IS NOT NULL), '[]') AS members_json,
+                  MAX(creator.last_name || ' ' || creator.first_name) AS created_by_name
            FROM projects p
            LEFT JOIN project_members pm ON pm.project_id = p.id
            LEFT JOIN users u ON u.id = pm.user_id
+           LEFT JOIN users creator ON creator.id = p.created_by
            {where_clause}
            GROUP BY p.id
            ORDER BY p.name""",
@@ -100,12 +102,11 @@ async def list_projects(user: CurrentUser = Depends(require_auth)):
     for r in rows:
         members = json.loads(r["members_json"])
         proxy_name = next((m["name"] for m in members if m["user_id"] == r["proxy_user_id"]), None)
-        created_by_name = next((m["name"] for m in members if m["user_id"] == r["created_by"]), None)
         items.append({
             "id": r["id"], "name": r["name"], "pm_pl_names": r["pm_pl_names"] or "未設定",
             "member_count": r["member_count"], "members": members,
             "proxy_user_id": r["proxy_user_id"], "proxy_user_name": proxy_name,
-            "created_by": r["created_by"], "created_by_name": created_by_name,
+            "created_by": r["created_by"], "created_by_name": r["created_by_name"],
         })
     return {"items": items}
 
@@ -210,7 +211,16 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, user: Curr
             raise HTTPException(400, detail="PJ席決担当にはPMまたはPLのみ指定できます")
 
     if body.created_by is not None and body.created_by not in user_ids:
-        raise HTTPException(400, detail="作成者にはメンバーのいずれかを指定してください")
+        # 2026-09-14追加: S-08側は「作成者＝ログインした（作成した）本人」を自動設定するが、その本人を
+        # 必ずしもプロジェクトメンバーとして追加するとは限らない（作成者欄自体をUIから外したため、
+        # メンバーに含める操作を促す手段がない）。作成者はT-06の正式なメンバーである必要はなく、単に
+        # 実在する利用者であればよい（projects.created_byはusersへのFKで、project_membersへのFKでは
+        # ない）という元々のデータモデルに合わせ、メンバー一覧に含まれない場合は利用者として実在するかのみ検証する。
+        creator_exists = await pool.fetchval(
+            "SELECT COUNT(*) FROM users WHERE id = $1 AND deleted_at IS NULL", body.created_by
+        )
+        if not creator_exists:
+            raise HTTPException(404, detail="対象が見つかりません")
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -298,11 +308,14 @@ async def list_quarter_plans(
     その場で判定できるようにするため2026-09-09追加。座席総数を毎回手で数える代わりに、必要数が
     超過した曜日をUI側で警告表示する（3.9節参照）。has_previous_plan（2026-09-10追加）は、
     同一プロジェクトにこの計画より前の期間の計画が存在するかどうかを返す。出社曜日の調整表の
-    「前回の確定曜日をコピーする」ボタン（A-15を呼ぶ）の表示条件に使う。"""
+    「前回の確定曜日をコピーする」ボタン（A-15を呼ぶ）の表示条件に使う。admin_note（2026-09-14追加）は
+    管理部・エリア責任者がS-09の出社曜日の調整表に入力する備考（A-83で更新）。noteとは別物で、
+    PM/PLがアンケート回答時に入力する備考（T-11、読み取り専用）に対し、こちらは調整表を使う
+    管理部・エリア責任者自身が保存するメモである。"""
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
-                  pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats, pqp.status,
+                  pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats, pqp.status, pqp.admin_note,
                   (SELECT pu.last_name || ' ' || pu.first_name FROM users pu WHERE pu.id = p.proxy_user_id)
                       AS seat_assigner_names,
                   COUNT(DISTINCT pm.id) FILTER (WHERE fsa.user_id IS NULL AND NOT pm.seat_not_required) AS non_fixed_member_count,
@@ -365,6 +378,7 @@ async def list_quarter_plans(
             "choice1_weekdays": json.loads(r["choice1_weekdays"]) if r["choice1_weekdays"] else None,
             "choice2_weekdays": json.loads(r["choice2_weekdays"]) if r["choice2_weekdays"] else None,
             "note": r["note"],
+            "admin_note": r["admin_note"],
             "previous_area": previous_area_by_project.get(r["project_id"]),
             "has_previous_plan": r["has_previous_plan"],
         })
@@ -518,6 +532,31 @@ async def update_required_seats(id: int, body: RequiredSeatsUpdate, _: CurrentUs
         body.required_seats, id,
     )
     return {"detail": "必要座席数を更新しました"}
+
+
+class AdminNoteUpdate(BaseModel):
+    admin_note: str | None = None
+
+
+@router.put("/project-quarter-plans/{id}/admin-note")
+async def update_admin_note(id: int, body: AdminNoteUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-83: S-09の出社曜日の調整表に管理部・エリア責任者が入力する備考の保存（2026-09-14新設）。
+    「曜日調整表にそれぞれのプロジェクトの備考欄が欲しい」との要望を受けた。既存のnote
+    （T-11.note、PM/PLがアンケート回答時に入力する備考）とは別物で、こちらは調整表を使う
+    管理部・エリア責任者自身が保存する独立したメモ（T-07.admin_note）。座席の割当状況・確定状況に
+    関わらずいつでも変更でき、他のA-40・A-65のようなstatusによる制限は設けない（単なるメモのため）。"""
+    admin_note = (body.admin_note or "").strip() or None
+    if admin_note is not None and len(admin_note) > 500:
+        raise HTTPException(400, detail="備考は500文字以内で入力してください")
+    pool = get_pool()
+    plan = await pool.fetchrow("SELECT id FROM project_quarter_plans WHERE id = $1", id)
+    if plan is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    await pool.execute(
+        "UPDATE project_quarter_plans SET admin_note = $1, updated_at = now() WHERE id = $2",
+        admin_note, id,
+    )
+    return {"detail": "備考を更新しました"}
 
 
 class PeriodUpdate(BaseModel):

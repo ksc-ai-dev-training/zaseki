@@ -20,6 +20,9 @@ from database import (
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
 _BLOCK_PREFIX_RE = re.compile(r"^([A-Za-z]+)")
+# 座席一覧のエリア表示順（NORTH→EAST→WEST）。SQLのORDER BY CASE a.name ...と同じ順序を
+# Python側の自然順ソート（_seat_sort_key）と組み合わせる際に使う（2026-09-14追加）
+AREA_ORDER = {"NORTH": 1, "EAST": 2, "WEST": 3}
 
 
 def _block_label(seat_no: str) -> str:
