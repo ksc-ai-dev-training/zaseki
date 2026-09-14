@@ -1,6 +1,7 @@
 import { useState, type SVGProps } from 'react'
 import { NavLink } from 'react-router'
 import type { Me } from '../types'
+import { CARDS as ADMIN_MENU_CARDS } from '../pages/AdminMenu'
 
 interface SidebarProps {
   me: Me
@@ -29,12 +30,6 @@ const MapIcon = (props: SVGProps<SVGSVGElement>) => (
 const BriefcaseIcon = (props: SVGProps<SVGSVGElement>) => (
   <IconIllust {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-  </IconIllust>
-)
-const LocationMarkerIcon = (props: SVGProps<SVGSVGElement>) => (
-  <IconIllust {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
   </IconIllust>
 )
 const CogIcon = (props: SVGProps<SVGSVGElement>) => (
@@ -73,7 +68,9 @@ const NAV_ITEMS: {
 }[] = [
   { to: '/', label: '空き状況・予約', Icon: MapIcon },
   { to: '/project-seats', label: 'プロジェクト座席', Icon: BriefcaseIcon },
-  { to: '/project-seats-area', label: 'プロジェクト座席（エリア担当）', Icon: LocationMarkerIcon, adminOnly: true },
+  // 独立した「プロジェクト座席（エリア担当）」項目は2026-09-14に削除した（「プロジェクト席と管理
+  // メニューの間にあるプロジェクト座席（エリア担当）を削除してほしい」との要望を受けた）。同じ画面
+  // への入口は「管理メニュー」直下のサブリンク（ADMIN_MENU_CARDS）にまとめて残す
   { to: '/admin', label: '管理メニュー', Icon: CogIcon, adminOnly: true },
   { to: '/profile', label: 'マイプロフィール', Icon: UserIcon },
   { to: '/help', label: 'ヘルプ', Icon: QuestionMarkCircleIcon },
@@ -147,19 +144,41 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
         {NAV_ITEMS.filter(
           (item) => (!item.adminOnly || me.role === 'admin') && (!item.systemOperatorOnly || me.is_system_operator)
         ).map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              `flex items-center gap-2 rounded px-3 py-2 text-sm ${
-                isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/80 hover:bg-white/10 hover:text-white'
-              }`
-            }
-          >
-            <item.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {item.label}
-          </NavLink>
+          <div key={item.to}>
+            <NavLink
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded px-3 py-2 text-sm ${
+                  isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/80 hover:bg-white/10 hover:text-white'
+                }`
+              }
+            >
+              <item.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {item.label}
+            </NavLink>
+            {/* 管理メニューの下に各画面への入口をまとめて出す（2026-09-14追加。「管理部メニューの
+                下に固定座席の指定、代理予約・取り消し、座席マスタ管理、権限・PJ管理、プロジェクト
+                席（エリア担当）を選べるようにしてほしい」との要望を受けた。S-06のカード一覧
+                〔AdminMenu.tsx〕と同じCARDSを参照し、二重管理を避ける） */}
+            {item.to === '/admin' && (
+              <div className="mt-1 space-y-0.5 border-l border-white/10 pl-3">
+                {ADMIN_MENU_CARDS.map((c) => (
+                  <NavLink
+                    key={c.to}
+                    to={c.to}
+                    className={({ isActive }) =>
+                      `block rounded px-3 py-1.5 text-xs ${
+                        isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/70 hover:bg-white/10 hover:text-white'
+                      }`
+                    }
+                  >
+                    {c.name}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </nav>
 

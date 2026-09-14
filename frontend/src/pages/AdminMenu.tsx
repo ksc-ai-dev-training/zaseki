@@ -1,7 +1,11 @@
 import { Link } from 'react-router'
 import { useAdminSummary } from '../hooks/useAdminSummary'
 
-const CARDS: { id: string; to: string; name: string }[] = [
+// サイドバーの「管理メニュー」項目の下にも同じ入口をまとめて出せるよう、この一覧をエクスポートする
+// （2026-09-14追加。「管理部メニューの下に固定座席の指定、代理予約・取り消し、座席マスタ管理、
+// 権限・PJ管理、プロジェクト席（エリア担当）を選べるようにしてほしい」との要望を受けた。
+// S-06本体〔カード一覧〕とサイドバーの二重管理を避けるため、この配列を唯一の情報源にする）
+export const CARDS: { id: string; to: string; name: string }[] = [
   { id: 'S-05', to: '/fixed-seats', name: '固定座席の指定' },
   { id: 'S-11', to: '/proxy-booking', name: '代理予約・取消' },
   { id: 'S-07', to: '/seat-master', name: '座席マスタ管理' },

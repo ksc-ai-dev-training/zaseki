@@ -1014,15 +1014,22 @@ export default function Availability() {
       })
     })
   })
-  // 座席の島の一括割当モード: 今選んでいるプロジェクト以外が、この一括登録の中で既に選択中の
-  // 座席は、使用中（他プロジェクトが選択中）としてタイルに表示し選べないようにする（2026-09-10追加）。
-  // 既存の「使用中」タイル表示〔グレー・氏名タグ〕をそのまま流用し、専用の見た目は作らない
-  if (seatBlockBulkFor) {
+  // 座席の島の一括割当モード: 今選んでいるプロジェクトと出社曜日が重なる他プロジェクトが、この
+  // 一括登録の中で既に選択中の座席は、使用中（他プロジェクトが選択中）としてタイルに表示し選べない
+  // ようにする（2026-09-10追加、2026-09-11修正）。出社曜日が重ならないプロジェクト同士は同じ座席を
+  // 共有できるのが本来の設計（database.project_blocked_seats()参照）のため、曜日が重ならない場合は
+  // 対象から除外する（「火水出社のプロジェクトを選んだら、木金出社の別プロジェクトの選択中表示が
+  // 出てきてしまう」との報告を受けた不具合修正）
+  if (seatBlockBulkFor && activeBulkPlan) {
+    const activeWeekdays = new Set(activeBulkPlan.weekdaysFinalized ?? [])
     const seatIdToNo = new Map(Object.values(seatByNo).map((s) => [s.id, s.seat_no]))
     Object.entries(bulkSelections).forEach(([planIdStr, ids]) => {
       const planId = Number(planIdStr)
       if (planId === activeBulkPlanId) return
       const claimingPlan = seatBlockBulkFor.plans.find((p) => p.planId === planId)
+      const claimingWeekdays = claimingPlan?.weekdaysFinalized ?? []
+      const overlaps = claimingWeekdays.some((w) => activeWeekdays.has(w))
+      if (!overlaps) return
       ids.forEach((seatId) => {
         const seatNo = seatIdToNo.get(seatId)
         const seat = seatNo ? seatByNo[seatNo] : undefined

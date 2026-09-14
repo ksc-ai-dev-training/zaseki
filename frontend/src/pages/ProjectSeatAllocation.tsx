@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
+import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
 import type { QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
+
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
@@ -119,6 +125,59 @@ const statusBadgeClass = (p: QuarterPlanItem) => {
 export default function ProjectSeatAllocation() {
   const navigate = useNavigate()
   const { items: plans, unplannedProjects, areaSeatCapacity, refresh: refreshAll } = useQuarterPlans()
+  // 座席期間の一括新規設定（A-68）の選択候補を「期間未設定のプロジェクト」だけでなく全プロジェクトに
+  // 広げるために全件取得する（2026-09-11修正。「次の期間のプロジェクトを作成するとき、既に期間がある
+  // プロジェクトが対象となっていない。これを対象化してほしい」との要望を受けた。従来はunplannedProjects
+  //〔今日以降に及ぶ計画データを1件も持たないプロジェクト〕だけを候補にしていたため、現に進行中の
+  // 期間があるプロジェクトについて、次のサイクル分の期間を先に設定しておく手段がなかった）
+  const { items: allProjects } = useProjects()
+  // プロジェクトごとの「今日以降に及ぶ既存の座席期間」（複数あれば開始日が最も早いものを代表として
+  // 表示する）。一括設定モーダルで、既に期間があるプロジェクトを選んだときにその旨がわかるようにする
+  const currentPeriodByProject = useMemo(() => {
+    const map = new Map<number, { start: string; end: string }>()
+    const today = todayStr()
+    plans
+      .filter((p) => p.period_end >= today)
+      .forEach((p) => {
+        const existing = map.get(p.project_id)
+        if (!existing || p.period_start < existing.start) {
+          map.set(p.project_id, { start: p.period_start, end: p.period_end })
+        }
+      })
+    return map
+  }, [plans])
+
+  // 期間タブ（2026-09-11追加）。「2026-09-01〜2026-11-30」「2026-12-01〜2027-02-28」のように
+  // プロジェクトが複数の異なる座席期間にまたがるようになると、座席割り当て一覧・曜日調整表が
+  // 期間の異なるプロジェクト混在の1本のリストになり見づらいとの指摘を受けた（「期間を分けたら
+  // それぞれ違う画面にしてほしい」）。2026-09-03に廃止した「四半期タブ」（カレンダー上の固定四半期
+  // 区切り）とは異なり、実際に存在する座席期間（プロジェクトごとに任意）を動的に集計してタブ化する。
+  // 存在する期間が1つ以下の間はタブ自体を表示しない（従来どおりの1本のリストのまま）。「期間」欄
+  // （座席期間の新規設定・修正）はどの期間のタブを見ていても全プロジェクトを対象にするため、
+  // タブの絞り込み対象には含めない。
+  const distinctPeriods = useMemo(() => {
+    const map = new Map<string, { start: string; end: string }>()
+    plans.forEach((p) => {
+      map.set(`${p.period_start}__${p.period_end}`, { start: p.period_start, end: p.period_end })
+    })
+    return [...map.entries()]
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a, b) => b.start.localeCompare(a.start))
+  }, [plans])
+  const [periodTab, setPeriodTab] = useState<string>('all')
+  const autoSelectedPeriodTab = useRef(false)
+  useEffect(() => {
+    // 旧・四半期タブの「初期表示は最も新しいタブ（＝次の期間）を自動選択」を踏襲する。
+    // 一度だけ自動選択し、以後は利用者が選んだタブを維持する
+    if (!autoSelectedPeriodTab.current && distinctPeriods.length > 1) {
+      autoSelectedPeriodTab.current = true
+      setPeriodTab(distinctPeriods[0].key)
+    }
+  }, [distinctPeriods])
+  const visiblePlans = useMemo(
+    () => (periodTab === 'all' ? plans : plans.filter((p) => `${p.period_start}__${p.period_end}` === periodTab)),
+    [plans, periodTab]
+  )
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -151,9 +210,13 @@ export default function ProjectSeatAllocation() {
 
   const openBulkCreate = () => {
     setBulkCreateError(null)
-    // 「全プロジェクトが同じ期間を共有する」ことを主経路にするため、期間未設定の全プロジェクトを
-    // 既定で選択済みにしておく（外したい場合だけ個別にチェックを外す）
-    setBulkCreateSelected(new Set(unplannedProjects.map((p) => p.id)))
+    // 「全プロジェクトが同じ期間を共有する」ことを主経路にするため、既定で全プロジェクトを選択済みに
+    // しておく（外したい場合だけ個別にチェックを外す）。2026-09-11修正: 選択候補を全プロジェクトへ
+    // 広げた際、既定選択は当初どおり期間未設定のプロジェクトのみに限っていたが、「次の期間が来る
+    // とき、既に期間がある過去のプロジェクトも含めて全てチェック状態にしてほしい」との要望を受けた。
+    // 次のサイクルへ全プロジェクトをまとめて進める運用が主目的のため、既に期間があるプロジェクトも
+    // 含めて全件を既定選択にする（今回のサイクルに含めたくないプロジェクトだけ個別にチェックを外す）
+    setBulkCreateSelected(new Set(allProjects.map((p) => p.id)))
     setBulkCreateStartValue('')
     setBulkCreateEndValue('')
     setBulkCreateModalOpen(true)
@@ -248,8 +311,8 @@ export default function ProjectSeatAllocation() {
   // A-63一括送信）は廃止した。Slack通知もシステムからの自動送信をやめ、エリア責任者が自分でSlackに
   // 連絡する運用に変更した（システム側にSlack送信ボタンは残さない）。
   const periodEligiblePlans = useMemo(
-    () => plans.filter((p) => p.status === 'seats_confirmed' || p.status === 'survey_open'),
-    [plans]
+    () => visiblePlans.filter((p) => p.status === 'seats_confirmed' || p.status === 'survey_open'),
+    [visiblePlans]
   )
   const openBulkPeriod = () => {
     setBulkPeriodError(null)
@@ -314,8 +377,8 @@ export default function ProjectSeatAllocation() {
   // との要望を受けた。対象は行ごとの「座席の島を割り当てる」ボタンと同じ条件（曜日確定済み・未割当）
   // のプロジェクトのみとし、既に割当済み（座席を編集）は対象外のまま個別の導線を使う
   const bulkBlockEligiblePlans = useMemo(
-    () => plans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p)),
-    [plans]
+    () => visiblePlans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p)),
+    [visiblePlans]
   )
   const goSeatBlockBulk = () => {
     navigate('/', {
@@ -345,31 +408,56 @@ export default function ProjectSeatAllocation() {
             見出し・区切り線を追加した */}
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">期間</h2>
-          {unplannedProjects.length > 0 && (
-            <div className="rounded border border-amber-200 bg-amber-50 p-4">
-              <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
-              <p className="mb-3 text-xs text-amber-700">現在・今後にわたる座席期間が1件も設定されていません。全プロジェクトが同じ期間を共有する運用のため、下のボタンからまとめて同じ開始日・終了日を設定してください（設定すると即座に出社曜日アンケートが回答可能になります）。</p>
-              <button
-                type="button"
-                onClick={openBulkCreate}
-                className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
-              >
-                期間未設定のプロジェクトへ座席期間を一括設定する
-              </button>
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
+          {/* 2026-09-11修正: 従来は期間未設定のプロジェクトが1件もない（＝全プロジェクトに現在・今後の
+              期間が設定済み）場合、この一括新規設定の入口ごと消えていた。そのため既に期間があるプロ
+              ジェクトについて次のサイクル分の期間を先に作成しておく手段がなかった（「9月〜11月の
+              プロジェクトを、次の期間を作成するときの対象にできない」との報告）。期間未設定の警告と
+              一括新規設定ボタンの表示自体は分離し、ボタンは常に表示する */}
+          <div className={`rounded border p-4 ${unplannedProjects.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+            {unplannedProjects.length > 0 ? (
+              <>
+                <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
+                <p className="mb-3 text-xs text-amber-700">現在・今後にわたる座席期間が1件も設定されていません。全プロジェクトが同じ期間を共有する運用のため、下のボタンからまとめて同じ開始日・終了日を設定してください（設定すると即座に出社曜日アンケートが回答可能になります）。</p>
+              </>
+            ) : (
+              <p className="mb-3 text-xs text-slate-500">全プロジェクトに座席期間が設定済みです。次のサイクル分の期間を先に用意したい場合は、下のボタンから全プロジェクトへまとめて新しい期間を追加できます（既存の期間と重ならない範囲で設定してください。含めたくないプロジェクトはモーダル内でチェックを外せます）。</p>
+            )}
             <button
               type="button"
-              onClick={openBulkPeriod}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              onClick={openBulkCreate}
+              className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
             >
-              プロジェクトを選んで座席期間を一括設定する
+              座席期間を一括で新規設定する
             </button>
           </div>
         </section>
 
         <hr className="border-slate-200" />
+
+        {/* 期間タブ: 存在する座席期間が2件以上のときだけ表示する。以降の「座席割り当て」「曜日調整表」
+            セクションはこのタブで選んだ期間だけに絞り込む（「期間」セクション自体は期間を問わず
+            全プロジェクトを対象にするため絞り込まない、2026-09-11追加） */}
+        {distinctPeriods.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPeriodTab('all')}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            >
+              すべて
+            </button>
+            {distinctPeriods.map((per) => (
+              <button
+                key={per.key}
+                type="button"
+                onClick={() => setPeriodTab(per.key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === per.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {per.start} 〜 {per.end}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 座席割り当て: 一覧（対象期間・状態・行ごとの割当操作）と、一括割当の起点ボタン。
             一括割当ボタンは従来ページ最上部にあったが、「上に表示されているが下の方に表示してほしい」
@@ -389,7 +477,7 @@ export default function ProjectSeatAllocation() {
                 </tr>
               </thead>
               <tbody>
-                {plans.map((p) => (
+                {visiblePlans.map((p) => (
                   <tr key={p.id} className="border-b border-slate-100">
                     <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
                       {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
@@ -421,7 +509,7 @@ export default function ProjectSeatAllocation() {
                     </td>
                   </tr>
                 ))}
-                {plans.length === 0 && (
+                {visiblePlans.length === 0 && (
                   <tr><td colSpan={6} className="py-6 text-center text-slate-400">該当する計画がありません</td></tr>
                 )}
               </tbody>
@@ -445,17 +533,32 @@ export default function ProjectSeatAllocation() {
 
         <hr className="border-slate-200" />
 
+        {/* 座席期間の一括修正（A-66）: 「座席期間を一括で新規設定する」（新しい計画行を追加するA-68）と
+            紛らわしく、隣に並んでいると勘違いしやすいとの指摘を受け、座席割り当てと曜日調整表の間へ
+            分離して配置した（2026-09-11修正） */}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={openBulkPeriod}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            プロジェクトを選んで座席期間を一括設定する
+          </button>
+        </div>
+
+        <hr className="border-slate-200" />
+
         {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧 */}
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
           <WeekdayMatrix
-            plans={plans.filter((p) => p.status === 'survey_open')}
+            plans={visiblePlans.filter((p) => p.status === 'survey_open')}
             areaSeatCapacity={areaSeatCapacity}
             onFinalized={refreshAll}
           />
 
           <ConfirmedWeekdaysTable
-            plans={plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
+            plans={visiblePlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
             onChanged={refreshAll}
           />
         </section>
@@ -528,7 +631,7 @@ export default function ProjectSeatAllocation() {
 
       {bulkCreateModalOpen && (
         <Modal
-          title="期間未設定のプロジェクトへ座席期間を一括設定する"
+          title="座席期間を一括で新規設定する"
           onClose={() => setBulkCreateModalOpen(false)}
           footer={
             <>
@@ -545,7 +648,7 @@ export default function ProjectSeatAllocation() {
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください（既定で全て選択済みです）。設定すると即座に出社曜日アンケートが回答可能になります。必要座席数はプロジェクトごとの現状の人数（固定座席保有者・在宅のため不要なメンバーを除く）から自動算出されます。</p>
+            <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください（既定で全プロジェクトが選択済みです。今回のサイクルに含めたくないプロジェクトはチェックを外してください）。設定すると即座に出社曜日アンケートが回答可能になります。必要座席数はプロジェクトごとの現状の人数（固定座席保有者・在宅のため不要なメンバーを除く）から自動算出されます。既に座席期間があるプロジェクトを選んだ場合は次のサイクル分の期間として追加され、指定した期間が既存の期間と重なっていると保存時にエラーになります。</p>
             <MonthDurationPicker onApply={(s, e) => { setBulkCreateStartValue(s); setBulkCreateEndValue(e) }} />
             <div className="flex gap-3">
               <label className="block flex-1">
@@ -568,13 +671,25 @@ export default function ProjectSeatAllocation() {
               </label>
             </div>
             <div className="max-h-72 space-y-1 overflow-y-auto">
-              {unplannedProjects.map((p) => (
-                <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50">
-                  <input type="checkbox" checked={bulkCreateSelected.has(p.id)} onChange={() => toggleBulkCreateSelect(p.id)} />
-                  <span>{p.name}</span>
-                </label>
-              ))}
-              {unplannedProjects.length === 0 && (
+              {[...allProjects]
+                .sort((a, b) => {
+                  const aPlanned = currentPeriodByProject.has(a.id) ? 1 : 0
+                  const bPlanned = currentPeriodByProject.has(b.id) ? 1 : 0
+                  return aPlanned - bPlanned || a.name.localeCompare(b.name, 'ja')
+                })
+                .map((p) => {
+                  const current = currentPeriodByProject.get(p.id)
+                  return (
+                    <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50">
+                      <input type="checkbox" checked={bulkCreateSelected.has(p.id)} onChange={() => toggleBulkCreateSelect(p.id)} />
+                      <span>{p.name}</span>
+                      {current && (
+                        <span className="text-xs text-slate-400">（設定済み: {current.start}〜{current.end}）</span>
+                      )}
+                    </label>
+                  )
+                })}
+              {allProjects.length === 0 && (
                 <p className="px-2 py-1.5 text-slate-400">対象のプロジェクトがありません</p>
               )}
             </div>

@@ -20,10 +20,17 @@ function formatWeekdays(days: Weekday[]): string {
   return WEEKDAYS.filter((w) => days.includes(w.key)).map((w) => w.label).join('・')
 }
 
-function formatQuarterLabel(periodStart: string): string {
-  const [y, m] = periodStart.split('-')
-  const startMonth = Number(m)
-  return `${y}年${startMonth}〜${startMonth + 2}月`
+// 2026-09-11修正: 「2026年12月から14月というありもしない月が存在している」との報告を受けた。
+// 2026-09-03に「四半期」の概念自体（常に3か月・カレンダー上の四半期区切りに揃う前提）を廃止し、
+// プロジェクトごとに任意の座席期間を持てるようになって以降も、このタブ見出しだけは
+// 「開始月＋2か月＝終了月」という固定3か月の前提のまま、かつ年またぎの繰り上げも考慮せずに
+// 計算していたため、12月開始のように年をまたぐ期間で「12〜14月」という存在しない月が
+// 表示されていた。実際の終了月（periodEnd）をそのまま使うよう修正した。
+function formatPeriodLabel(periodStart: string, periodEnd: string): string {
+  const [sy, sm] = periodStart.split('-').map(Number)
+  const [ey, em] = periodEnd.split('-').map(Number)
+  if (sy === ey) return `${sy}年${sm}〜${em}月`
+  return `${sy}年${sm}月〜${ey}年${em}月`
 }
 
 const STATUS_LABEL: Record<QuarterPlanStatus, string> = {
@@ -125,6 +132,14 @@ export default function ProjectSeatRequest() {
     items.forEach((it) => it.plans.forEach((p) => starts.add(p.period_start)))
     return [...starts].sort()
   }, [items])
+  // タブ見出し（formatPeriodLabel）に実際の終了月を使うため、period_start→period_endを引けるようにする
+  const periodEndByStart = useMemo(() => {
+    const map = new Map<string, string>()
+    items.forEach((it) => it.plans.forEach((p) => {
+      if (!map.has(p.period_start)) map.set(p.period_start, p.period_end)
+    }))
+    return map
+  }, [items])
 
   const [selectedQuarter, setSelectedQuarter] = useState('')
   const [hasAutoSelectedQuarter, setHasAutoSelectedQuarter] = useState(false)
@@ -181,7 +196,7 @@ export default function ProjectSeatRequest() {
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {formatQuarterLabel(q)}
+                {formatPeriodLabel(q, periodEndByStart.get(q) ?? q)}
               </button>
             ))}
           </div>
