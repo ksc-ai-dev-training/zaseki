@@ -963,7 +963,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
                     )}
                     {p.status === 'seats_allocated' && (
                       <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title="変更すると座席の再割当が必要になります">
-                        割当済み
+                        割当済み{p.allocated_seat_label ? `（${p.allocated_seat_label}）` : ''}
                       </span>
                     )}
                   </td>
