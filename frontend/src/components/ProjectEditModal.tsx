@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useUserSearch, type UserSearchItem } from '../hooks/useUserSearch'
 import { useMe } from '../hooks/useMe'
 import Modal from './Modal'
@@ -46,6 +46,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
   showCreatorColumn?: boolean
 }) {
   const [query, setQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { items: candidates } = useUserSearch(query)
   const { me } = useMe()
   const memberIds = new Set(form.members.map((m) => m.user_id))
@@ -63,6 +64,11 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
   const addMember = (u: UserSearchItem) => {
     setForm({ ...form, members: [...form.members, { user_id: u.id, name: `${u.last_name} ${u.first_name}`, project_title: null }] })
     setQuery('')
+    // 候補一覧のボタンをクリックすると入力欄からフォーカスが外れ、次の人を追加するたびに
+    // 検索欄を改めてクリックし直す必要があった（2026-09-15修正。「次の人も追加するとき
+    // いちいち検索枠を押さないといけないのが不便」との報告を受けた）。追加直後に検索欄へ
+    // フォーカスを戻し、連続して次の人を検索・追加できるようにする
+    searchInputRef.current?.focus()
   }
   const removeMember = (userId: number) => {
     setForm({
@@ -123,6 +129,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
               メンバー数によらず候補一覧の表示スペースを確保する） */}
           <div className="relative mb-3">
             <input
+              ref={searchInputRef}
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}

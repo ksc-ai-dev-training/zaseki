@@ -20,6 +20,12 @@ function formatWeekdays(days: Weekday[]): string {
   return WEEKDAYS.filter((w) => days.includes(w.key)).map((w) => w.label).join('・')
 }
 
+// YYYY-MM-DDの文字列比較で「今日」を表す（period_end等のAPIレスポンスと同じ形式のため辞書順比較で足りる）
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // 2026-09-11修正: 「2026年12月から14月というありもしない月が存在している」との報告を受けた。
 // 2026-09-03に「四半期」の概念自体（常に3か月・カレンダー上の四半期区切りに揃う前提）を廃止し、
 // プロジェクトごとに任意の座席期間を持てるようになって以降も、このタブ見出しだけは
@@ -413,10 +419,21 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
       {showPrevious && previous && (
         <div className="rounded border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 font-semibold">
-            <span>前回分（{previous.period_start} 〜 {previous.period_end}）の座席割当</span>
+            <span>前回分（{previous.period_start} 〜 {previous.period_end}）の確定曜日・座席割当</span>
             <button type="button" onClick={() => setShowPrevious(false)} className="text-xs font-normal text-slate-400 hover:text-slate-600">閉じる</button>
           </div>
           <div className="p-4">
+            {/* 確定曜日と座席割当が別々の枠に分かれていて見づらいとの指摘を受け、1つの表にまとめた
+                （2026-09-15修正。previous.weekdays_finalizedはA-15のレスポンスに元々含まれていたが、
+                このパネルでは座席割当〔assignments〕のみ表示しておりこの表には出していなかった） */}
+            <p className="mb-3 text-sm">
+              <span className="text-slate-500">確定曜日: </span>
+              <span className="font-semibold">
+                {previous.weekdays_finalized && previous.weekdays_finalized.length > 0
+                  ? formatWeekdays(previous.weekdays_finalized)
+                  : '曜日未確定でした'}
+              </span>
+            </p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -448,7 +465,12 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
         <MemberManagement plan={plan} onChanged={refresh} />
       )}
 
-      {plan.can_manage_seat_assign && plan.status === 'seats_allocated' && (
+      {/* 対象期間が既に終了した計画では非表示にする（2026-09-15追加、「プロジェクトの人を変更する
+          とき過去のプロジェクトにもそれが影響されている」との報告を受けた）。project_membersは
+          期間を持たない単一の現在値のため、終了済みの過去の計画に対して表示し続けると、実際に
+          その期間に在籍していたメンバーとは異なる「現在のメンバー」一覧が出てしまい紛らわしい。
+          バックエンド（A-18・A-72）も同じ期間で書き込みを拒否するようにした */}
+      {plan.can_manage_seat_assign && plan.status === 'seats_allocated' && plan.period_end >= todayIso() && (
         <BulkSeatAssign plan={plan} onChanged={refresh} />
       )}
     </div>

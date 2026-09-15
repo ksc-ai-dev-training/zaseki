@@ -474,6 +474,15 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
+    # 2026-09-15追加: 「プロジェクトの人を変更するとき過去のプロジェクトにもそれが影響されている」
+    # との報告を受けた。project_membersは期間を持たない単一の現在値のため、既に終了した過去の計画
+    # （period_end<今日）に対して本APIを呼んでも、確保対象は常にその時点の「現在のメンバー」になって
+    # しまい、実際にその期間に在籍していたメンバーとは一致しない。書き込み自体は
+    # start_date=max(period_start, 今日)によりperiod_endを超える日付は生成されないため実害はない
+    # （period_end<今日なら対象日数は常に0件）が、無反応のまま何も起きないのは分かりにくいため、
+    # 期間が既に終了した計画は明示的に拒否するようにした。
+    if plan["period_end"] < Date.today():
+        raise HTTPException(400, detail="この計画の対象期間は既に終了しています。現在のメンバー構成を過去の期間に適用することはできません")
 
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
@@ -563,6 +572,9 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
+    # A-18と同じ理由（2026-09-15追加）で、既に終了した計画への振り替えは拒否する
+    if plan["period_end"] < Date.today():
+        raise HTTPException(400, detail="この計画の対象期間は既に終了しています。現在のメンバー構成を過去の期間に適用することはできません")
 
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
