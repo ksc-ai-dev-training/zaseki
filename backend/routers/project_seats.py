@@ -68,15 +68,21 @@ async def list_projects(user: CurrentUser = Depends(require_auth)):
     計画データの自動作成（_ensure_next_quarter_plans）は、2026-09-03に「四半期」という概念自体を撤廃した
     ことに伴い廃止した（検討資料「プロジェクト座席・曜日調整フロー改善案」変更D。プロジェクト座席の期間は
     エリア責任者・管理部が都度A-67で設定する）。created_by・created_by_name（2026-09-09追加、千田さんの案）:
-    プロジェクトの作成者（T-05.created_by）。アンケート回答（A-16）・席決め（A-18等）の実権限を持つ利用者
-    であり、S-08編集モーダルで管理部が確認・是正できるようにするために追加した（PJ席決担当
-    〔proxy_user_id〕は表示用として引き続き残る。両者は別概念になった点に注意）。
+    プロジェクトの作成者（T-05.created_by）。S-08編集モーダルで管理部が確認・是正できるようにするために
+    追加した（PJ席決担当〔proxy_user_id〕とは別概念）。
     2026-09-10変更: 「S-04でもS-08と同じ編集・削除機能が欲しい」との要望を受け、role='admin'専用
-    だった認可をrequire_authに緩和し、role='admin'以外は自分が作成者（created_by）のプロジェクトのみに
-    絞り込むようにした（P-CREATOR）。レスポンス形状は変更していない。"""
+    だった認可をrequire_authに緩和し、一時的にrole='admin'以外は自分が作成者（created_by）の
+    プロジェクトのみに絞り込むP-CREATORスコープにしていた。
+    <strong>2026-09-14変更:</strong> A-55を物理削除から論理削除（projects.deleted_at）に変更した
+    ことに伴い、削除済みプロジェクトが一覧に残り続けないよう、常にdeleted_at IS NULLで絞り込む。
+    <strong>2026-09-14再訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も権限は
+    ない」との指摘を受け、A-16・A-18等の実権限判定と同様、絞り込みの基準をcreated_by（作成者）から
+    proxy_user_id（PJ席決担当）に戻した。作成者であってもPJ席決担当でなければ編集・削除できない
+    （A-29・A-55と一致させ、一覧に出るのに操作すると403になる不整合を避けるため）。レスポンス形状は
+    変更していない。"""
     pool = get_pool()
 
-    where_clause = "" if user.role == "admin" else "WHERE p.created_by = $1"
+    where_clause = "WHERE p.deleted_at IS NULL" if user.role == "admin" else "WHERE p.deleted_at IS NULL AND p.proxy_user_id = $1"
     params = [] if user.role == "admin" else [user.id]
     rows = await pool.fetch(
         f"""SELECT p.id, p.name, p.proxy_user_id, p.created_by,
@@ -181,9 +187,14 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, user: Curr
     いずれかでなければ400（PM/PL限定ではない）。バックフィル漏れの是正や、管理部が本来の担当者の
     代わりにA-28でプロジェクトを作成した場合の引き継ぎに使う。
     2026-09-10変更: 「S-04でもS-08と同じ編集機能が欲しい」との要望を受け、role='admin'専用だった認可を
-    require_authに緩和し、role='admin'以外は対象プロジェクトの作成者（created_by＝自分）のみ許可する
-    ようにした（P-CREATOR）。作成者は自分の判断で作成者自身を含むメンバー構成・役割・PJ席決担当・
-    作成者〔他メンバーへの譲渡を含む〕を変更でき、管理部と全く同じ操作範囲を持つ。"""
+    require_authに緩和した。
+    <strong>2026-09-14訂正:</strong> 「そもそも要件が違う。作成者は席決め担当にするのではなくただの
+    作成者で、何も権限はない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、
+    2026-09-09に千田さんの案でP-PROXY（proxy_user_id）からP-CREATOR（created_by）へ切り替えていた
+    権限判定を、P-PROXYへ戻した。role='admin'以外は対象プロジェクトのPJ席決担当（proxy_user_id＝自分）
+    のみ許可する。PJ席決担当は自分の判断でメンバー構成・役割・PJ席決担当〔他メンバーへの譲渡を含む〕・
+    作成者を変更でき、管理部と全く同じ操作範囲を持つ。created_by（作成者）は表示用の記録項目に戻り、
+    この判定には使わない。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
@@ -191,10 +202,10 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, user: Curr
         raise HTTPException(400, detail="同じ利用者が複数の行に指定されています")
 
     pool = get_pool()
-    project = await pool.fetchrow("SELECT id, created_by FROM projects WHERE id = $1", id)
+    project = await pool.fetchrow("SELECT id, created_by, proxy_user_id FROM projects WHERE id = $1", id)
     if project is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if user.role != "admin" and project["created_by"] != user.id:
+    if user.role != "admin" and project["proxy_user_id"] != user.id:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
     user_ids = [m.user_id for m in body.members]
@@ -249,34 +260,29 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, user: Curr
 
 @router.delete("/projects/{id}")
 async def delete_project(id: int, user: CurrentUser = Depends(require_auth)):
-    """A-55: プロジェクトの削除（S-08プロジェクト・PM管理タブ、2026-08-28追加）。project_membersと
-    project_quarter_plans（FK経由でproject_weekday_responsesも連動）はプロジェクト自体が消える以上
-    存在意義を失うため、本APIの一部としてあわせて削除する（A-29のメンバー削除とは異なり、削除対象を
-    選べる余地がないためスコープ外にはできない）。座席の島の割当（allocated_seats）は削除される
-    project_quarter_plans行の一部にすぎず、project_blocked_seats()はJOIN projectsで判定するため
-    削除後は自動的にプロジェクト専有として扱われなくなる。一方、メンバーが個別に確保済みの座席予約
-    （A-18生成分のreservations・recurring_rules）はproject_idを持たない独立したデータのため削除せず
-    残す（本人が実際にその座席を使っている実態を、プロジェクトという管理上の入れ物の削除で消さない）。
+    """A-55: プロジェクトの削除（S-08プロジェクト・PM管理タブ、2026-08-28追加）。
     2026-09-10変更: 「S-04でもS-08と同じ削除機能が欲しい」との要望を受け、role='admin'専用だった認可を
-    require_authに緩和し、role='admin'以外は対象プロジェクトの作成者（created_by＝自分）のみ許可する
-    ようにした（P-CREATOR）。削除の挙動自体は変更していない。"""
+    require_authに緩和した。
+    <strong>2026-09-14変更:</strong> 「プロジェクトを削除するとき、既に期間を設定した座席（座席の島の
+    割当を含む）まで一緒になくなる扱いになっている。期間を設定したところまではプロジェクト席として
+    残してほしい」との指摘を受け、project_members・project_quarter_plans（座席期間・座席の島の割当）・
+    project_weekday_responsesを物理削除する従来の実装をやめ、projects.deleted_atを立てるだけの
+    論理削除に変更した。既に設定済みの座席期間・座席の島の割当はそのまま残り、project_blocked_seats()
+    （deleted_atを見ない）により従来どおりperiod_endまで座席を専有し続ける。一覧系API（A-27・A-38・
+    A-13）はdeleted_at IS NULLで絞り込むため、削除済みプロジェクトは一覧・管理操作の対象からは
+    消える。メンバーが個別に確保済みの座席予約（A-18生成分のreservations・recurring_rules）は
+    元からproject_idを持たない独立データのため、この変更以前から削除対象外だった。
+    <strong>2026-09-14再訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も
+    権限はない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、role='admin'以外の
+    許可条件をP-CREATOR（created_by）からP-PROXY（proxy_user_id、PJ席決担当）に戻した。"""
     pool = get_pool()
-    project = await pool.fetchrow("SELECT id, name, created_by FROM projects WHERE id = $1", id)
+    project = await pool.fetchrow("SELECT id, name, created_by, proxy_user_id FROM projects WHERE id = $1 AND deleted_at IS NULL", id)
     if project is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if user.role != "admin" and project["created_by"] != user.id:
+    if user.role != "admin" and project["proxy_user_id"] != user.id:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """DELETE FROM project_weekday_responses
-                   WHERE plan_id IN (SELECT id FROM project_quarter_plans WHERE project_id = $1)""",
-                id,
-            )
-            await conn.execute("DELETE FROM project_quarter_plans WHERE project_id = $1", id)
-            await conn.execute("DELETE FROM project_members WHERE project_id = $1", id)
-            await conn.execute("DELETE FROM projects WHERE id = $1", id)
+    await pool.execute("UPDATE projects SET deleted_at = now() WHERE id = $1", id)
     return {"detail": f"プロジェクト「{project['name']}」を削除しました"}
 
 
@@ -331,6 +337,7 @@ async def list_quarter_plans(
            LEFT JOIN users u ON u.id = pm.user_id
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = pm.user_id AND fsa.ended_on IS NULL
            LEFT JOIN project_weekday_responses wr ON wr.plan_id = pqp.id
+           WHERE p.deleted_at IS NULL
            GROUP BY pqp.id, p.name, p.proxy_user_id, wr.choice1_weekdays, wr.choice2_weekdays, wr.note, wr.id
            ORDER BY pqp.period_start DESC, p.name"""
     )
@@ -389,7 +396,8 @@ async def list_quarter_plans(
     unplanned_rows = await pool.fetch(
         """SELECT p.id, p.name
            FROM projects p
-           WHERE NOT EXISTS (
+           WHERE p.deleted_at IS NULL
+             AND NOT EXISTS (
                SELECT 1 FROM project_quarter_plans pqp
                WHERE pqp.project_id = p.id AND pqp.period_end >= CURRENT_DATE
            )
@@ -679,6 +687,11 @@ async def send_survey_reminder(id: int, _: CurrentUser = Depends(require_roles("
 class WeekdayAiSuggestPlan(BaseModel):
     plan_id: int
     project_name: str
+    # 2026-09-15追加: 従来はrequired_seats（必要座席数＝人数）が一切送られておらず、AIは
+    # 「各曜日の合計人数が座席容量を超えないように」と指示されながら、そもそも各プロジェクトの
+    # 人数を知らないままだった（複数プロジェクトが同じ曜日を希望している＝容量超過、という
+    # 実際の人数によらない誤った決めつけの原因になっていた）。AIコードレビューで発見。
+    required_seats: int = 0
     choice1_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
     choice2_weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]] | None = None
     note: str | None = None
@@ -687,27 +700,48 @@ class WeekdayAiSuggestPlan(BaseModel):
 class WeekdayAiSuggestBody(BaseModel):
     plans: list[WeekdayAiSuggestPlan]
     weekday_capacity: dict[Literal["mon", "tue", "wed", "thu", "fri"], int]
+    # そのグループの固定座席保有者数（2026-09-15追加、「できるだけフリー座席を残すような感じに
+    # したい」との要望を受けた）。固定座席保有者は曜日によらず毎日座席を使うため、AIへ伝えて
+    # 実質的な残り座席（フリー座席として使える分）を意識した調整をさせる
+    fixed_seat_count: int = 0
 
 
 @router.post("/project-quarter-plans/weekday-ai-suggestions")
 async def suggest_weekdays_ai(body: WeekdayAiSuggestBody, _: CurrentUser = Depends(require_roles("admin"))):
     """A-74: 出社曜日の調整表（WeekdayMatrix、S-09）の仮案を生成AI（LLM）に生成させる（FR-03-11、
     2026-09-08追加。検討資料「プロジェクト座席・曜日調整フロー改善案」変更C）。DBへの書き込みは
-    行わない（提案のみ）。WeekdayMatrixはNORTH／EAST・WEST（統合）／前回の割当エリアなしの3グループに
-    分かれて表示されるため、フロントエンドはグループ単位で本APIを呼ぶ（1回の呼び出し＝1グループ分）。
-    plansの各フィールドはA-38のレスポンスをフロントエンドがそのまま渡す（バックエンド側でDBを
-    読み直さない）。weekday_capacityは「曜日ごとの合計」（v2.32・v2.33実装済み、固定座席の人数＋
-    各プロジェクトのrequired_seatsの合計）と同じ値をそのグループ分だけフロントエンドが算出して渡す。
+    行わない（提案のみ）。WeekdayMatrixはNORTH／EAST・WEST（統合）の2グループに分かれて表示される
+    ため、フロントエンドはグループ単位で本APIを呼ぶ（1回の呼び出し＝1グループ分）。座席の島の割当
+    実績がない（previous_area=null）プロジェクトは、当初は「前回の割当エリアなし」という独立した
+    第3グループにまとめていたが、「基本的にEAST・WESTの区分になるので、そのエリアの扱いにしてほしい。
+    NORTHエリアの場合は切り替えるボタンを押すような感じ」との要望を受け、既定でEAST・WESTグループへ
+    含め、エリア責任者がプロジェクトごとにNORTHへ切り替えられるボタンを設ける形に変更した
+    （2026-09-15変更、フロントエンドのareaOverrideのみで完結する画面上の分類であり、本APIやA-38の
+    previous_area自体には影響しない）。plansの各フィールドはA-38のレスポンスをフロントエンドが
+    そのまま渡す（バックエンド側でDBを読み直さない）。weekday_capacityは、当初は「曜日ごとの合計」
+    （v2.32・v2.33実装済み、固定座席の人数＋各プロジェクトのrequired_seatsの合計、需要側の数値）を
+    そのまま渡していたが、これはNORTH・EAST/WESTの実際の物理座席数（A-38のarea_seat_capacity）とは
+    無関係な値で、月〜金すべて同じ値になるため実質AIへの制約として機能しておらず、容量オーバーが
+    無いにもかかわらずAIがプロジェクトの出社曜日を動かしてしまう不具合の原因になっていた
+    （2026-09-15修正。新人研修とLCC(CS)の例：両者の第一希望は重複せず容量内に収まるのに、備考
+    「配属になる可能性があるので現状不明」をAIが曜日の制約と誤読し調整してしまった）。フロントエンドは
+    area_seat_capacityの実数値を渡すよう修正した。
     実際のLLM呼び出しはai_weekday.suggest_weekdays()に委譲する（OpenAI Chat Completions APIを
     httpxで直接呼ぶ、専用SDKは追加していない）。呼び出しに失敗した場合は502を返し、フロントエンドは
     対象グループのマトリクス表を変更しない（検討資料3.3節「失敗時」の方針）。missing_plan_ids
     （2026-09-09追加）: 依頼したplan_idのうちAIの応答に含まれていなかったもの。フロントエンドは
-    このplan_idに該当する行について「AI提案なし」である旨を利用者に示す。"""
+    このplan_idに該当する行について「AI提案なし」である旨を利用者に示す。fixed_seat_count
+    （2026-09-15追加、「できるだけフリー座席を残すような感じにしたい」との要望を受けた）は
+    そのグループの固定座席保有者数（既存ロジックのg.fixedSeatCountをそのまま渡す）。固定座席
+    保有者は曜日によらず毎日座席を使用するため、座席容量からこの人数を引いた分が実際にプロジェクト
+    ＋フリー座席として使える残りになる。プロンプトにこの人数を伝え、調整が必要な場合（複数の
+    候補曜日がある場合）はできるだけ余裕（フリー座席として残る分）が大きい曜日を優先するよう
+    指示する。重複がなく容量内に収まる第一希望をこの理由だけで動かすことはしない。"""
     if not body.plans:
         raise HTTPException(400, detail="対象のプロジェクトを1件以上指定してください")
     try:
         result = await ai_weekday.suggest_weekdays(
-            [p.model_dump() for p in body.plans], dict(body.weekday_capacity),
+            [p.model_dump() for p in body.plans], dict(body.weekday_capacity), body.fixed_seat_count,
         )
     except ai_weekday.WeekdayAiSuggestionError as e:
         raise HTTPException(502, detail="AI提案の生成に失敗しました。しばらくしてから再度お試しください") from e

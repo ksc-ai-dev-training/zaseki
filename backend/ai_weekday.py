@@ -45,14 +45,18 @@ class WeekdayAiSuggestionError(Exception):
 def _ja_weekdays(weekdays: list[str] | None) -> str:
     if not weekdays:
         return "なし"
-    return "・".join(_WEEKDAY_JA[w] for w in weekdays if w in _WEEKDAY_JA)
+    names = [_WEEKDAY_JA[w] for w in weekdays if w in _WEEKDAY_JA]
+    # 曜日数を明記する（2026-09-15追加）。「出社は週2日程度」という一般的な思い込みからか、
+    # 3日以上の第一希望を勝手に2日へ削って採用してしまうことがあったため、日数を数え間違えないよう
+    # 明示する
+    return "・".join(names) + f"（{len(names)}日）"
 
 
-def _build_prompt(plans: list[dict], weekday_capacity: dict[str, int]) -> str:
+def _build_prompt(plans: list[dict], weekday_capacity: dict[str, int], fixed_seat_count: int = 0) -> str:
     projects_lines = []
     for p in plans:
         line = (
-            f"- plan_id={p['plan_id']} 「{p['project_name']}」: "
+            f"- plan_id={p['plan_id']} 「{p['project_name']}」（必要座席数{p.get('required_seats', 0)}名）: "
             f"第一希望={_ja_weekdays(p.get('choice1_weekdays'))}、"
             f"第二希望={_ja_weekdays(p.get('choice2_weekdays'))}"
         )
@@ -60,22 +64,48 @@ def _build_prompt(plans: list[dict], weekday_capacity: dict[str, int]) -> str:
             line += f"、備考: {p['note']}"
         projects_lines.append(line)
     capacity_line = "、".join(f"{_WEEKDAY_JA[w]}: {weekday_capacity.get(w, 0)}人まで" for w in WEEKDAYS)
+    # 固定座席保有者は曜日によらず毎日その座席を使用するため、フリー座席（一般の予約用）として
+    # 実際に残るのは「座席容量－固定座席保有者数－その日のプロジェクト出社人数」になる
+    # （2026-09-15追加、「できるだけフリー座席を残すような感じにしたい」との要望を受けた）
+    fixed_seat_line = (
+        f"\n【固定座席保有者】{fixed_seat_count}名（曜日によらず毎日座席を使用するため、"
+        "上記の座席容量に含まれています）\n" if fixed_seat_count > 0 else "\n"
+    )
 
     return (
         "あなたはオフィスの座席管理を担当しています。以下のプロジェクトの出社曜日希望をもとに、"
         "各曜日の合計人数（プロジェクトごとの人数の合計）が座席容量を超えないよう、"
         "プロジェクトごとに出社曜日（月〜金の部分集合、空でもよい）を決めてください。\n\n"
-        f"【曜日ごとの座席容量】\n{capacity_line}\n\n"
+        f"【曜日ごとの座席容量】\n{capacity_line}\n"
+        f"{fixed_seat_line}\n"
         f"【各プロジェクトの希望】\n" + "\n".join(projects_lines) + "\n\n"
-        "第一希望をできるだけ優先しつつ、容量を超える場合は一部のプロジェクトを第二希望や、"
-        "第一・第二希望のいずれにも該当しない曜日に調整してください。優先順位に固定的なルールは"
-        "ないため、あなたが合理的だと考える理由をつけて判断してください。備考に出社できない曜日等の"
-        "制約が書かれている場合は考慮してください。全プロジェクト（全plan_id）について、"
-        "割り当てた曜日と日本語での判断理由を1件ずつ出力してください。"
+        "まず、全プロジェクトが第一希望どおりに出社した場合の曜日ごとの合計人数を、各プロジェクトの"
+        "必要座席数を実際に足し算して計算してください（複数のプロジェクトが同じ曜日を希望している"
+        "だけでは容量超過とは限りません。人数の合計が座席容量を超えて初めて容量超過です）。"
+        "どの曜日も座席容量を超えないのであれば、調整は一切行わず、全プロジェクトをそのまま"
+        "第一希望の曜日（第一希望に含まれる曜日をすべて、記載されている日数のとおりに）に"
+        "割り当ててください。第一希望・第二希望はそれぞれ1日とは限らず、複数日（0〜5日）を"
+        "含みます。『週2日程度』のような一般的な出社日数の慣習は考慮せず、必ず希望に記載された"
+        "曜日の数どおりに割り当ててください。座席容量を超える曜日がある場合に限り、その曜日に"
+        "希望が重なっているプロジェクトの一部を第二希望や、第一・第二希望のいずれにも該当しない"
+        "曜日に調整してください（この場合も、動かす必要のない曜日まで削らないでください）。"
+        "第一希望のままで容量を超えないプロジェクトについては、第二希望の曜日を追加で足しては"
+        "いけません。第二希望はあくまで、第一希望のままだと容量を超えてしまう場合の代替であり、"
+        "容量に余裕があるからといって出社日数を増やす理由にはなりません。"
+        "座席容量には、プロジェクト以外の一般の利用者が使うフリー座席の分も含まれています。"
+        "調整が必要になった場合（複数の候補曜日から選べる場合）は、その曜日の座席容量に対する"
+        "余裕（フリー座席として残る分）ができるだけ大きくなる曜日を優先してください。ただし、"
+        "これは複数候補がある場合の決め方であり、重複がなく容量内に収まる第一希望を、この理由"
+        "だけで動かす必要はありません。"
+        "優先順位に固定的なルールはないため、あなたが合理的だと考える理由をつけて判断してください。"
+        "備考は、出社できない曜日など具体的な曜日の制約が明記されている場合のみ考慮してください。"
+        "配属未定・状況不明といった、曜日を指定しない不確実性の記述は、曜日を動かす理由にしないで"
+        "ください。全プロジェクト（全plan_id）について、割り当てた曜日と日本語での判断理由を"
+        "1件ずつ出力してください。"
     )
 
 
-async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) -> dict:
+async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int], fixed_seat_count: int = 0) -> dict:
     """A-74: 各プロジェクトの第一・第二希望・備考（T-11）と曜日ごとの座席容量から、OpenAIへ
     仮の曜日調整案を問い合わせる。plans各要素は{plan_id, project_name, choice1_weekdays,
     choice2_weekdays, note}。戻り値は{suggestions: [{plan_id, weekdays, reasoning}, ...],
@@ -83,11 +113,15 @@ async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) 
     責任範囲外、あくまで提案）。missing_plan_idsは、渡したplan_idのうちAIの応答に含まれて
     いなかったもの（2026-09-09追加。従来は無言でその分だけ提案が欠けており、フロントエンドも
     返ってきたsuggestionsだけを反映するため、利用者が「グループ全体に提案が適用された」と
-    誤認しうる不具合があった。呼び出し元がこれを見て利用者に知らせる）。"""
+    誤認しうる不具合があった。呼び出し元がこれを見て利用者に知らせる）。fixed_seat_count
+    （2026-09-15追加、「できるだけフリー座席を残すような感じにしたい」との要望を受けた）は
+    そのグループの固定座席保有者数。曜日容量ぎりぎりまでプロジェクトで埋めると、一般の利用者が
+    使うフリー座席が残らなくなるため、調整が必要な場合（複数の候補曜日がある場合）はできるだけ
+    余裕を残す曜日を選ぶようプロンプトへ含める。"""
     if not OPENAI_API_KEY:
         raise WeekdayAiSuggestionError("OPENAI_API_KEYが設定されていません")
 
-    prompt = _build_prompt(plans, weekday_capacity)
+    prompt = _build_prompt(plans, weekday_capacity, fixed_seat_count)
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -96,6 +130,10 @@ async def suggest_weekdays(plans: list[dict], weekday_capacity: dict[str, int]) 
                 json={
                     "model": OPENAI_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
+                    # temperature=0（2026-09-15追加）: 容量に余裕がある（重複がない）プロジェクトでも
+                    # 実行のたびに結果がぶれ、同じ入力なのに第一希望から動かされたりされなかったりする
+                    # ことがあったため、なるべく決定的な出力にする狙いで追加。
+                    "temperature": 0,
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {

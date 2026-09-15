@@ -17,8 +17,10 @@ export interface ProjectForm {
   name: string
   members: ProjectMemberRow[]
   proxyUserId: number | null
-  // 作成者（projects.created_by、2026-09-09追加、千田さんの案）。アンケート回答・席決めの実権限を
-  // 持つ利用者。proxyUserIdと異なりPM/PL限定ではなくメンバー全員から選べる
+  // 作成者（projects.created_by）。2026-09-09〜2026-09-14の間はアンケート回答・席決めの実権限を
+  // 持つ扱いだった（千田さんの案）が、「そもそも要件が違う。作成者はただの作成者で権限はない」との
+  // 訂正を受け、表示専用の記録項目に戻った（実権限はproxyUserId＝PJ席決担当が持つ）。
+  // proxyUserIdと異なりPM/PL限定ではなくメンバー全員から選べる
   createdBy: number | null
 }
 
@@ -104,8 +106,8 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
             メンバー・PM／PL・PJ席決担当{showCreatorColumn && '・作成者'}
           </span>
           <p className="mb-2 text-xs text-slate-400">
-            PJ席決担当は表示用の項目です。
-            {showCreatorColumn && 'アンケート回答・メンバーへの座席確保を実際に行えるのは「作成者」のみです。'}
+            アンケート回答・メンバーへの座席確保を実際に行えるのはPJ席決担当のみです。
+            {showCreatorColumn && '「作成者」は表示用の項目で、権限は持ちません。'}
           </p>
           {showCreatorColumn && !creatorInMemberTable && (
             <p className="mb-2 rounded border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
@@ -229,7 +231,13 @@ export function ProjectDeleteConfirmModal({ projectName, onClose, onConfirm, del
         </>
       }
     >
-      <p className="text-sm">プロジェクト「{projectName}」を削除しますか？メンバー構成・四半期ごとの座席計画（アンケート回答・座席の島の割当を含む）もあわせて削除されます。メンバーが既に個別に確保済みの座席予約は取り消されません。</p>
+      <p className="text-sm">
+        プロジェクト「{projectName}」を削除しますか？削除すると一覧には表示されなくなります。
+        既に設定済みの座席期間・座席の島の割当は取り消されず、期間が終わるまでそのまま座席を確保し続けます
+        （2026-09-14修正。「期間を設定したところまではプロジェクト席として残してほしい」との指摘を受け、
+        以前あった「メンバー構成・四半期ごとの座席計画も削除される」という挙動を変更した）。
+        メンバーが既に個別に確保済みの座席予約も、従来どおり取り消されません。
+      </p>
       {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
     </Modal>
   )

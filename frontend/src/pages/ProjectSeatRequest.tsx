@@ -71,18 +71,19 @@ function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value
 // S-04 プロジェクト座席（PM側）。詳細設計書3.4節・4.3節
 export default function ProjectSeatRequest() {
   const { items, error, isLoading, refresh } = useMyProjects()
-  // 自分が作成したプロジェクトの編集・削除（2026-09-10追加。「S-04でもS-08と同じ編集・削除機能が
-  // 欲しい」との要望を受けた）。A-27は非adminの場合は自分が作成したプロジェクトのみ返すため、
-  // 一般ユーザーがこの画面で呼んでも他人のプロジェクトは含まれない
+  // 自分がPJ席決担当のプロジェクトの編集・削除（2026-09-10追加。「S-04でもS-08と同じ編集・削除機能が
+  // 欲しい」との要望を受けた）。A-27は非adminの場合は自分がPJ席決担当（proxy_user_id）のプロジェクト
+  // のみ返すため、一般ユーザーがこの画面で呼んでも他人のプロジェクトは含まれない（2026-09-14訂正、
+  // 従来はcreated_by基準だったが権限モデルの訂正によりproxy_user_id基準に戻った）
   const { items: allProjects, refresh: refreshProjects } = useProjects()
   const { me } = useMe()
 
   // 新しいプロジェクトを作成する際にメンバーも追加できるようにする（2026-09-10追加。「新しい
   // プロジェクトを作成するときメンバーの追加できるようにしてほしい」との要望を受けた）。従来は
   // プロジェクト名のみのフォームで、作成後に「編集」から改めてメンバーを追加する必要があった。
-  // 編集で使っているのと同じProjectEditModal（S-08と共通）をそのまま流用し、作成（A-78）に
-  // 続けてメンバー構成の保存（A-29、2026-09-10のcreated_by=自分バイパスにより自分が作成した
-  // 直後のプロジェクトへも呼べる）を行う
+  // 編集で使っているのと同じProjectEditModal（S-08と共通）をそのまま流用し、作成（A-78、
+  // proxy_user_id=作成した本人を設定して作成）に続けてメンバー構成の保存（A-29、proxy_user_id＝
+  // 自分バイパスにより自分が作成した直後のプロジェクトへも呼べる）を行う
   const [createForm, setCreateForm] = useState<ProjectForm | null>(null)
   const [createSubmitting, setCreateSubmitting] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -92,7 +93,13 @@ export default function ProjectSeatRequest() {
     setCreateForm({
       id: null, name: '',
       members: [{ user_id: me.id, name: `${me.last_name} ${me.first_name}`, project_title: 'PM' }],
-      proxyUserId: null, createdBy: me.id,
+      // proxyUserId（PJ席決担当）は既定で作成した本人にする（2026-09-15修正）。A-78
+      // （POST /projects/mine）は作成時点でproxy_user_id=本人を設定するが、従来はここがnullの
+      // ままsubmitCreateがA-29（メンバー保存）を呼ぶため、A-29のUPDATE文が直後にNULLへ上書きして
+      // しまい、作成した本人がアンケート回答も座席確保もできなくなる不具合があった（PJ席決担当が
+      // 実権限を持ち、作成者は表示専用という現在の権限モデルのため影響が大きい）。本人は上記の
+      // membersで既定でPMとして追加済みのため、PJ席決担当の条件（PM/PLのメンバーであること）も満たす
+      proxyUserId: me.id, createdBy: me.id,
     })
   }
   const submitCreate = async () => {
@@ -295,7 +302,7 @@ function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChange
       <h2 className="mb-2 flex items-center gap-2 text-lg font-bold">
         {item.project_name}
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">{roleLabel}</span>
-        {item.is_project_creator && (
+        {item.is_seat_assigner && (
           <span className="ml-auto flex gap-2">
             <button
               type="button"
@@ -433,11 +440,11 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
         </div>
       )}
 
-      {plan.is_project_creator && plan.status === 'survey_open' && (
+      {plan.is_seat_assigner && plan.status === 'survey_open' && (
         <SurveyPanel plan={plan} onSubmitted={refresh} />
       )}
 
-      {plan.is_project_creator && (
+      {plan.is_seat_assigner && (
         <MemberManagement plan={plan} onChanged={refresh} />
       )}
 

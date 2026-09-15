@@ -1147,6 +1147,12 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // 通常のtoggleと同様にそのプロジェクトの分だけ消す
   const [copyingPlanId, setCopyingPlanId] = useState<number | null>(null)
   const [copyErrorByPlan, setCopyErrorByPlan] = useState<Record<number, string>>({})
+  // 前回の割当エリアなし（previous_area === null）のプロジェクトの扱い（2026-09-15変更）。
+  // 以前は独立した「UNKNOWN」グループにまとめていたが、「基本的にEAST・WESTの区分になるので、
+  // そのエリアの扱いにしてほしい。NORTHエリアの場合は切り替えるボタンを押すような感じ」との
+  // 要望を受け、既定でEAST・WESTグループへ含め、プロジェクトごとにNORTHへ切り替えられる
+  // ボタンを設けた（未指定＝EAST_WEST扱い）
+  const [areaOverride, setAreaOverride] = useState<Record<number, 'NORTH' | 'EAST_WEST'>>({})
   const copyPreviousWeekdays = async (planId: number) => {
     setCopyingPlanId(planId)
     setCopyErrorByPlan((prev) => ({ ...prev, [planId]: '' }))
@@ -1209,26 +1215,39 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // できるか。EAST＆WESTは一緒にしてほしい」との要望を受けた）。曜日調整の段階（座席の島の割当前）では
   // プロジェクトごとのエリア情報がT-07に存在しないため、直近に座席の島を割り当てた四半期で実際に使った
   // エリア（A-38のprevious_area、backend/routers/project_seats.pyのlist_quarter_plans参照）で代用する、
-  // との回答による。一度も割り当てたことがないプロジェクト（previous_area=null）は別グループにまとめる。
+  // との回答による。一度も割り当てたことがないプロジェクト（previous_area=null）は、以前は独立した
+  // 「UNKNOWN」グループにまとめていたが、「基本的にEAST・WESTの区分になるので、そのエリアの扱いに
+  // してほしい。NORTHエリアの場合は切り替えるボタンを押すような感じ」との要望を受け、既定でEAST・WEST
+  // グループへ含めるよう変更した（areaOverrideでプロジェクトごとにNORTHへ切り替え可能、2026-09-15変更）。
   // seatCapacity: そのグループの物理座席数（座席タイプ問わず）。「曜日ごとの合計」がこれを超えた
-  // 曜日を警告表示するために使う（2026-09-09追加）。UNKNOWNグループはまだどのエリアになるか
-  // 決まっていないため比較対象を持たない（undefined）
-  // UNKNOWNグループのmatchFixedは、以前は「エリア不明なので0人扱い」としていたが、「現状の固定席を
-  // 含ませてほしい」との指摘を受け、全エリア合計の固定座席人数を含めるよう修正した（2026-09-09追加。
-  // どのエリアになるか決まっていない以上、NORTH・EAST/WEST個別の内訳は出せないが、実在する固定座席の
-  // 人数を0のまま表示し続けるのは実態と合わずより誤解を招くため）
+  // 曜日を警告表示するために使う（2026-09-09追加）。
   const AREA_GROUPS: {
     key: string; label: string
     matchPlan: (p: QuarterPlanItem) => boolean
     matchFixed: (a: (typeof fixedAssignments)[number]) => boolean
-    seatCapacity: number | undefined
+    seatCapacity: number
   }[] = [
-    { key: 'NORTH', label: 'NORTHエリア', matchPlan: (p) => p.previous_area === 'NORTH', matchFixed: (a) => a.area === 'NORTH', seatCapacity: areaSeatCapacity.NORTH },
-    { key: 'EAST_WEST', label: 'EAST・WESTエリア', matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST', matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST', seatCapacity: areaSeatCapacity.EAST_WEST },
-    { key: 'UNKNOWN', label: '前回の割当エリアなし（座席の島の割当が未経験）', matchPlan: (p) => p.previous_area === null, matchFixed: () => true, seatCapacity: undefined },
+    {
+      key: 'NORTH', label: 'NORTHエリア',
+      matchPlan: (p) => p.previous_area === 'NORTH' || (p.previous_area === null && areaOverride[p.id] === 'NORTH'),
+      matchFixed: (a) => a.area === 'NORTH', seatCapacity: areaSeatCapacity.NORTH,
+    },
+    {
+      key: 'EAST_WEST', label: 'EAST・WESTエリア',
+      matchPlan: (p) =>
+        p.previous_area === 'EAST' || p.previous_area === 'WEST' ||
+        (p.previous_area === null && areaOverride[p.id] !== 'NORTH'),
+      matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST', seatCapacity: areaSeatCapacity.EAST_WEST,
+    },
   ]
   const groups = AREA_GROUPS.map((g) => {
-    const groupPlans = plans.filter(g.matchPlan)
+    // 新規プロジェクト（previous_area === null、座席の島の割当実績がなくNORTH⇔EAST・WESTの
+    // 切り替えボタンが出る対象）を各グループの上に優先表示する（2026-09-15追加、「新規プロジェクトは
+    // 上に優先的に表示させて」との要望を受けた）。Array.prototype.sortは安定ソートのため、
+    // 新規・既存それぞれの中でのAPIから返ってきた順序（period_start DESC等）は保たれる
+    const groupPlans = plans
+      .filter(g.matchPlan)
+      .sort((a, b) => Number(a.previous_area !== null) - Number(b.previous_area !== null))
     const fixedSeatCount = fixedAssignments.filter(g.matchFixed).length
     return {
       ...g, plans: groupPlans, fixedSeatCount,
@@ -1237,25 +1256,35 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   }).filter((g) => g.plans.length > 0 || g.fixedSeatCount > 0)
 
   // AI提案の生成（A-74、FR-03-11、2026-09-08追加）。グループ単位で、そのグループの全プロジェクトの
-  // 第一・第二希望・備考と「曜日ごとの合計」（座席容量、既存ロジックのtotalRequiredをそのまま使う）を
-  // サーバーへ送り、仮の曜日案を受け取ってそのままcheckedへ反映する（既存の内容は上書きする）。
-  // 失敗時は該当グループを変更せずエラーを表示する（検討資料3.3節「失敗時」の方針）。
+  // 第一・第二希望・備考と座席容量をサーバーへ送り、仮の曜日案を受け取ってそのままcheckedへ反映する
+  // （既存の内容は上書きする）。失敗時は該当グループを変更せずエラーを表示する（検討資料3.3節
+  // 「失敗時」の方針）。
+  // 座席容量: 当初はtotalRequired（そのグループの必要座席数＋固定座席数の合計、需要側の数値）を
+  // そのまま流用していたが、これはNORTH・EAST/WESTの実際の物理座席数（areaSeatCapacity）とは
+  // 無関係な値になっており、月〜金すべて同じ値になるため実質AIへの制約として機能していなかった。
+  // 「人数オーバーしていないのに調整された」との指摘（2026-09-15、新人研修とLCC(CS)の例）を受け、
+  // 実際の物理座席数を渡すよう修正した（2026-09-15修正）。
+  // fixed_seat_count（2026-09-15追加、「できるだけフリー座席を残すような感じにしたい」との
+  // 要望を受けた）: 固定座席保有者は曜日によらず毎日座席を使うため、座席容量からその分を引いた
+  // 残りが実際にプロジェクト・フリー座席として使える数になる。AIに伝え、調整が必要な場合は
+  // できるだけ余裕（フリー座席として残る分）が大きい曜日を優先させる
   const generateAiSuggestions = async (group: (typeof groups)[number]) => {
     setAiLoadingGroup(group.key)
     setAiErrorByGroup((prev) => ({ ...prev, [group.key]: '' }))
     setAiPartialWarningByGroup((prev) => ({ ...prev, [group.key]: '' }))
     try {
-      const capacity = Object.fromEntries(WEEKDAYS.map((w) => [w.key, group.totalRequired])) as Record<Weekday, number>
+      const capacity = Object.fromEntries(WEEKDAYS.map((w) => [w.key, group.seatCapacity])) as Record<Weekday, number>
       const data = await apiFetch<{ suggestions: WeekdayAiSuggestion[]; missing_plan_ids: number[] }>(
         '/api/project-quarter-plans/weekday-ai-suggestions',
         {
           method: 'POST',
           body: JSON.stringify({
             plans: group.plans.map((p) => ({
-              plan_id: p.id, project_name: p.project_name,
+              plan_id: p.id, project_name: p.project_name, required_seats: p.required_seats,
               choice1_weekdays: p.choice1_weekdays, choice2_weekdays: p.choice2_weekdays, note: p.note,
             })),
             weekday_capacity: capacity,
+            fixed_seat_count: group.fixedSeatCount,
           }),
         },
       )
@@ -1324,9 +1353,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-slate-600">
                   {g.label}
-                  {g.seatCapacity !== undefined && (
-                    <span className="ml-1.5 text-xs font-normal text-slate-400">（座席総数{g.seatCapacity}席）</span>
-                  )}
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">（座席総数{g.seatCapacity}席）</span>
                 </div>
                 {g.plans.length > 0 && (
                   <button
@@ -1386,6 +1413,26 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                             {copyingPlanId === p.id ? 'コピー中...' : '前回の確定曜日をコピーする'}
                           </button>
                         )}
+                        {/* 座席の島の割当実績がなく（previous_area === null）どちらのエリアになるか未定な
+                            プロジェクト向けの切り替えボタン（2026-09-15追加）。既定ではEAST・WESTグループに
+                            含めており、実際にはNORTHになる見込みの場合だけこのボタンで切り替える */}
+                        {p.previous_area === null && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAreaOverride((prev) => ({
+                                ...prev,
+                                [p.id]: (prev[p.id] ?? 'EAST_WEST') === 'NORTH' ? 'EAST_WEST' : 'NORTH',
+                              }))
+                            }
+                            title="座席の島の割当実績がないため、どちらのエリアになるか未定です。実際に配置される見込みのエリアに合わせて切り替えてください"
+                            className="ml-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs font-normal text-slate-500 hover:bg-slate-50"
+                          >
+                            {(areaOverride[p.id] ?? 'EAST_WEST') === 'NORTH'
+                              ? 'NORTH扱い中（EAST・WESTに戻す）'
+                              : 'EAST・WEST扱い中（NORTHに切替）'}
+                          </button>
+                        )}
                         {copyErrorByPlan[p.id] && (
                           <span className="ml-1 text-xs text-red-600">{copyErrorByPlan[p.id]}</span>
                         )}
@@ -1436,9 +1483,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                         ことがわかる表記に改め、目標値のセルにも同じ説明をtitleツールチップで補足した */}
                     <td className="py-1 pr-3" title="全プロジェクトの必要座席数と固定座席の利用者数を合計した目標値。各曜日の実際のチェック合計人数がこの数に達すると、その曜日は緑色で✓表示になる">
                       必要座席数の合計（各曜日と比較する目標値）
-                      <span className="ml-1 text-xs font-normal text-slate-400">
-                        （固定座席{g.fixedSeatCount}名{g.key === 'UNKNOWN' ? '＝全エリア合計' : ''}を含む）
-                      </span>
+                      <span className="ml-1 text-xs font-normal text-slate-400">（固定座席{g.fixedSeatCount}名を含む）</span>
                     </td>
                     <td className="py-1 pr-3" title="全プロジェクトの必要座席数と固定座席の利用者数を合計した目標値">{totalRequired}名</td>
                     <td className="py-1 pr-3"></td>
@@ -1448,9 +1493,10 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                       // 座席不足の警告（2026-09-09追加）: その曜日の合計が物理座席数を超えている場合、
                       // 座席の島の割当段階で初めて発覚し曜日を調整し直す手戻りが起きていたため、
                       // 曜日を確定する前のこの段階で気づけるようにした
-                      const over = g.seatCapacity !== undefined && total > g.seatCapacity
-                        ? total - g.seatCapacity
-                        : 0
+                      const over = total > g.seatCapacity ? total - g.seatCapacity : 0
+                      // 残り席数（2026-09-15追加、「曜日調整表に残り席数も表示させたい」との要望）。
+                      // 座席不足時は⚠で不足数を示しているため、残り席数は0以上のときだけ表示する。
+                      const remaining = over === 0 ? g.seatCapacity - total : null
                       return (
                         <td
                           key={w.key}
@@ -1462,6 +1508,9 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                           {total}
                           {filled && <span className="ml-1">✓</span>}
                           {over > 0 && <span className="ml-1">⚠{over}</span>}
+                          {remaining !== null && (
+                            <span className="ml-1 text-xs font-normal text-slate-400">(残り{remaining}席)</span>
+                          )}
                         </td>
                       )
                     })}

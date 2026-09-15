@@ -60,18 +60,27 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     is_project_creator（2026-09-09追加。当初はis_seat_proxyという名前でT-05.proxy_user_id基準
     だったが、同日中の千田さんの案によるワークフロー変更で権限の基準がproxy_user_idからcreated_by
     〔プロジェクトの作成者〕に変わったことに伴い、フィールド名・基準列とも変更した）: 自分がこの
-    プロジェクトの作成者（T-05.created_by）かどうか。S-02の「複数人の代理予約」ボタンの表示条件
+    プロジェクトの作成者（T-05.created_by）かどうか。表示用の情報にのみ使う。
+    <strong>2026-09-14訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も権限は
+    ない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、権限判定の基準を
+    is_project_creator（created_by）からis_seat_assigner（T-05.proxy_user_id、PJ席決担当）に戻した
+    （2026-09-09の千田さんの案による変更を取り消し、当初のis_seat_proxyと同じ基準に戻した形になる。
+    is_project_creatorは表示用の情報としてのみ残す）。S-02の「複数人の代理予約」ボタンの表示条件
     （Availability.tsx）が、実際の権限判定（bulk_assign_free_seats_by_seat等のcan_manage、
-    role='admin' or created_by==自分 or can_assign_seats）より緩く、project_title='PM'/'PL'
-    というだけでボタンが表示され、権限のないPM/PLが操作の最後で403になる不具合があったため追加した。
-    フロント側はcan_assign_seats or is_project_creatorで判定する（project_title条件は削除する）。"""
+    role='admin' or proxy_user_id==自分 or can_assign_seats）より緩いと権限のないPM/PLが操作の
+    最後で403になるため、is_seat_assignerをここでも同じ基準で計算して返す。フロント側は
+    can_assign_seats or is_seat_assignerで判定する（project_title条件は使わない）。
+    <strong>2026-09-14追加:</strong> A-55（プロジェクト削除）を物理削除から論理削除（projects.deleted_at）
+    に変更したことに伴い、削除済みプロジェクトが自分の一覧に残り続けないよう、常にdeleted_at IS NULLで
+    絞り込む。"""
     rows = await get_pool().fetch(
         """SELECT pm.project_id, p.name AS project_name, pm.project_title, pm.can_assign_seats,
                   (p.created_by = $1) AS is_project_creator,
+                  (p.proxy_user_id = $1) AS is_seat_assigner,
                   plan.id AS plan_id, plan.period_start, plan.period_end, plan.status,
                   plan.required_seats, plan.allocated_seats
            FROM project_members pm
-           JOIN projects p ON p.id = pm.project_id
+           JOIN projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
            LEFT JOIN project_quarter_plans plan ON plan.project_id = pm.project_id
            WHERE pm.user_id = $1
            ORDER BY p.name, plan.period_start""",
@@ -87,6 +96,7 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
             "project_id": r["project_id"], "project_name": r["project_name"],
             "project_title": r["project_title"], "can_assign_seats": r["can_assign_seats"],
             "is_project_creator": r["is_project_creator"],
+            "is_seat_assigner": r["is_seat_assigner"],
             "plans": [],
         })
         if r["plan_id"] is None:
@@ -110,12 +120,17 @@ class SelfProjectCreate(BaseModel):
 
 @router.post("/projects/mine")
 async def create_my_project(body: SelfProjectCreate, user: CurrentUser = Depends(require_auth)):
-    """A-78: プロジェクトの自己申告作成（2026-09-09新設）。千田さんの案によるPJ座席運用フローの
-    変更（「プロジェクト作成は誰でもできるようにし、アンケート回答・席決めは作成した人が行う」）を
-    受けた。A-28（S-08、管理部専用）とは別に、認証済みであれば誰でも呼べる。作成者を
-    T-05.created_by として記録し、あわせてproject_membersにproject_title='PM'として自動登録する
-    （既存のPM/PL前提のUI表示や、A-29のPJ席決担当がPM/PLである必要があるというバリデーションと
-    自然に整合させるため）。"""
+    """A-78: プロジェクトの自己申告作成（2026-09-09新設）。A-28（S-08、管理部専用）とは別に、
+    認証済みであれば誰でも呼べる。作成者をT-05.created_byとして記録し、あわせてproject_membersに
+    project_title='PM'として自動登録する（既存のPM/PL前提のUI表示や、A-29のPJ席決担当がPM/PLで
+    ある必要があるというバリデーションと自然に整合させるため）。
+    <strong>2026-09-14訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も権限は
+    ない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、アンケート回答・席決め等の
+    実権限をcreated_by（作成者）ではなくproxy_user_id（PJ席決担当）に戻した（A-16・A-17・A-18・A-29・
+    A-55・A-58・A-64・A-71・A-72・A-75参照）。自己申告作成の時点ではPJ席決担当を選ぶUIがまだ
+    存在しないため、作成した本人を既定のPJ席決担当としてproxy_user_id にも設定する（後から
+    A-29で他のPM/PLへ譲渡できる）。これをしないと、作成した本人が自分のプロジェクトに対して
+    何の操作もできなくなってしまう。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
@@ -123,7 +138,7 @@ async def create_my_project(body: SelfProjectCreate, user: CurrentUser = Depends
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
-                "INSERT INTO projects (name, created_by) VALUES ($1, $2) RETURNING id", name, user.id
+                "INSERT INTO projects (name, created_by, proxy_user_id) VALUES ($1, $2, $2) RETURNING id", name, user.id
             )
             await conn.execute(
                 "INSERT INTO project_members (project_id, user_id, project_title) VALUES ($1, $2, 'PM')",
@@ -135,13 +150,13 @@ async def create_my_project(body: SelfProjectCreate, user: CurrentUser = Depends
 @router.get("/project-quarter-plans/{id}")
 async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_auth)):
     """A-14: 四半期計画の詳細（必要座席数、状態、確定曜日、割当済み座席、メンバーごとの座席確保状況）。
-    is_project_creator（2026-09-09追加。旧is_pmpl〔project_title判定〕を置き換え）: 千田さんの案に
-    よるワークフロー変更で、アンケート回答（A-16）・席決め委任（A-17）の実権限がT-05.created_by
-    〔作成者〕基準になったことに伴い、フロント側の表示条件〔ProjectSeatRequest.tsx〕もこちらに
-    合わせた。project_title基準のままだと、作成者でないPM/PLにフォームが表示されて操作の最後で
-    403になる、または作成者がPM/PL以外（例: SL、管理部が指定した作成者）だとフォーム自体が
-    表示されない不具合になる（A-13のis_project_creator追加時と同種の不具合、docstring参照）。
-    my_project_title・is_pmplは表示用（PMバッジ等）としてのみ残す。"""
+    my_project_title・is_pmplは表示用（PMバッジ等）としてのみ残す。is_project_creatorも表示用の
+    情報（自分が作成者かどうか）。
+    <strong>2026-09-14訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も権限は
+    ない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、2026-09-09に一時的に
+    T-05.created_by（作成者）基準へ切り替えていたアンケート回答（A-16）・席決め委任（A-17）等の
+    実権限判定を、T-05.proxy_user_id（PJ席決担当）基準に戻した。フロント側の表示条件
+    〔ProjectSeatRequest.tsx〕もis_project_creatorではなく新設のis_seat_assignerを見るようにする。"""
     pool = get_pool()
     plan, my_member = await _require_owner(pool, id, user.id)
 
@@ -175,9 +190,10 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
 
     is_pmpl = my_member["project_title"] in ("PM", "PL")
     is_project_creator = plan["created_by"] == user.id
+    is_seat_assigner = plan["proxy_user_id"] == user.id
     can_manage_seat_assign = (
         user.role == "admin"
-        or is_project_creator
+        or is_seat_assigner
         or my_member["can_assign_seats"]
     )
 
@@ -204,6 +220,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
         ),
         "my_project_title": my_member["project_title"], "is_pmpl": is_pmpl,
         "is_project_creator": is_project_creator,
+        "is_seat_assigner": is_seat_assigner,
         "can_manage_seat_assign": can_manage_seat_assign,
         "response": (
             {
@@ -308,12 +325,13 @@ async def submit_survey_response(id: int, body: SurveyResponseBody, user: Curren
     第一・第二希望とも、選択できる曜日数は問わない（2026-09-02訂正。「2つのみの選択を変更してなんでも
     選択できるようにしてほしい」との要望を受け、従来の「ちょうど2つ」という制約〔choice1・choice2とも〕
     を撤廃した。0個〔希望なし〕も許容する）。
-    2026-09-09変更（千田さんの案）: 回答できる対象を、P-PMPL（project_title∈{'PM','PL'}）から
-    P-CREATOR（T-05.created_by＝プロジェクトの作成者）に変更した。「プロジェクト作成は誰でも、
-    アンケート回答・席決めは作成した人が行う」というワークフローに合わせた。role='admin'は
-    引き続き対象外にはしない（他のAPIと同様の管理部バイパス、ただしA-13の一覧が自分がメンバーの
-    プロジェクトのみを返すため、admin自身がメンバーでない限りこの画面には辿り着けない＝API直叩き
-    向けの保険）。"""
+    2026-09-09変更（千田さんの案、2026-09-14に取り消し）: 回答できる対象を、一時的にP-PMPL
+    （project_title∈{'PM','PL'}）からP-CREATOR（T-05.created_by＝プロジェクトの作成者）に
+    変更していたが、「作成者は席決め担当にするのではなくただの作成者で、何も権限はない。
+    席決め担当になった人がアンケートなどに回答できる」との指摘を受け、P-PROXY（T-05.proxy_user_id＝
+    PJ席決担当）基準に戻した。role='admin'は引き続き対象外にはしない（他のAPIと同様の管理部
+    バイパス、ただしA-13の一覧が自分がメンバーのプロジェクトのみを返すため、admin自身がメンバー
+    でない限りこの画面には辿り着けない＝API直叩き向けの保険）。"""
     if body.requested_seats is not None and body.requested_seats < 0:
         raise HTTPException(400, detail="必要座席数は0以上を指定してください")
     if body.note is not None and len(body.note) > 500:
@@ -321,14 +339,14 @@ async def submit_survey_response(id: int, body: SurveyResponseBody, user: Curren
 
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.id, pqp.project_id, pqp.status, p.created_by
+        """SELECT pqp.id, pqp.project_id, pqp.status, p.proxy_user_id
            FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.id = $1""",
         id,
     )
     if plan is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if user.role != "admin" and plan["created_by"] != user.id:
+    if user.role != "admin" and plan["proxy_user_id"] != user.id:
         raise HTTPException(403, detail="この操作を行う権限がありません")
     if plan["status"] != "survey_open":
         raise HTTPException(400, detail="現在はアンケートに回答できません")
@@ -358,19 +376,21 @@ class SeatAssignPermissionBody(BaseModel):
 
 @router.put("/project-members/{id}/seat-assign-permission")
 async def update_seat_assign_permission(id: int, body: SeatAssignPermissionBody, user: CurrentUser = Depends(require_auth)):
-    """A-17: 「席決め」権限の付与・剥奪（FR-03-8）。2026-09-09変更（千田さんの案）: 付与できる人を
-    P-PMPL（対象メンバーと同一プロジェクトのPM(PL)本人）からP-CREATOR（T-05.created_by＝プロジェクトの
-    作成者）に変更した。role='admin'も対象とする（A-16と同じ考え方）。"""
+    """A-17: 「席決め」権限の付与・剥奪（FR-03-8）。2026-09-09変更（千田さんの案、2026-09-14に取消し）:
+    付与できる人を一時的にP-PMPL（対象メンバーと同一プロジェクトのPM(PL)本人）からP-CREATOR
+    （T-05.created_by＝プロジェクトの作成者）に変更していたが、「作成者は席決め担当にするのでは
+    なくただの作成者で、何も権限はない」との指摘を受け、P-PROXY（T-05.proxy_user_id＝PJ席決担当）
+    基準に戻した。role='admin'も対象とする（A-16と同じ考え方）。"""
     pool = get_pool()
     target = await pool.fetchrow(
-        """SELECT pm.id, pm.project_id, p.created_by
+        """SELECT pm.id, pm.project_id, p.proxy_user_id
            FROM project_members pm JOIN projects p ON p.id = pm.project_id
            WHERE pm.id = $1""",
         id,
     )
     if target is None:
         raise HTTPException(404, detail="対象が見つかりません")
-    if user.role != "admin" and target["created_by"] != user.id:
+    if user.role != "admin" and target["proxy_user_id"] != user.id:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
     await pool.execute(
@@ -391,11 +411,13 @@ async def update_seat_not_required(id: int, body: SeatNotRequiredBody, user: Cur
     """A-58: ずっと在宅勤務のためプロジェクト座席が不要なメンバーを設定する（FR-03-10、要求仕様書には
     明記のない追加提案）。T-06.seat_not_requiredを更新する。固定座席保有者と同様、メンバーへの座席確保
     （FR-03-7）の対象・未確保者数から除外されるだけで、既存の確保済み座席の予約は自動では取り消さない。
-    座席確保操作（FR-03-7）を行える者（admin、プロジェクトの作成者、席決め権限保有者）が設定できる
-    （2026-09-09変更、千田さんの案。PJ席決担当〔proxy_user_id〕から作成者〔created_by〕へ）。"""
+    座席確保操作（FR-03-7）を行える者（admin、PJ席決担当、席決め権限保有者）が設定できる
+    （2026-09-09にPJ席決担当〔proxy_user_id〕から作成者〔created_by〕へ変更していたが、
+    「作成者は席決め担当にするのではなくただの作成者で、何も権限はない」との指摘を受け、
+    2026-09-14にproxy_user_id基準へ戻した）。"""
     pool = get_pool()
     target = await pool.fetchrow(
-        "SELECT pm.id, pm.project_id, p.created_by FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.id = $1",
+        "SELECT pm.id, pm.project_id, p.proxy_user_id FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.id = $1",
         id,
     )
     if target is None:
@@ -403,7 +425,7 @@ async def update_seat_not_required(id: int, body: SeatNotRequiredBody, user: Cur
     caller = await _member_row(pool, target["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or target["created_by"] == user.id
+        or target["proxy_user_id"] == user.id
         or (caller is not None and caller["can_assign_seats"])
     )
     if not can_manage:
@@ -429,8 +451,10 @@ class SeatAssignmentsBody(BaseModel):
 async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUser = Depends(require_auth)):
     """A-18: 割り当てられた座席の島の範囲内で、メンバーへ座席を一括確保する（FR-03-7）。T-09（周期予約
     ルール）を生成し、確定した出社曜日（weekdays_finalized）・対象四半期をもとにT-08を一括生成する。
-    role='admin'またはP-CREATOR（T-05.created_by、プロジェクトの作成者）またはP-SEATASSIGN
-    （T-06.can_assign_seats）（2026-09-09変更、千田さんの案。従来はP-PROXY〔proxy_user_id〕だった）。
+    role='admin'またはP-PROXY（T-05.proxy_user_id、PJ席決担当）またはP-SEATASSIGN
+    （T-06.can_assign_seats）（2026-09-09に一時的にP-CREATOR〔T-05.created_by、プロジェクトの
+    作成者〕へ変更していたが、「作成者は席決め担当にするのではなくただの作成者で、何も権限は
+    ない」との指摘を受け、2026-09-14に元のP-PROXY基準へ戻した）。
     座席はallocated_seatsの範囲外を指定不可。同一座席を複数のメンバーに重複して指定した場合、
     当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。固定座席保有者を
     確保対象から一律除外していたRULE-07は2026-09-09に廃止した（「固定席・プロジェクト席・
@@ -442,7 +466,7 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
 
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.*, p.created_by FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+        """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.id = $1""",
         id,
     )
@@ -454,7 +478,7 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or plan["created_by"] == user.id
+        or plan["proxy_user_id"] == user.id
         or (my_member is not None and my_member["can_assign_seats"])
     )
     if not can_manage:
@@ -524,13 +548,14 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     範囲内の別の座席に振り替える（2026-09-07追加。A-71〔free-seat-assignments/retry〕のプロジェクト
     座席版）。A-18と同じくRULE-05・座席専有チェックはスキップし（enforce_rule05=False・
     check_project_block=False）、対象期間もA-18と同じ（本日以降〜plan.period_end）。権限はA-18と同じ
-    role='admin'またはP-CREATOR（T-05.created_by）またはP-SEATASSIGN（2026-09-09変更、千田さんの案）。"""
+    role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（2026-09-09に一時的にP-CREATOR
+    へ変更していたが、2026-09-14にP-PROXYへ戻した。A-18のdocstring参照）。"""
     if not body.dates:
         raise HTTPException(400, detail="振り替える日付を1つ以上指定してください")
 
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.*, p.created_by FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+        """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.id = $1""",
         id,
     )
@@ -542,7 +567,7 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or plan["created_by"] == user.id
+        or plan["proxy_user_id"] == user.id
         or (my_member is not None and my_member["can_assign_seats"])
     )
     if not can_manage:
@@ -617,8 +642,9 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     と同じ」と誤って言及されていた。A-58は実際にはupdate_seat_not_required（PUT
     /project-members/{id}/seat-not-required）に既に割り当て済みの番号（詳細設計書3.4節）であり、
     重複していた。A-70〜A-74が既に使用済みだったため、本エンドポイントには新たにA-75を割り当てて
-    解消した。権限はA-18と同じrole='admin'またはP-CREATOR（T-05.created_by）またはP-SEATASSIGN
-    （2026-09-09変更、千田さんの案。従来はP-PROXY〔proxy_user_id〕だった）。"""
+    解消した。権限はA-18と同じrole='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN
+    （2026-09-09に一時的にP-CREATORへ変更していたが、「作成者は席決め担当にするのではなくただの
+    作成者で、何も権限はない」との指摘を受け2026-09-14にP-PROXYへ戻した）。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
     for a in body.assignments:
@@ -629,7 +655,7 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
 
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.id, pqp.project_id, p.created_by FROM project_quarter_plans pqp
+        """SELECT pqp.id, pqp.project_id, p.proxy_user_id FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id WHERE pqp.id = $1""",
         id,
     )
@@ -639,7 +665,7 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or plan["created_by"] == user.id
+        or plan["proxy_user_id"] == user.id
         or (my_member is not None and my_member["can_assign_seats"])
     )
     if not can_manage:
@@ -723,14 +749,14 @@ async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody,
     だけを対象にする（元々成功していた日には触れない）。座席はidではなく座席番号（seat_no）で指定する
     （A-22座席一覧は管理部専用のため、管理部以外の呼び出し元〔PJ席決担当〕が座席idの一覧を取得する
     手段がなく、フロアマップ上で見えている座席番号をそのまま入力できるようにするため）。権限は
-    role='admin'またはP-CREATOR（T-05.created_by）またはP-SEATASSIGN（2026-09-09変更、千田さんの案。
-    従来はP-PROXY〔proxy_user_id〕だった）。"""
+    role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（2026-09-09に一時的に
+    P-CREATORへ変更していたが、2026-09-14にP-PROXYへ戻した。A-18のdocstring参照）。"""
     if not body.dates:
         raise HTTPException(400, detail="振り替える日付を1つ以上指定してください")
 
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.id, pqp.project_id, p.created_by FROM project_quarter_plans pqp
+        """SELECT pqp.id, pqp.project_id, p.proxy_user_id FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id WHERE pqp.id = $1""",
         id,
     )
@@ -740,7 +766,7 @@ async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody,
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or plan["created_by"] == user.id
+        or plan["proxy_user_id"] == user.id
         or (my_member is not None and my_member["can_assign_seats"])
     )
     if not can_manage:
@@ -784,8 +810,8 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
     従来は一度確保すると「割り当てる座席」欄が「—」表示になり、この画面からは変更できず、
     S-11等で個別に取消してからA-18で確保し直す必要があった）。旧座席の予約を（未来分のみ）取り消してから、
     A-18と同じロジックで新しい座席への周期予約を生成する。権限・状態チェックはA-18と同じ
-    （role='admin'またはP-CREATOR〔T-05.created_by〕またはP-SEATASSIGN、2026-09-09変更、
-    千田さんの案。従来はP-PROXY〔proxy_user_id〕だった）。
+    （role='admin'またはP-PROXY〔T-05.proxy_user_id〕またはP-SEATASSIGN。2026-09-09に一時的に
+    P-CREATORへ変更していたが、2026-09-14にP-PROXYへ戻した）。
 
     変更先の座席が既に他のメンバーに割り当て済みの場合は、当初拒否していたが（初版）、座席の島が
     必要人数ちょうどで確保されている（＝空き座席がない）ケースが多く、「変更先を選択を押しても座席が
@@ -800,7 +826,7 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
     新しい座席の確保は行わない。"""
     pool = get_pool()
     plan = await pool.fetchrow(
-        """SELECT pqp.*, p.created_by FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
+        """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.id = $1""",
         id,
     )
@@ -812,7 +838,7 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
         user.role == "admin"
-        or plan["created_by"] == user.id
+        or plan["proxy_user_id"] == user.id
         or (my_member is not None and my_member["can_assign_seats"])
     )
     if not can_manage:

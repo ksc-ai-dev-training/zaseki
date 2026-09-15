@@ -287,7 +287,9 @@ export interface ProjectListItem {
   members: ProjectMemberSummary[]
   proxy_user_id: number | null
   proxy_user_name: string | null
-  /** プロジェクトの作成者（projects.created_by）。アンケート回答・席決めの実権限を持つ（2026-09-09追加、千田さんの案） */
+  /** プロジェクトの作成者（projects.created_by）。表示専用の記録項目で権限は持たない
+   * （2026-09-09〜2026-09-14はアンケート回答・席決めの実権限を持つ扱いだったが、「そもそも
+   * 要件が違う」との訂正を受け表示専用に戻った。実権限はproxy_user_id＝PJ席決担当が持つ） */
   created_by: number | null
   created_by_name: string | null
 }
@@ -397,10 +399,15 @@ export interface MyProjectItem {
   project_name: string
   project_title: ProjectTitle
   can_assign_seats: boolean
-  /** 自分がこのプロジェクトの作成者（projects.created_by）かどうか（2026-09-09追加。当初は
-   * is_seat_proxy〔proxy_user_id基準〕という名前だったが、千田さんの案によるワークフロー変更で
-   * 権限の基準がcreated_byに変わったことに伴い名称・基準列とも変更した） */
+  /** 自分がこのプロジェクトの作成者（projects.created_by）かどうか。表示用の情報にのみ使う
+   * （2026-09-14訂正。「作成者はただの作成者で権限はない」との指摘を受け、権限判定は
+   * is_seat_assignerに分離した） */
   is_project_creator: boolean
+  /** 自分がこのプロジェクトのPJ席決担当（projects.proxy_user_id）かどうか（2026-09-14追加。
+   * アンケート回答・席決め等の実権限判定に使う。2026-09-09に一時的にis_project_creator
+   * 〔created_by基準〕へ切り替えていたが、「席決め担当になった人がアンケートなどに回答できる」
+   * との指摘を受け、proxy_user_id基準に戻した） */
+  is_seat_assigner: boolean
   // 対象四半期を自由に選択できるよう、存在する計画を全件（period_start昇順）返す
   // （2026-08-31訂正。従来はplan: MyProjectPlanSummary | null で直近1件のみだった）
   plans: MyProjectPlanSummary[]
@@ -439,11 +446,15 @@ export interface ProjectPlanDetail {
   allocated_seat_label: string | null
   allocated_seats: { id: number; seat_no: string }[] | null
   my_project_title: ProjectTitle
-  /** @deprecated 表示用（PM/PLバッジ等）にのみ使う。権限判定にはis_project_creatorを使うこと */
+  /** @deprecated 表示用（PM/PLバッジ等）にのみ使う。権限判定にはis_seat_assignerを使うこと */
   is_pmpl: boolean
-  /** 自分がこのプロジェクトの作成者かどうか（2026-09-09追加、千田さんの案。旧is_pmplに代わり
-   * アンケート回答パネル・席決め委任パネルの表示条件として使う） */
+  /** 自分がこのプロジェクトの作成者かどうか。表示用の情報にのみ使う（2026-09-14訂正。
+   * 「作成者はただの作成者で権限はない」との指摘を受け、権限判定から切り離した） */
   is_project_creator: boolean
+  /** 自分がこのプロジェクトのPJ席決担当かどうか（2026-09-14追加。アンケート回答パネル・
+   * 席決め委任パネルの表示条件として使う。2026-09-09に一時的にis_project_creator基準へ
+   * 切り替えていたが、2026-09-14に元のPJ席決担当基準へ戻した） */
+  is_seat_assigner: boolean
   can_manage_seat_assign: boolean
   response: ProjectPlanResponse | null
   has_previous_plan: boolean

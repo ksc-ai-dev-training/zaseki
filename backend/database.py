@@ -221,6 +221,15 @@ UPDATE projects p SET created_by = (
 UPDATE projects p SET created_by = (
     SELECT pm.user_id FROM project_members pm WHERE pm.project_id = p.id ORDER BY pm.id LIMIT 1
 ) WHERE p.created_by IS NULL;
+-- deleted_at（論理削除、2026-09-14追加）: 「プロジェクトを削除するとき、既に期間を設定した
+-- 座席（project_quarter_plans、座席の島の割当を含む）まで一緒に消えてしまう」との指摘を受けた。
+-- project_quarter_plansはprojects(id)への物理外部キーを持つため、プロジェクト行を物理削除する
+-- 限り座席期間側も道連れに削除するか、参照をNULLにする必要があった。物理削除をやめてこの列を
+-- 立てるだけの論理削除に変更し、project_members・project_quarter_plans（座席期間・座席の島の
+-- 割当）はいずれも物理削除せずそのまま残すことで、既に設定済みの座席期間はperiod_endまで
+-- 従来どおり座席を専有し続ける（project_blocked_seats()はdeleted_atを見ないため影響を受けない）。
+-- 一覧系API（A-27・A-38・A-13）はdeleted_at IS NULLで絞り込み、削除済みプロジェクトを非表示にする。
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 -- T-06 project_members
 CREATE TABLE IF NOT EXISTS project_members (

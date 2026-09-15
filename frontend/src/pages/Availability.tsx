@@ -78,18 +78,26 @@ function shiftDateStr(dateStr: string, days: number): string {
 }
 const WEEKDAY_DOW: Record<Weekday, number> = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5 }
 // 対象四半期の開始日（periodStart）以降で、確定した出社曜日（weekdaysFinalized）に最初に
-// 該当する日を返す（最大6日先まで探索。該当する曜日がなければperiodStartそのままを返す）。
+// 該当する日を返す（最大6日先まで探索。該当する曜日がなければ起点の日をそのまま返す）。
 // 「曜日が確定しているときに座席の割り当てをするので、その曜日のプロジェクト始動日初日に
-// 設定してほしい」との要望を受けた（2026-09-02追加。開始日自体が確定曜日でないこともあるため）
+// 設定してほしい」との要望を受けた（2026-09-02追加。開始日自体が確定曜日でないこともあるため）。
+// 2026-09-14修正: periodStartを常に起点にしていたため、既に始まっている期間（例:
+// 2026-07-01開始で今日が2026-09-14）ではperiodStartそのものが1か月以上前の過去日付になり、
+// A-06（座席状況取得）のD12過去参照制限（既定31日）に引っかかって400エラーになり、
+// フロアマップが表示できなくなっていた（「座席の島の割当をまとめて行うのボタンを押したとき
+// 本来座席表が見れるはずなのに見れない」との報告を受けた）。起点をperiodStartと今日の
+// 遅い方（max）にすることで、既に始まっている期間では今日以降の直近の該当曜日を指すようにした
+// （期間がまだ始まっていない場合はperiodStartのまま、従来どおり）
 function firstMatchingWeekdayOnOrAfter(periodStart: string, weekdaysFinalized: Weekday[]): string {
-  if (weekdaysFinalized.length === 0) return periodStart
+  const start = periodStart > todayStr() ? periodStart : todayStr()
+  if (weekdaysFinalized.length === 0) return start
   const dows = new Set(weekdaysFinalized.map((w) => WEEKDAY_DOW[w]))
-  let d = periodStart
+  let d = start
   for (let i = 0; i < 7; i++) {
     if (dows.has(new Date(`${d}T00:00:00`).getDay())) return d
     d = shiftDateStr(d, 1)
   }
-  return periodStart
+  return start
 }
 function formatDateJa(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`)
@@ -168,12 +176,14 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
   const [error, setError] = useState<string | null>(null)
 
   // 実際の権限判定（バックエンドのcan_manage、project_pm.py参照）はcan_assign_seats or
-  // created_by==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
+  // proxy_user_id==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
   // project_title==='PM'/'PL'もOR条件に含めていたため、権限のないPM/PLにもボタンが表示され、
   // 対象メンバー選択・座席クリックまで操作した最後にAPIの403で初めて拒否される不具合があった
   // （2026-09-09修正。同日中に千田さんの案でcan_manageの基準がproxy_user_idからcreated_byへ
-  // 変わったことに伴い、ここもis_seat_proxy→is_project_creatorに追従した）。
-  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_project_creator) && p.plans.length > 0)
+  // 変わったことに伴い、ここもis_seat_proxy→is_project_creatorに追従したが、2026-09-14に
+  // 「作成者はただの作成者で権限はない。席決め担当になった人がアンケートなどに回答できる」との
+  // 指摘を受け、is_project_creator→is_seat_assigner〔proxy_user_id基準〕に戻した）。
+  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_seat_assigner) && p.plans.length > 0)
   // 対象プロジェクトを1つも持たない利用者にはボタン自体を表示しない（2026-09-07修正。
   // 「対象外の人にはボタン自体を表示しないように」との要望を受けた。以前はボタンが
   // 常に表示され、押した後のモーダル内のプルダウンで初めて対象外と分かる作りだった）
