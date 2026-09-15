@@ -454,6 +454,40 @@ export default function ProjectSeatAllocation() {
           </div>
         )}
 
+        {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧。次のサイクルの座席割り当てを
+            行う際に前回の曜日調整表を参考にしたいとの要望を受け、座席割り当てより上に表示するよう
+            順序を入れ替えた（2026-09-15修正。以前は座席割り当て→曜日調整表の順だった） */}
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
+          <WeekdayMatrix
+            plans={visiblePlans.filter((p) => p.status === 'survey_open')}
+            areaSeatCapacity={areaSeatCapacity}
+            onFinalized={refreshAll}
+          />
+
+          <ConfirmedWeekdaysTable
+            plans={visiblePlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
+            onChanged={refreshAll}
+          />
+        </section>
+
+        <hr className="border-slate-200" />
+
+        {/* 座席期間の一括修正（A-66）: 「座席期間を一括で新規設定する」（新しい計画行を追加するA-68）と
+            紛らわしく、隣に並んでいると勘違いしやすいとの指摘を受け、座席割り当てと曜日調整表の間へ
+            分離して配置した（2026-09-11修正） */}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={openBulkPeriod}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            プロジェクトを選んで座席期間を一括設定する
+          </button>
+        </div>
+
+        <hr className="border-slate-200" />
+
         {/* 座席割り当て: 一覧（対象期間・状態・行ごとの割当操作）と、一括割当の起点ボタン。
             一括割当ボタンは従来ページ最上部にあったが、「上に表示されているが下の方に表示してほしい」
             との要望を受け、この一覧の下（同じ座席割り当てセクション内）へ移動した（2026-09-10） */}
@@ -523,38 +557,6 @@ export default function ProjectSeatAllocation() {
               </button>
             </div>
           )}
-        </section>
-
-        <hr className="border-slate-200" />
-
-        {/* 座席期間の一括修正（A-66）: 「座席期間を一括で新規設定する」（新しい計画行を追加するA-68）と
-            紛らわしく、隣に並んでいると勘違いしやすいとの指摘を受け、座席割り当てと曜日調整表の間へ
-            分離して配置した（2026-09-11修正） */}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={openBulkPeriod}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            プロジェクトを選んで座席期間を一括設定する
-          </button>
-        </div>
-
-        <hr className="border-slate-200" />
-
-        {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧 */}
-        <section className="space-y-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
-          <WeekdayMatrix
-            plans={visiblePlans.filter((p) => p.status === 'survey_open')}
-            areaSeatCapacity={areaSeatCapacity}
-            onFinalized={refreshAll}
-          />
-
-          <ConfirmedWeekdaysTable
-            plans={visiblePlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
-            onChanged={refreshAll}
-          />
         </section>
       </div>
 
