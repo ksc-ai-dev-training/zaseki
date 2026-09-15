@@ -534,13 +534,6 @@ export default function ProxyBooking() {
             <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{cancelTarget.date ? formatDateJa(cancelTarget.date) : '－'}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{cancelTarget.seat_no}{cancelTarget.project_name && `（${cancelTarget.project_name}）`}</dd></div>
           </dl>
-          <p className="mt-3 text-sm text-slate-600">
-            {cancelTarget.kind === 'fixed_absent'
-              ? 'この日は1日だけ固定座席の利用を取り消しています。「元に戻す」を選ぶと、この日も通常どおり固定座席として使えるようにします。'
-              : cancelTarget.kind === 'fixed'
-                ? '「この日だけ取り消す」を選ぶと、固定座席の割当自体は残したまま、この日だけ空席にします（翌日以降は元どおり固定座席として表示されます）。「割当を解除する（全期間）」を選ぶと、この固定座席の割当を完全に解除します。「変更する」を選ぶと、解除したうえで続けて別の固定座席を指定できます。'
-                : 'この予約を取り消します。「変更する」を選ぶと、取り消したうえで続けて別の座席を代理予約できます。'}
-          </p>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
         </Modal>
       )}
@@ -564,9 +557,6 @@ export default function ProxyBooking() {
             <div className="flex justify-between"><dt className="text-slate-500">表示期間</dt><dd>{bulkPeriodStart} 〜 {bulkPeriodEnd}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">対象件数</dt><dd>{bulkTargets.length}件</dd></div>
           </dl>
-          <p className="mt-3 text-sm text-slate-600">
-            上記の条件に一致する予約（固定座席の割当を除く）を、まとめて取り消します。よろしいですか？
-          </p>
           {bulkError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{bulkError}</p>}
         </Modal>
       )}

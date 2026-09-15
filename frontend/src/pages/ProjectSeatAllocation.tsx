@@ -414,13 +414,8 @@ export default function ProjectSeatAllocation() {
               プロジェクトを、次の期間を作成するときの対象にできない」との報告）。期間未設定の警告と
               一括新規設定ボタンの表示自体は分離し、ボタンは常に表示する */}
           <div className={`rounded border p-4 ${unplannedProjects.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-            {unplannedProjects.length > 0 ? (
-              <>
-                <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
-                <p className="mb-3 text-xs text-amber-700">現在・今後にわたる座席期間が1件も設定されていません。全プロジェクトが同じ期間を共有する運用のため、下のボタンからまとめて同じ開始日・終了日を設定してください（設定すると即座に出社曜日アンケートが回答可能になります）。</p>
-              </>
-            ) : (
-              <p className="mb-3 text-xs text-slate-500">全プロジェクトに座席期間が設定済みです。次のサイクル分の期間を先に用意したい場合は、下のボタンから全プロジェクトへまとめて新しい期間を追加できます（既存の期間と重ならない範囲で設定してください。含めたくないプロジェクトはモーダル内でチェックを外せます）。</p>
+            {unplannedProjects.length > 0 && (
+              <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
             )}
             <button
               type="button"
@@ -519,7 +514,6 @@ export default function ProjectSeatAllocation() {
           {bulkBlockEligiblePlans.length > 0 && (
             <div className="rounded border border-blue-200 bg-blue-50 p-4">
               <div className="mb-2 text-sm font-semibold text-blue-800">座席の島の割当が必要なプロジェクト（{bulkBlockEligiblePlans.length}件）</div>
-              <p className="mb-3 text-xs text-blue-700">出社曜日が確定し、座席の島の割当を待っているプロジェクトです。下のボタンから空き状況・予約へまとめて遷移し、右側の一覧でプロジェクトを切り替えながら座席を選んで、最後に1回でまとめて登録できます。</p>
               <button
                 type="button"
                 onClick={goSeatBlockBulk}
@@ -604,7 +598,6 @@ export default function ProjectSeatAllocation() {
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">座席の島の割当前（曜日確定前）のみ変更できます。任意の開始日・終了日を指定できます。</p>
             <MonthDurationPicker onApply={(s, e) => { setPeriodStartValue(s); setPeriodEndValue(e) }} />
             <label className="block">
               <span className="mb-1 block text-slate-500">開始日</span>
@@ -648,7 +641,6 @@ export default function ProjectSeatAllocation() {
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください（既定で全プロジェクトが選択済みです。今回のサイクルに含めたくないプロジェクトはチェックを外してください）。設定すると即座に出社曜日アンケートが回答可能になります。必要座席数はプロジェクトごとの現状の人数（固定座席保有者・在宅のため不要なメンバーを除く）から自動算出されます。既に座席期間があるプロジェクトを選んだ場合は次のサイクル分の期間として追加され、指定した期間が既存の期間と重なっていると保存時にエラーになります。</p>
             <MonthDurationPicker onApply={(s, e) => { setBulkCreateStartValue(s); setBulkCreateEndValue(e) }} />
             <div className="flex gap-3">
               <label className="block flex-1">
@@ -717,7 +709,6 @@ export default function ProjectSeatAllocation() {
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">同じ開始日・終了日を設定するプロジェクトを選択してください。座席の島の割当前（曜日確定前）のプロジェクトのみ対象です。</p>
             <MonthDurationPicker onApply={(s, e) => { setBulkPeriodStartValue(s); setBulkPeriodEndValue(e) }} />
             <div className="flex gap-3">
               <label className="block flex-1">
@@ -1059,7 +1050,6 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">変更後、各プロジェクトは次の曜日に出社する扱いになります。</p>
             <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {editablePlans.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">
@@ -1097,7 +1087,6 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">取り消すプロジェクトを選択してください。アンケート回答受付中の状態に戻り、出社曜日の調整表で再度確定できます。</p>
             <div className="max-h-72 space-y-1 overflow-y-auto">
               {unfinalizeCandidates.map((p) => (
                 <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50">
@@ -1542,7 +1531,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
           }
         >
           <div className="space-y-3 text-sm">
-            <p className="text-slate-500">確定すると、各プロジェクトは次の曜日に出社する扱いになります。</p>
             <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {plans.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">

@@ -302,9 +302,6 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
               </div>
             )}
             {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
-            <p className="text-xs text-slate-400">
-              メンバーを選んで進むと、通常のフリー座席予約と同じように、フロアマップ上で空いている座席をクリックし相手を選んで確保できます（「繰り返し予約にする」にチェックを入れると曜日パターン・期間をまとめて指定できます）。
-            </p>
           </div>
         </Modal>
       )}
@@ -1787,9 +1784,6 @@ export default function Availability() {
               </dd>
             </div>
           </dl>
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            左のフロアマップで座席をクリックして選択・解除してください。ブロックの見出し名をクリックすると、そのブロックの空き座席をまとめて選択・解除できます。
-          </p>
           {blockConflicts.length > 0 && (
             <div className="mt-3 space-y-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               {blockConflicts.map((c, i) => (<p key={i}>⚠ {c}</p>))}
@@ -1821,9 +1815,6 @@ export default function Availability() {
       {seatBlockBulkFor && (
         <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <h2 className="text-sm font-semibold text-slate-800">座席の島の一括割当</h2>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            プロジェクトを選び、左のフロアマップで座席をクリックして選択・解除してください。プロジェクトを切り替えても選択内容は保持されます。
-          </p>
           <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto">
             {seatBlockBulkFor.plans.map((p) => {
               const count = bulkSelections[p.planId]?.size ?? 0
@@ -2311,11 +2302,6 @@ export default function Availability() {
               />
               繰り返し予約にする
             </label>
-            {!pickRecurring && (
-              <p className="mt-1.5 text-xs text-slate-500">
-                この座席をこの1日だけ確保します。別の日にも確保したい場合は、モーダルを閉じたあと画面上部の日付を変えて、同じ操作を繰り返してください。
-              </p>
-            )}
             {pickRecurring && (
               <div className="mt-3 space-y-3 text-sm">
                 <div className="flex gap-4">

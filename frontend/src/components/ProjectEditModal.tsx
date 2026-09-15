@@ -111,10 +111,6 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
           <span className="mb-1 block text-slate-500">
             メンバー・PM／PL・PJ席決担当{showCreatorColumn && '・作成者'}
           </span>
-          <p className="mb-2 text-xs text-slate-400">
-            アンケート回答・メンバーへの座席確保を実際に行えるのはPJ席決担当のみです。
-            {showCreatorColumn && '「作成者」は表示用の項目で、権限は持ちません。'}
-          </p>
           {showCreatorColumn && !creatorInMemberTable && (
             <p className="mb-2 rounded border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
               {form.createdBy === me?.id
@@ -239,11 +235,7 @@ export function ProjectDeleteConfirmModal({ projectName, onClose, onConfirm, del
       }
     >
       <p className="text-sm">
-        プロジェクト「{projectName}」を削除しますか？削除すると一覧には表示されなくなります。
-        既に設定済みの座席期間・座席の島の割当は取り消されず、期間が終わるまでそのまま座席を確保し続けます
-        （2026-09-14修正。「期間を設定したところまではプロジェクト席として残してほしい」との指摘を受け、
-        以前あった「メンバー構成・四半期ごとの座席計画も削除される」という挙動を変更した）。
-        メンバーが既に個別に確保済みの座席予約も、従来どおり取り消されません。
+        プロジェクト「{projectName}」を削除しますか？
       </p>
       {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
     </Modal>

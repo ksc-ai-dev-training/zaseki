@@ -203,9 +203,6 @@ function UsersTab() {
           </tbody>
         </table>
       </div>
-      <p className="px-4 py-3 text-xs text-slate-400">
-        「エリア担当」（エリア責任者・副責任者）はrole=管理部の利用者のみ設定できる。特定のエリアへの配置は行わず、全プロジェクト共通の役割として設定する。
-      </p>
 
       {form && (
         <Modal
@@ -497,9 +494,6 @@ function NotificationsTab() {
 
   return (
     <div className="max-w-2xl rounded border border-slate-200 bg-white p-6">
-      <p className="mb-4 text-sm text-slate-500">
-        出社曜日アンケート関連の通知先（Slack Incoming Webhook URL）と、実際に送信される通知文言を設定する。プロジェクト座席共通の1つの通知先のみを持つ。エリア責任者・副責任者の指定は「利用者ロール管理」タブで行う。
-      </p>
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Slack通知先（Webhook URL）</span>
         <input

@@ -503,7 +503,6 @@ export default function SeatMaster() {
                   className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
-              <p className="text-xs text-slate-400">エリア・座席タイプは入力したすべての座席番号に共通で適用されます。既に使用されている座席番号は自動的にスキップされます。</p>
               {bulkError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{bulkError}</p>}
             </div>
           )}

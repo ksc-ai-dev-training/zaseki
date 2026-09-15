@@ -218,7 +218,6 @@ export default function MyProfile() {
                   )}
                 </div>
               </div>
-              <p className="mt-2 text-xs text-slate-400">JPEG・PNG・GIF・WebP形式、10MB以下。選択すると位置・拡大率を調整する画面が開きます。未設定の場合は氏名の頭文字で表示されます。</p>
             </div>
 
             <div className="mb-6">
@@ -255,9 +254,6 @@ export default function MyProfile() {
                   </button>
                 )}
               </div>
-              <p className="mt-2 text-xs text-slate-400">
-                年は登録しません。登録すると、その月日に空き状況・予約の座席タイルに誕生日であることが表示されます。
-              </p>
             </div>
 
             {error && <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -323,7 +319,6 @@ export default function MyProfile() {
                 className="flex-1"
               />
             </label>
-            <p className="text-xs text-slate-400">ドラッグして位置を調整できます。</p>
           </div>
         </Modal>
       )}
