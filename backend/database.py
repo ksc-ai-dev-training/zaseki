@@ -304,6 +304,25 @@ CREATE TABLE IF NOT EXISTS feedback (
     content     TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- セキュリティ: 本番はSupabase上のPostgreSQLで、Data API（PostgREST）経由でも public スキーマの
+-- テーブルが公開されうる。このアプリはFastAPI（DATABASE_URL経由の直接接続、認可はアプリ側で実施）
+-- のみを使い、PostgREST／anon・authenticatedロールは使わないため、全テーブルでRLSを有効化する
+-- （ポリシーは追加しない＝anon・authenticatedからは全面拒否。所有者ロールで接続するアプリ本体の
+-- 動作には影響しない）。Supabase Advisorsの「RLS Disabled in Public」指摘への対応（2026-09-16追加）。
+ALTER TABLE IF EXISTS users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS areas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS seats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS fixed_seat_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS fixed_seat_absences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS recurring_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_quarter_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_weekday_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS feedback ENABLE ROW LEVEL SECURITY;
 """
 
 
