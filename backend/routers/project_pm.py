@@ -254,7 +254,10 @@ async def get_previous_quarter_plan(id: int, user: CurrentUser = Depends(require
     〔SurveyForm〕・「前回の座席をコピーする」〔BulkSeatAssign〕、S-09の「前回の確定曜日を
     コピーする」〔WeekdayMatrix〕がそれぞれ使う）。(2) S-09（エリア責任者、role='admin'）からも
     呼べるよう、role='admin'であれば自分がプロジェクトのメンバーでなくても許可するようにした。
-    A-14と共有する_require_ownerはmy_memberがNone非許容の実装のため、それとは独立に権限判定する。"""
+    A-14と共有する_require_ownerはmy_memberがNone非許容の実装のため、それとは独立に権限判定する。
+    2026-09-16追加: allocated_seat_label（座席番号だけの簡潔な表示、現在の計画のallocated_seat_labelと
+    同じ_format_seat_rangeで整形）を追加した。S-09の曜日調整表に前回の座席の島・確定曜日を常時表示
+    する欄向けで、メンバー個別の内訳までは不要なケース用（assignmentsは引き続き残す）。"""
     pool = get_pool()
     plan = await pool.fetchrow(
         "SELECT project_id, period_start FROM project_quarter_plans WHERE id = $1", id
@@ -300,6 +303,12 @@ async def get_previous_quarter_plan(id: int, user: CurrentUser = Depends(require
     return {
         "id": previous["id"], "period_start": previous["period_start"].isoformat(),
         "period_end": previous["period_end"].isoformat(), "assignments": assignments,
+        # 座席番号だけを簡潔に示したい呼び出し元向け（2026-09-16追加、S-09の常時表示欄が使う）。
+        # 個々のメンバーの割当ではなく、そのプロジェクトに割り当てられていた座席の島そのものを表す
+        "allocated_seat_label": (
+            _format_seat_range([seat_no_by_id[sid] for sid in allocated_seat_ids if sid in seat_no_by_id])
+            if allocated_seat_ids else None
+        ),
         "weekdays_finalized": json.loads(previous["weekdays_finalized"]) if previous["weekdays_finalized"] else None,
         "response": (
             {

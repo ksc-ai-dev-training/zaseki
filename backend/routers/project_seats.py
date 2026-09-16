@@ -48,7 +48,11 @@ _SEAT_NO_RE = re.compile(r"^([A-Za-z]+)(\d+)$")
 
 
 def _format_seat_range(seat_nos: list[str]) -> str:
-    """座席番号の配列を「D1〜D4」のように整形する（連番でなければカンマ区切り）"""
+    """座席番号の配列を「D1〜D4」のように整形する（連番でなければカンマ区切り）。
+    1件だけの場合はその座席番号をそのまま返す（2026-09-16修正。従来は1件でも「O2〜O2」のような
+    自己範囲になっていた）"""
+    if len(seat_nos) == 1:
+        return seat_nos[0]
     parsed = []
     for no in seat_nos:
         m = _SEAT_NO_RE.match(no)
@@ -128,10 +132,12 @@ async def search_users_for_project(q: str = "", user: CurrentUser = Depends(requ
     の部分一致で最大20件返す。"""
     if not q:
         return {"items": []}
+    # 2026-09-16修正: 画面表示「姓 名」のスペースを除去してから比較する（last_name||first_nameは
+    # スペース無し結合のため、表示通りに入力すると常に0件になっていた）
     rows = await get_pool().fetch(
         """SELECT id, last_name, first_name, email FROM users
            WHERE deleted_at IS NULL
-             AND ((last_name || first_name) ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+             AND ((last_name || first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%' OR email ILIKE '%' || $1 || '%')
            ORDER BY last_name, first_name LIMIT 20""",
         q,
     )

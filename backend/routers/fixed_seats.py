@@ -50,12 +50,15 @@ async def list_candidates(q: str = "", _: CurrentUser = Depends(require_roles("a
     （2026-08-28、current_statusを'free'|'fixed'|'project'の3区分〔SeatTypeと同じ値〕へ変更。
     従来はプロジェクト座席の利用状況を区別せず一律の文言を返していたが、T-05〜T-07の実装により
     本日時点で実際にプロジェクト座席を利用中かどうかを区別できるようになったため）。"""
+    # 2026-09-16修正: 画面には常に「姓 名」とスペース区切りで表示されるが、比較対象の列は
+    # last_name||first_name とスペース無しで結合しているため、表示通りに入力すると常に0件に
+    # なっていた（「氏名で検索すると出てこない」報告を受けた）。入力側のスペースを除去して比較する
     rows = await get_pool().fetch(
         """SELECT u.id, u.last_name, u.first_name
            FROM users u
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id AND fsa.ended_on IS NULL
            WHERE u.deleted_at IS NULL AND fsa.seat_id IS NULL
-             AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+             AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
            ORDER BY u.last_name, u.first_name""",
         q,
     )

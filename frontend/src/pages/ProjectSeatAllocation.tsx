@@ -5,7 +5,7 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
-import type { QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
+import type { PreviousPlanDetail, QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
   const d = new Date()
@@ -20,6 +20,10 @@ const WEEKDAYS: { key: Weekday; label: string }[] = [
 // 出社曜日の確定・変更を「この内容で変更しますか」の確認画面に表示するための要約文字列
 // （2026-09-11追加。「曜日調整の変更がわかりにくい。確認欄に各プロジェクトが何曜日に出社するか
 // わかるようにしてほしい」との要望を受けた。それまでは確認なしに直接送信していた）
+function formatWeekdays(days: Weekday[]): string {
+  return WEEKDAYS.filter((w) => days.includes(w.key)).map((w) => w.label).join('・')
+}
+
 function weekdaysSummary(days: Set<Weekday> | undefined): string {
   const selected = WEEKDAYS.filter((w) => days?.has(w.key)).map((w) => w.label)
   return selected.length > 0 ? selected.join('・') : '（出社日なし）'
@@ -106,6 +110,14 @@ const noSeatNeeded = (p: QuarterPlanItem) => {
   if (p.status === 'seats_confirmed') return p.non_fixed_member_count === 0
   return p.required_seats === 0
 }
+// 2026-09-16修正: 「座席の島を割り当てる」ボタンはnoSeatNeeded（required_seats基準、PMの意図的な
+// 上書きを尊重するため）で表示可否を決めていたが、実際に割り当てるAPI（A-44・A-80）は都度の実際の
+// 非固定・非在宅メンバー数を再計算して判定するため、required_seatsが古いまま非0で残っている計画では
+// 曜日確定・座席選択まで進めた最後の送信で初めて400エラーになっていた（「座席の島の割当が最後で
+// 失敗する」との報告を受けた）。required_seatsの上書き自体は尊重しつつ、実際に割り当てても必ず
+// 失敗する（対象メンバーが実在しない）ケースだけはボタン自体を出さないようにする
+const seatBlockDoomed = (p: QuarterPlanItem) =>
+  p.status === 'weekdays_finalized' && !noSeatNeeded(p) && p.non_fixed_member_count === 0
 const statusLabel = (p: QuarterPlanItem) => {
   if (!noSeatNeeded(p)) return STATUS_LABEL[p.status](p)
   return p.status === 'seats_confirmed' ? '座席不要（全員固定座席／在宅）' : '座席不要（必要座席数0）'
@@ -377,7 +389,7 @@ export default function ProjectSeatAllocation() {
   // との要望を受けた。対象は行ごとの「座席の島を割り当てる」ボタンと同じ条件（曜日確定済み・未割当）
   // のプロジェクトのみとし、既に割当済み（座席を編集）は対象外のまま個別の導線を使う
   const bulkBlockEligiblePlans = useMemo(
-    () => visiblePlans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p)),
+    () => visiblePlans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p) && !seatBlockDoomed(p)),
     [visiblePlans]
   )
   const goSeatBlockBulk = () => {
@@ -523,7 +535,16 @@ export default function ProjectSeatAllocation() {
                           <button type="button" onClick={() => sendReminder(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">リマインドを送る</button>
                         )}
                         {p.status === 'weekdays_finalized' && !noSeatNeeded(p) && (
-                          <button type="button" onClick={() => goSeatBlock(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">座席の島を割り当てる</button>
+                          seatBlockDoomed(p) ? (
+                            <span
+                              className="cursor-help rounded bg-slate-100 px-3 py-1 text-xs text-slate-400"
+                              title="現在のメンバーが全員固定座席保有者または在宅のため不要のため、座席の島を割り当てられません。「人数を修正」の値にかかわらず割り当てできません。メンバー構成を見直すか、必要座席数を0に修正してください。"
+                            >
+                              座席の島を割り当てる
+                            </span>
+                          ) : (
+                            <button type="button" onClick={() => goSeatBlock(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">座席の島を割り当てる</button>
+                          )
                         )}
                         {p.status !== 'seats_allocated' && (
                           <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
@@ -1129,38 +1150,29 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // 従来は返ってきたsuggestionsだけを反映するため、AIが一部のプロジェクトの提案を返し忘れても
   // 気づけず、利用者が「グループ全体にAI提案が適用された」と誤認しうる不具合があった）
   const [aiPartialWarningByGroup, setAiPartialWarningByGroup] = useState<Record<string, string>>({})
-  // 前回の確定曜日をコピー（2026-09-10追加。「前回のPJ席の人、曜日調整がコピーできるようにして
-  // ほしい」との要望を受けた。S-04側でPMが前回の回答をコピーする経路とは別に、エリア責任者が
-  // アンケート回答を待たずにこの調整表から直接、前回確定した曜日をチェック状態へコピーできるように
-  // した）。A-15（前回サイクルの参照）を呼び、前回のweekdays_finalizedをそのプロジェクトのチェック
-  // 状態に反映するだけで、確定操作自体は行わない（内容を見直してから「この内容で全プロジェクトの
-  // 曜日を確定する」を押してもらう）。コピーしたセルはAI提案ではないため、既存のaiSuggestedバッジは
-  // 通常のtoggleと同様にそのプロジェクトの分だけ消す
-  const [copyingPlanId, setCopyingPlanId] = useState<number | null>(null)
-  const [copyErrorByPlan, setCopyErrorByPlan] = useState<Record<number, string>>({})
+  // 前回分の確定曜日・座席割当を常時表示（2026-09-16変更。当初は「前回の確定曜日をコピーする」ボタンで
+  // チェック状態へ直接コピーしていたが、「座席の位置と出社曜日を記載されているようにしてほしい」との
+  // 要望を受けて参照専用の表示に変更し、続けて「常時表示しててほしいのと座席番号のみでいいよ」との
+  // 要望を受け、クリックで開くトグルではなく行内に常時表示する形に改め、メンバーごとの内訳
+  // （assignments）ではなくその座席の島の座席番号だけ（allocated_seat_label）を表示するようにした。
+  // 次サイクルの曜日調整・座席割当を検討する際に前回の実績を見比べられるようにするのが目的で、
+  // チェック状態は変更しない。A-15（前回サイクルの参照）を再利用する
+  const [previousByPlan, setPreviousByPlan] = useState<Record<number, PreviousPlanDetail>>({})
+  useEffect(() => {
+    const targets = plans.filter((p) => p.has_previous_plan && !(p.id in previousByPlan))
+    targets.forEach((p) => {
+      apiFetch<PreviousPlanDetail>(`/api/project-quarter-plans/${p.id}/previous`)
+        .then((data) => setPreviousByPlan((prev) => ({ ...prev, [p.id]: data })))
+        .catch(() => {})
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans.map((p) => p.id).join(',')])
   // 前回の割当エリアなし（previous_area === null）のプロジェクトの扱い（2026-09-15変更）。
   // 以前は独立した「UNKNOWN」グループにまとめていたが、「基本的にEAST・WESTの区分になるので、
   // そのエリアの扱いにしてほしい。NORTHエリアの場合は切り替えるボタンを押すような感じ」との
   // 要望を受け、既定でEAST・WESTグループへ含め、プロジェクトごとにNORTHへ切り替えられる
   // ボタンを設けた（未指定＝EAST_WEST扱い）
   const [areaOverride, setAreaOverride] = useState<Record<number, 'NORTH' | 'EAST_WEST'>>({})
-  const copyPreviousWeekdays = async (planId: number) => {
-    setCopyingPlanId(planId)
-    setCopyErrorByPlan((prev) => ({ ...prev, [planId]: '' }))
-    try {
-      const data = await apiFetch<{ weekdays_finalized: Weekday[] | null }>(`/api/project-quarter-plans/${planId}/previous`)
-      if (!data.weekdays_finalized) {
-        setCopyErrorByPlan((prev) => ({ ...prev, [planId]: '前回は曜日確定前でした' }))
-        return
-      }
-      setChecked((prev) => ({ ...prev, [planId]: new Set(data.weekdays_finalized as Weekday[]) }))
-      setAiSuggested((prev) => ({ ...prev, [planId]: new Set() }))
-    } catch (e) {
-      setCopyErrorByPlan((prev) => ({ ...prev, [planId]: e instanceof ApiError ? e.message : '前回分の取得に失敗しました' }))
-    } finally {
-      setCopyingPlanId(null)
-    }
-  }
 
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
@@ -1394,16 +1406,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                             AI提案
                           </span>
                         )}
-                        {p.has_previous_plan && (
-                          <button
-                            type="button"
-                            disabled={copyingPlanId === p.id}
-                            onClick={() => copyPreviousWeekdays(p.id)}
-                            className="ml-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs font-normal text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {copyingPlanId === p.id ? 'コピー中...' : '前回の確定曜日をコピーする'}
-                          </button>
-                        )}
                         {/* 座席の島の割当実績がなく（previous_area === null）どちらのエリアになるか未定な
                             プロジェクト向けの切り替えボタン（2026-09-15追加）。既定ではEAST・WESTグループに
                             含めており、実際にはNORTHになる見込みの場合だけこのボタンで切り替える */}
@@ -1424,8 +1426,22 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                               : 'EAST・WEST扱い中（NORTHに切替）'}
                           </button>
                         )}
-                        {copyErrorByPlan[p.id] && (
-                          <span className="ml-1 text-xs text-red-600">{copyErrorByPlan[p.id]}</span>
+                        {p.has_previous_plan && (
+                          <div className="mt-0.5 text-xs font-normal text-slate-400">
+                            前回:{' '}
+                            {previousByPlan[p.id] ? (
+                              <>
+                                {previousByPlan[p.id].weekdays_finalized === null
+                                  ? '曜日未確定'
+                                  : previousByPlan[p.id].weekdays_finalized!.length > 0
+                                    ? formatWeekdays(previousByPlan[p.id].weekdays_finalized!)
+                                    : '出社なし'}
+                                {previousByPlan[p.id].allocated_seat_label
+                                  ? `／${previousByPlan[p.id].allocated_seat_label}`
+                                  : '／座席未確保'}
+                              </>
+                            ) : '読み込み中...'}
+                          </div>
                         )}
                       </td>
                       <td className="py-1 pr-3 align-top">{p.required_seats}名</td>

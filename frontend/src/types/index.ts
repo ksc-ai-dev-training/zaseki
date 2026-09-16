@@ -373,6 +373,11 @@ export interface MemberSeatAssignFor {
   projectName: string
   // 対象四半期の開始日（YYYY-MM-DD）。フロアマップの初期表示日にする（S-09の座席の島の割当と同じ考え方）
   periodStart: string
+  // 確定した出社曜日（T-07.weekdays_finalized）。SeatBlockForと同じ理由で、フロアマップの初期表示日は
+  // periodStartそのものではなく、periodStart以降でこの曜日に最初に該当する日にする（2026-09-16修正。
+  // 従来これが無く、稼働曜日が月〜金以外のプロジェクトだと座席の島がその日「project_pending」に
+  // ならず、座席表から1件も選べない状態になっていた）
+  weekdaysFinalized?: Weekday[] | null
   // 座席の島の範囲（この範囲内の座席のみ選択対象にする）。freeSeatモードでは使わない
   allocatedSeatIds: number[]
   // まだ座席が確保されていないメンバー（固定座席保有者は対象外）
@@ -473,7 +478,9 @@ export interface PreviousPlanDetail {
   period_start: string
   period_end: string
   assignments: PreviousPlanAssignment[]
-  /** 前回の確定曜日（2026-09-10追加、S-09「前回の確定曜日をコピーする」で使う） */
+  /** 前回の座席の島の座席番号のみの簡潔な表示（2026-09-16追加、S-09の常時表示欄で使う）。未割当ならnull */
+  allocated_seat_label: string | null
+  /** 前回の確定曜日（2026-09-10追加、S-09の曜日調整表の常時表示欄で使う） */
   weekdays_finalized: Weekday[] | null
   /** 前回の出社曜日アンケート回答（2026-09-10追加、S-04「前回の回答をコピーする」で使う） */
   response: ProjectPlanResponse | null

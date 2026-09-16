@@ -43,6 +43,8 @@ async def list_users(
     """A-25: 利用者一覧（利用者ロール管理タブ）。show_retired=false（既定）ではdeleted_atが
     設定された利用者を除外する。qは氏名・メールでの部分一致検索（2026-08-28追加、4.7節の絞り込み欄の裏付け）。"""
     pool = get_pool()
+    # 2026-09-16修正: 画面表示「姓 名」のスペースを除去してから比較する（last_name||first_nameは
+    # スペース無し結合のため、表示通りに入力すると常に0件になっていた）
     rows = await pool.fetch(
         """SELECT u.id, u.last_name, u.first_name, u.email, u.employment_type, u.role,
                   u.area_manager_role, u.employment_status, u.is_system_operator, u.deleted_at
@@ -50,7 +52,7 @@ async def list_users(
            WHERE ($1 = 'all' OR u.role = $1)
              AND ($2 = 'all' OR u.employment_status = $2)
              AND ($3 OR u.deleted_at IS NULL)
-             AND ($4 = '' OR (u.last_name || u.first_name) ILIKE '%' || $4 || '%' OR u.email ILIKE '%' || $4 || '%')
+             AND ($4 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($4, ' ', ''), '　', '') || '%' OR u.email ILIKE '%' || $4 || '%')
            ORDER BY u.last_name, u.first_name""",
         role, employment_status, show_retired, q,
     )

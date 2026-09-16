@@ -40,13 +40,15 @@ async def list_proxy_candidates(q: str = "", _: CurrentUser = Depends(require_ro
     未実装のため区別せず一律の文言を返していたが、実装済みとなったため本日時点で実際に利用中かどうか
     を区別する）。"""
     await release_expired_fixed_seats()
+    # 2026-09-16修正: 画面表示「姓 名」のスペースを除去してから比較する（last_name||first_nameは
+    # スペース無し結合のため、表示通りに入力すると常に0件になっていた）
     rows = await get_pool().fetch(
         """SELECT u.id, u.last_name, u.first_name, u.employment_type,
                   fsa.seat_id AS fixed_seat_id
            FROM users u
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id AND fsa.ended_on IS NULL
            WHERE u.deleted_at IS NULL
-             AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+             AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
            ORDER BY u.last_name, u.first_name""",
         q,
     )
@@ -141,7 +143,7 @@ async def search_reservations(
                JOIN seats s ON s.id = r.seat_id
                JOIN areas a ON a.id = s.area_id
                WHERE r.status = 'active' AND s.seat_type = 'free'
-                 AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+                 AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
                  AND ($2::date IS NULL OR r.date >= $2::date)
                  AND ($3::date IS NULL OR r.date <= $3::date)
                ORDER BY r.date, u.last_name, u.first_name""",
@@ -166,7 +168,7 @@ async def search_reservations(
                JOIN seats s ON s.id = fsa.seat_id
                JOIN areas a ON a.id = s.area_id
                WHERE fsa.ended_on IS NULL
-                 AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || $1 || '%')
+                 AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
                ORDER BY u.last_name, u.first_name""",
             user_name,
         )

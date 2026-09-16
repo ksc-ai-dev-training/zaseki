@@ -346,7 +346,9 @@ export default function Availability() {
       ? firstMatchingWeekdayOnOrAfter(seatBlockFor.periodStart, seatBlockFor.weekdaysFinalized ?? [])
       : seatBlockBulkFor?.plans[0]
         ? firstMatchingWeekdayOnOrAfter(seatBlockBulkFor.plans[0].periodStart, seatBlockBulkFor.plans[0].weekdaysFinalized ?? [])
-        : memberSeatAssignFor?.periodStart ?? todayStr()
+        : memberSeatAssignFor
+          ? firstMatchingWeekdayOnOrAfter(memberSeatAssignFor.periodStart, memberSeatAssignFor.weekdaysFinalized ?? [])
+          : todayStr()
   )
   const [viewMode, setViewMode] = useState<'floormap' | 'period'>('floormap')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('all')
@@ -366,6 +368,12 @@ export default function Availability() {
   // 広げても2026-09-07に修正した不具合〔確定済みプロジェクト座席の意図しない自動取消〕は再発しない）
   const [duplicateSeatError, setDuplicateSeatError] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<{ seat: Seat; area: string } | null>(null)
+  // 「自分の予約」一覧の「取消」は確認なしで即削除していた（フロアマップから同じ予約を取り消す
+  // 場合は確認モーダルが出るのに対して不揃いだった）。同じ取消操作に対して確認の有無が導線ごとに
+  // 異なるのを避けるため、こちらにも確認モーダルを挟む（2026-09-16修正）
+  const [listCancelTarget, setListCancelTarget] = useState<MyReservation | null>(null)
+  const [listCancelSubmitting, setListCancelSubmitting] = useState(false)
+  const [listCancelError, setListCancelError] = useState<string | null>(null)
   const [assignFixedSeatTarget, setAssignFixedSeatTarget] = useState<{ seat: Seat; area: string } | null>(null)
   const [assignIndefinite, setAssignIndefinite] = useState(true)
   const [assignValidUntil, setAssignValidUntil] = useState('')
@@ -991,12 +999,18 @@ export default function Availability() {
     }
   }
 
-  const cancelFromList = async (id: number) => {
+  const confirmListCancel = async () => {
+    if (!listCancelTarget) return
+    setListCancelSubmitting(true)
+    setListCancelError(null)
     try {
-      await apiFetch(`/api/reservations/${id}`, { method: 'DELETE' })
+      await apiFetch(`/api/reservations/${listCancelTarget.id}`, { method: 'DELETE' })
+      setListCancelTarget(null)
       await refreshAll()
     } catch (e) {
-      window.alert(e instanceof ApiError ? e.message : '取消に失敗しました')
+      setListCancelError(e instanceof ApiError ? e.message : '取消に失敗しました')
+    } finally {
+      setListCancelSubmitting(false)
     }
   }
 
@@ -1654,9 +1668,14 @@ export default function Availability() {
                         {period.seats.map((seat) => {
                           const cell = seat.days[d]
                           const status = cell?.status ?? 'free'
+                          // 2026-09-16修正: 固定席・プロジェクト席は未使用中の日でも「空き」ボタンが
+                          // 出てしまい、押しても必ずエラーになっていた（フロアマップ表示は
+                          // seat.seat_type==='free'も見て正しくフィルタしているのに、期間ビューは
+                          // statusしか見ていなかった）。座席タイプもフリーの場合のみボタンにする
+                          const bookable = status === 'free' && seat.seat_type === 'free'
                           return (
                             <td key={seat.id} className="border-r border-slate-200 px-1 py-1.5 text-center">
-                              {status === 'free' ? (
+                              {bookable ? (
                                 <button
                                   type="button"
                                   onClick={() => openReserve(seat.id, seat.seat_no, seat.area, d)}
@@ -1670,7 +1689,7 @@ export default function Availability() {
                                     status === 'mine' ? 'font-semibold text-blue-800' : status === 'occupied_fixed' ? 'text-violet-700' : 'text-slate-600'
                                   }`}
                                 >
-                                  {cell?.display_name}
+                                  {cell?.display_name ?? (status === 'free' ? '－' : '')}
                                 </span>
                               )}
                             </td>
@@ -1740,7 +1759,7 @@ export default function Availability() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => cancelFromList(r.id)}
+                          onClick={() => { setListCancelError(null); setListCancelTarget(r) }}
                           className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                         >
                           取消
@@ -2097,6 +2116,26 @@ export default function Availability() {
             <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(date)}</dd></div>
           </dl>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
+        </Modal>
+      )}
+
+      {listCancelTarget && (
+        <Modal
+          title="予約の取消"
+          onClose={() => setListCancelTarget(null)}
+          footer={
+            <>
+              <button type="button" onClick={() => setListCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">戻る</button>
+              <button type="button" disabled={listCancelSubmitting} onClick={confirmListCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">予約を取り消す</button>
+            </>
+          }
+        >
+          <dl className="space-y-1.5 text-sm">
+            <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{listCancelTarget.seat_no}</dd></div>
+            <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{listCancelTarget.area}</dd></div>
+            <div className="flex justify-between"><dt className="text-slate-500">日付</dt><dd>{formatDateJa(listCancelTarget.date)}</dd></div>
+          </dl>
+          {listCancelError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{listCancelError}</p>}
         </Modal>
       )}
 

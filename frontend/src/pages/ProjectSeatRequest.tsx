@@ -429,9 +429,13 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
             <p className="mb-3 text-sm">
               <span className="text-slate-500">確定曜日: </span>
               <span className="font-semibold">
-                {previous.weekdays_finalized && previous.weekdays_finalized.length > 0
-                  ? formatWeekdays(previous.weekdays_finalized)
-                  : '曜日未確定でした'}
+                {previous.weekdays_finalized === null
+                  // 2026-09-16修正: nullは「未確定のまま次のサイクルへ」、[]は「0曜日で確定済み」
+                  // という別の状態なのに同じ文言だったため区別する
+                  ? '曜日未確定でした'
+                  : previous.weekdays_finalized.length > 0
+                    ? formatWeekdays(previous.weekdays_finalized)
+                    : '出社なし（0曜日）で確定済みでした'}
               </span>
             </p>
             <table className="w-full text-sm">
@@ -878,6 +882,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           planId: plan.id,
           projectName: plan.project_name,
           periodStart: plan.period_start,
+          weekdaysFinalized: plan.weekdays_finalized,
           allocatedSeatIds: (plan.allocated_seats ?? []).map((s) => s.id),
           members: unassigned.map((m) => ({ userId: m.user_id, name: m.name })),
         },
