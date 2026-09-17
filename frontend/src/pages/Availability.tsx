@@ -14,7 +14,7 @@ import SeatTile from '../components/SeatTile'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf, compareSeatNo } from '../lib/floorLayout'
 import type {
-  AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor,
+  AssignFixedSeatFor, MemberSeatAssignFor, MyReservation, ProjectPlanDetail, ProxyBookingFor, QuarterPlanItem,
   RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockBulkFor, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
 } from '../types'
 
@@ -98,6 +98,15 @@ function firstMatchingWeekdayOnOrAfter(periodStart: string, weekdaysFinalized: W
     d = shiftDateStr(d, 1)
   }
   return start
+}
+// 曜日別の座席の島の切り替え（2026-09-16新設）。「PJは曜日によって島が変わる可能性があるので
+// 切り替えれる機能が欲しい。火曜の割当てをするとき、月曜日はどこの席に座っているのかわかりやすく
+// してほしい」との要望を受けた。座席の島の割当作業中、確定した出社曜日のボタンを押すと、表示中の
+// 日付と同じ週内でその曜日の日付へ切り替える（前後の日付矢印だと土日を挟んで何度も押す必要が
+// あるため、確定曜日だけを1クリックで行き来できるようにする狙い）
+function shiftToWeekdayInSameWeek(dateStr: string, targetDow: number): string {
+  const currentDow = new Date(`${dateStr}T00:00:00`).getDay()
+  return shiftDateStr(dateStr, targetDow - currentDow)
 }
 function formatDateJa(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`)
@@ -343,7 +352,13 @@ export default function Availability() {
   // 空き状況を見て選べるようにする）
   const [date, setDate] = useState(
     seatBlockFor
-      ? firstMatchingWeekdayOnOrAfter(seatBlockFor.periodStart, seatBlockFor.weekdaysFinalized ?? [])
+      ? firstMatchingWeekdayOnOrAfter(
+          seatBlockFor.periodStart,
+          // weekday指定（1曜日だけの例外編集）中は、初期表示日もその曜日にする（2026-09-16追加。
+          // 「PJは曜日によって座席が変わる前提で進めてください」との上司フィードバックに伴う拡張。
+          // 指定がなければ従来どおり全確定曜日のうち最初の日）
+          seatBlockFor.weekday && seatBlockFor.weekday !== 'all' ? [seatBlockFor.weekday] : seatBlockFor.weekdaysFinalized ?? []
+        )
       : seatBlockBulkFor?.plans[0]
         ? firstMatchingWeekdayOnOrAfter(seatBlockBulkFor.plans[0].periodStart, seatBlockBulkFor.plans[0].weekdaysFinalized ?? [])
         : memberSeatAssignFor
@@ -387,10 +402,43 @@ export default function Availability() {
   const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(
     () => new Set(seatBlockFor?.allocatedSeatIds ?? []),
   )
+  // 一括割当の対象一覧を出社曜日で絞り込む（2026-09-17新設。「座席の島の一括割当の際◯曜日に出社
+  // するPJを絞り込む機能が欲しい」との要望を受けた）。表示のみの絞り込みで、非表示になった
+  // プロジェクトの選択状態は消さない。当初は絞り込みなし（'all'）を選べたが、「金曜日の座席を
+  // 決めると木曜日にもその席が反映されるのをやめてほしい。曜日に縛られすぎている」との指摘を受けて
+  // 曜日ごとの例外編集方式に変えた際、'all'（全確定曜日に共通の1つの島を新規作成する経路）だけが
+  // 従来の一括作成ロジックを引きずっていて挙動の差異やバグの温床になっていたため、「座席割り当てに
+  // おける全てという項目を削除してほしい」との要望どおり選択肢自体を廃止した。曜日を1つ選んで
+  // 例外編集する方式に一本化する
+  const [bulkWeekdayFilter, setBulkWeekdayFilter] = useState<Weekday>(
+    () => seatBlockBulkFor?.plans[0]?.weekdaysFinalized?.[0] ?? 'mon'
+  )
   // 座席の島の一括割当モード（2026-09-10追加）: 右側の一覧で選択中のプロジェクト、および
-  // planId→選択中の座席idのSet（プロジェクトを切り替えても保持する）
+  // 「絞り込み曜日:planId」→選択中の座席idのSet（プロジェクトを切り替えても保持する）
+  const bulkKey = (scope: Weekday, planId: number) => `${scope}:${planId}`
   const [activeBulkPlanId, setActiveBulkPlanId] = useState<number | null>(seatBlockBulkFor?.plans[0]?.planId ?? null)
-  const [bulkSelections, setBulkSelections] = useState<Record<number, Set<number>>>({})
+  const [bulkSelections, setBulkSelections] = useState<Record<string, Set<number>>>({})
+  // 上のbulkSelectionsを、表示中の絞り込み曜日（bulkWeekdayFilter）が変わるたびに遅延初期化する。
+  // その曜日の実効座席（allocatedSeatsByWeekday、既存の例外があればそれ、なければ全体の島）を
+  // 初期値にする。既にこのスコープで編集済みのプロジェクトは上書きしない
+  useEffect(() => {
+    if (!seatBlockBulkFor) return
+    setBulkSelections((prev) => {
+      const next = { ...prev }
+      let changed = false
+      for (const p of seatBlockBulkFor.plans) {
+        const key = bulkKey(bulkWeekdayFilter, p.planId)
+        if (key in next) continue
+        const seatIds = (p.weekdaysFinalized ?? []).includes(bulkWeekdayFilter)
+          ? (p.allocatedSeatsByWeekday?.[bulkWeekdayFilter]?.seat_ids ?? p.allocatedSeatIds ?? [])
+          : []
+        next[key] = new Set(seatIds)
+        changed = true
+      }
+      return changed ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkWeekdayFilter, seatBlockBulkFor])
   // メンバーへの座席確保モード（2026-08-31追加）: userId → 暫定割当の座席（＋freeSeatの場合は
   // その人だけの繰り返しパターン）。送信するまでサーバーには反映しない
   const [memberPicks, setMemberPicks] = useState<Record<number, MemberFreeSeatPick>>({})
@@ -439,16 +487,22 @@ export default function Availability() {
     await Promise.all([refreshAvailability(), refreshPeriod(), upcoming.mutate(), past.mutate()])
   }
 
+  // 他の曜日にこのプロジェクトが使用中の座席id集合（2026-09-16新設）。「火曜日の座席を選ぶとき、
+  // 月曜日はどこに座っているのか一目でわかるようにしてほしい」との要望を受けた。単一モード
+  // （seatBlockFor.weekday指定時のみ意味を持つ）でのみ渡される
+  const otherWeekdaySeatIds = new Set<number>(seatBlockFor?.otherWeekdaySeats?.flatMap((w) => w.seatIds) ?? [])
+
   // 座席の島の割当モード（単一・一括共通）の選択状態を読み書きするヘルパー（2026-09-10追加、
   // 一括割当モードの新設に伴い、単一のseatBlockSelectionと一括のbulkSelections[activeBulkPlanId]の
   // どちらを操作するかをここで吸収する）
   const currentBlockSelection = seatBlockBulkFor
-    ? bulkSelections[activeBulkPlanId ?? -1] ?? new Set<number>()
+    ? bulkSelections[bulkKey(bulkWeekdayFilter, activeBulkPlanId ?? -1)] ?? new Set<number>()
     : seatBlockSelection
   const updateBlockSelection = (updater: (prev: Set<number>) => Set<number>) => {
     if (seatBlockBulkFor) {
       if (activeBulkPlanId === null) return
-      setBulkSelections((prev) => ({ ...prev, [activeBulkPlanId]: updater(prev[activeBulkPlanId] ?? new Set()) }))
+      const key = bulkKey(bulkWeekdayFilter, activeBulkPlanId)
+      setBulkSelections((prev) => ({ ...prev, [key]: updater(prev[key] ?? new Set()) }))
     } else {
       setSeatBlockSelection(updater)
     }
@@ -551,7 +605,12 @@ export default function Availability() {
     try {
       await apiFetch(`/api/project-quarter-plans/${seatBlockFor.planId}/seat-block`, {
         method: 'PUT',
-        body: JSON.stringify({ seat_ids: [...seatBlockSelection] }),
+        body: JSON.stringify({
+          seat_ids: [...seatBlockSelection],
+          // 曜日ごとに異なる座席の島を持てるようにする拡張（2026-09-16新設）。weekday未指定
+          // （'all'含む）なら基本の島を全確定曜日ぶん一括更新、指定時はその曜日だけの例外編集
+          weekday: seatBlockFor.weekday && seatBlockFor.weekday !== 'all' ? seatBlockFor.weekday : undefined,
+        }),
       })
       setSeatBlockSelection(new Set())
       navigate('/project-seats-area', { replace: true })
@@ -564,22 +623,63 @@ export default function Availability() {
   const exitSeatBlockBulkMode = () => {
     setBulkSelections({})
     setActiveBulkPlanId(null)
-    navigate('.', { replace: true, state: null })
+    navigate('/project-seats-area', { replace: true })
   }
+  // 曜日を絞り込み、その1日だけの例外編集としてプロジェクトごとにA-44（単一編集、weekday指定）を
+  // 呼ぶ。「金曜日の座席を決めると木曜日にもその席が反映されるのをやめてほしい」との要望を受けた
+  // （2026-09-17変更）。以前は絞り込みなし（'all'）の場合だけA-80（一括新規作成、全確定曜日に
+  // 共通の1つの島）を使っていたが、「座席割り当てにおける全てという項目を削除してほしい」との
+  // 要望を受け、'all'の選択肢自体を廃止し、曜日ごとの例外編集方式に一本化した。
+  // 「◯曜日の分だけまとめて登録をしたのに全く保存されていない」バグ対応: A-44のweekday指定は
+  // 「基本の島（allocated_seats）に対する例外」という仕組みのため、そのプロジェクトが一度も
+  // 基本の島を持ったことがない（allocatedSeatIdsが空）場合にweekday指定で呼ぶと、基本の島が
+  // 空のまま曜日の例外だけが保存され、A-38のallocated_seats_by_weekdayは「基本の島がある場合
+  // のみ計算する」実装のため、結果的にどの画面からも見えない孤立したデータになっていた。基本の
+  // 島を一度も持っていないプロジェクトは、曜日を絞り込んでいてもweekdayを指定せずに呼び、その
+  // 座席を全確定曜日共通の基本の島として新規作成する（既に基本の島を持つプロジェクトは、これまで
+  // どおりその曜日だけの例外にする）
   const confirmSeatBlockBulk = async () => {
-    const assignments = Object.entries(bulkSelections)
-      .filter(([, set]) => set.size > 0)
-      .map(([planId, set]) => ({ plan_id: Number(planId), seat_ids: [...set] }))
+    const scope = bulkWeekdayFilter
+    const assignments = (seatBlockBulkFor?.plans ?? [])
+      .map((p) => ({
+        planId: p.planId,
+        seatIds: [...(bulkSelections[bulkKey(scope, p.planId)] ?? [])],
+        hasBaseIsland: (p.allocatedSeatIds ?? []).length > 0,
+      }))
+      .filter(({ seatIds }) => seatIds.length > 0)
     if (assignments.length === 0) return
     setSubmitting(true)
     setActionError(null)
     try {
-      await apiFetch('/api/project-quarter-plans/seat-block-bulk', {
-        method: 'POST',
-        body: JSON.stringify({ assignments }),
+      for (const { planId, seatIds, hasBaseIsland } of assignments) {
+        await apiFetch(`/api/project-quarter-plans/${planId}/seat-block`, {
+          method: 'PUT',
+          body: JSON.stringify(hasBaseIsland ? { seat_ids: seatIds, weekday: scope } : { seat_ids: seatIds }),
+        })
+      }
+      // 「登録したらプロジェクト座席（エリア担当）の画面に戻るのではなく、座席の島の一括割当の
+      // 画面のままでいてほしい」との要望を受け、画面遷移せずこの場に留まるようにした（2026-09-17
+      // 変更）。ただしその場に留まる以上、直前に保存した内容（allocatedSeatIds等）を画面が
+      // 保持しているスナップショットにも反映しないと、次にこの画面内で別の曜日・プロジェクトを
+      // 編集する際に古いデータのまま扱われてしまうため、最新のプロジェクト一覧を取り直して
+      // スナップショットを更新する。保存によりstatus='seats_allocated'まで進んだ（＝
+      // weekdays_finalized起点で、仮の座席割り当てを経ていなかった）プロジェクトはこの一覧の
+      // 対象外になるため取り除く
+      const fresh = await apiFetch<{ items: QuarterPlanItem[] }>('/api/project-quarter-plans')
+      const freshById = new Map(fresh.items.map((p) => [p.id, p]))
+      const updatedPlans = (seatBlockBulkFor?.plans ?? []).flatMap((p) => {
+        const f = freshById.get(p.planId)
+        if (!f || (f.status !== 'weekdays_finalized' && f.status !== 'seats_tentative')) return []
+        return [{
+          ...p,
+          weekdaysFinalized: f.weekdays_finalized,
+          allocatedSeatIds: f.allocated_seat_ids ?? undefined,
+          allocatedSeatsByWeekday: f.allocated_seats_by_weekday,
+        }]
       })
       setBulkSelections({})
-      navigate('/project-seats-area', { replace: true })
+      navigate('.', { replace: true, state: { seatBlockBulkFor: { plans: updatedPlans } } })
+      await refreshAvailability()
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '座席の島の一括割当に失敗しました')
     } finally {
@@ -591,11 +691,21 @@ export default function Availability() {
   // 要望を受けた。曜日単位の重複はフロアマップの1日表示だけでは気づけないことがあるため、選択が
   // 変わるたびにこのAPIを呼び、警告バナーとして表示する（実際の登録は行わない読み取り専用チェック）
   const blockCheckAssignments = seatBlockBulkFor
-    ? Object.entries(bulkSelections)
-        .filter(([, s]) => s.size > 0)
-        .map(([planId, s]) => ({ plan_id: Number(planId), seat_ids: [...s] }))
+    ? (seatBlockBulkFor.plans ?? [])
+        .map((p) => ({
+          plan_id: p.planId,
+          seat_ids: [...(bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)] ?? [])],
+          // 基本の島を一度も持っていないプロジェクトは、確定申告時（confirmSeatBlockBulk）と同じく
+          // 全確定曜日ぶんの新規作成として扱われるため、事前確認もweekdayを指定せず全確定曜日を
+          // 対象に行う（2026-09-17修正、confirmSeatBlockBulk参照）
+          weekday: (p.allocatedSeatIds ?? []).length > 0 ? bulkWeekdayFilter : undefined,
+        }))
+        .filter((a) => a.seat_ids.length > 0)
     : seatBlockFor && seatBlockSelection.size > 0
-      ? [{ plan_id: seatBlockFor.planId, seat_ids: [...seatBlockSelection] }]
+      ? [{
+          plan_id: seatBlockFor.planId, seat_ids: [...seatBlockSelection],
+          weekday: seatBlockFor.weekday && seatBlockFor.weekday !== 'all' ? seatBlockFor.weekday : undefined,
+        }]
       : []
   const blockCheckKey = JSON.stringify(blockCheckAssignments)
   const [blockConflicts, setBlockConflicts] = useState<string[]>([])
@@ -1027,38 +1137,60 @@ export default function Availability() {
 
   const seatByNo: Record<string, Seat> = {}
   const seatArea: Record<string, string> = {}
+  const seatNoById = new Map<number, string>()
   availability?.areas.forEach((a) => {
     a.blocks.forEach((b) => {
       b.seats.forEach((s) => {
         seatByNo[s.seat_no] = s
         seatArea[s.seat_no] = a.area
+        seatNoById.set(s.id, s.seat_no)
       })
     })
   })
   // 座席の島の一括割当モード: 今選んでいるプロジェクトと出社曜日が重なる他プロジェクトが、この
-  // 一括登録の中で既に選択中の座席は、使用中（他プロジェクトが選択中）としてタイルに表示し選べない
-  // ようにする（2026-09-10追加、2026-09-11修正）。出社曜日が重ならないプロジェクト同士は同じ座席を
-  // 共有できるのが本来の設計（database.project_blocked_seats()参照）のため、曜日が重ならない場合は
-  // 対象から除外する（「火水出社のプロジェクトを選んだら、木金出社の別プロジェクトの選択中表示が
-  // 出てきてしまう」との報告を受けた不具合修正）
-  if (seatBlockBulkFor && activeBulkPlan) {
-    const activeWeekdays = new Set(activeBulkPlan.weekdaysFinalized ?? [])
-    const seatIdToNo = new Map(Object.values(seatByNo).map((s) => [s.id, s.seat_no]))
-    Object.entries(bulkSelections).forEach(([planIdStr, ids]) => {
-      const planId = Number(planIdStr)
-      if (planId === activeBulkPlanId) return
-      const claimingPlan = seatBlockBulkFor.plans.find((p) => p.planId === planId)
-      const claimingWeekdays = claimingPlan?.weekdaysFinalized ?? []
-      const overlaps = claimingWeekdays.some((w) => activeWeekdays.has(w))
-      if (!overlaps) return
-      ids.forEach((seatId) => {
-        const seatNo = seatIdToNo.get(seatId)
-        const seat = seatNo ? seatByNo[seatNo] : undefined
-        if (seatNo && seat) {
-          seatByNo[seatNo] = { ...seat, status: 'occupied', display_name: claimingPlan ? `${claimingPlan.projectName}（選択中）` : null }
-        }
-      })
-    })
+  // 一括登録の中で選択中の座席は、使用中（他プロジェクトが選択中）として選べないようにする
+  // （2026-09-10追加、2026-09-11修正）。出社曜日が重ならないプロジェクト同士は同じ座席を共有できる
+  // のが本来の設計（database.project_blocked_seats()参照）のため、曜日が重ならない場合は対象から
+  // 除外する（「火水出社のプロジェクトを選んだら、木金出社の別プロジェクトの選択中表示が出てきて
+  // しまう」との報告を受けた不具合修正）。
+  // 2026-09-17再修正: 当初はseatByNoの該当座席をstatus='occupied'で直接上書きしていたが、それだと
+  // 表示中の日付によらず常に「使用中」に固定されてしまい、A-06本来の日付ごとの空き状況（曜日を
+  // 切り替えても座席の見た目が変わらない）を壊してしまっていた。逆に、既存の（保存済みの）座席だけ
+  // この上書きから除外する対処に変えたところ、今度は「一つのプロジェクトの島を決めて、別の
+  // プロジェクトの島を決めるとき、前に決めた座席の内容が消えて見える」という新たな指摘を受けた
+  // （このセッション内で新しく選んだ座席は、その座席が実際に空いている日を表示中だと、他プロジェクト
+  // が選択中であることを示す表示が無くなり、選べてしまうように見えていた）。そこで、seatByNoの
+  // status自体は書き換えず（実際の日付ごとの空き状況をそのまま表示する）、別途
+  // claimedByOtherPlanLabelという座席id→プロジェクト名のマップだけを作り、SeatTile.tsx側で
+  // 「実際は空いているが、この一括登録の中で既に他プロジェクトが選んでいる」座席だけを専用の
+  // 表示（選択不可）に切り替える方式にした。これにより、表示中の日付の実際の空き状況は常に正しく
+  // 表示されつつ、曜日が重なる他プロジェクトの選択との重複も（保存済み・新規を問わず）防げる
+  // 2026-09-17再々修正: 上の「曜日が重なる場合」の判定を、確定曜日の集合同士がどこか1日でも
+  // 重なっていればtrue（表示中の日付は無関係）としていたため、「月・火・水」出社のプロジェクトと
+  // 「水・木・金」出社の別プロジェクトのように一部だけ重なる場合、木・金を表示していても（後者しか
+  // 出社しない日なのに）前者の座席が「選択中」表示のままになる不具合があった（「その曜日にプロジェクト
+  // の曜日設定していないのに表示されている」との指摘）。表示中の日付の曜日そのものが、対象・相手
+  // 双方の確定曜日に含まれる場合だけ表示するよう、日付ベースの判定に改めた。
+  // 2026-09-17さらに修正: 「曜日を選ぶ→何かしらプロジェクトを押す→座席の表示がされる、ではなく
+  // 曜日を押す→現状決まっているプロジェクト席の座席表が表示される、ようにしてほしい」との要望を
+  // 受け、「選択中の（active）プロジェクトの確定曜日と重なっているか」の条件を外した。プロジェクトを
+  // 選ばなくても（＝一括割当画面を開いた直後でも）、曜日ボタンを押すだけでその曜日に確定済みの
+  // 全プロジェクトの座席がラベル表示されるようにする。
+  // 2026-09-17さらに修正: 上ではactiveBulkPlanId（今選んでいるプロジェクト）自身の座席をこの
+  // ラベル付けの対象から除外していたため、「金曜のプロジェクトを順番に押していくと、押すたびに
+  // その日の座席が消えたり新たに出てきたりする」不具合になっていた。選んでいるプロジェクトを
+  // 問わず、その曜日に確定している全プロジェクトの座席へ常に同じラベルを付けるよう変更した
+  // （選択中かどうかの区別はselectedSeatIdsによるリングの色〔緑＝自分が選択中〕で行う）。
+  // 2026-09-17さらに修正: bulkSelections自体がbulkWeekdayFilter（絞り込み曜日）ごとにキーを
+  // 分けるようになった（「金曜日の座席を決めると木曜日にもその席が反映されるのをやめてほしい」
+  // 対応）ため、ここも表示中のdateから逆算した曜日ではなく、bulkWeekdayFilterで直接判定する
+  const claimedByOtherPlanLabel: Record<number, string> = {}
+  if (seatBlockBulkFor) {
+    for (const p of seatBlockBulkFor.plans) {
+      if (!(p.weekdaysFinalized ?? []).includes(bulkWeekdayFilter)) continue
+      const ids = bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)]
+      ids?.forEach((seatId) => { claimedByOtherPlanLabel[seatId] = p.projectName })
+    }
   }
   // メンバーへの座席確保モード: 座席の島の範囲内かつ未確定（status='project_pending'）の座席のみ選択可
   // （2026-08-31追加）。暫定割当済みの座席は、割り当てたメンバーの氏名をタイルにプレビュー表示する。
@@ -1093,6 +1225,13 @@ export default function Availability() {
     onAssignFixedSeat: (seat: Seat) => openAssignFixedSeat(seat, seatArea[seat.seat_no]),
     selectedSeatIds: (seatBlockFor || seatBlockBulkFor) ? currentBlockSelection : undefined,
     onToggleBlock: (seatBlockFor || seatBlockBulkFor) ? onToggleSeatBlock : undefined,
+    // 他の曜日にこのプロジェクトが使用中の座席（2026-09-16新設）。「火曜日の座席を選ぶとき、月曜日は
+    // どこに座っているのか一目でわかるようにしてほしい」との要望を受けた。フロアマップ上でこの座席id
+    // 集合に含まれる座席へ破線マーカーを重ねる（SeatTile.tsx参照）
+    otherWeekdaySeatIds: otherWeekdaySeatIds.size > 0 ? otherWeekdaySeatIds : undefined,
+    // 座席の島の一括割当モードで、出社曜日が重なる他プロジェクトが既に選択中の座席（2026-09-17新設。
+    // 上記claimedByOtherPlanLabel参照）。実際に空いている日に表示していても選べないようにする
+    claimedByOtherPlanLabel: Object.keys(claimedByOtherPlanLabel).length > 0 ? claimedByOtherPlanLabel : undefined,
     memberAssignMode: Boolean(memberSeatAssignFor),
     memberAssignEligibleIds: memberSeatAssignFor ? memberAssignEligibleIds : undefined,
     memberAssignPickedLabels: memberSeatAssignFor ? memberAssignPickedLabels : undefined,
@@ -1151,6 +1290,8 @@ export default function Availability() {
           fixedSeatAssignMode={floorProps.fixedSeatAssignMode}
           onAssignFixedSeat={floorProps.onAssignFixedSeat}
           selectedSeatIds={floorProps.selectedSeatIds}
+          otherWeekdaySeatIds={floorProps.otherWeekdaySeatIds}
+          claimedByOtherPlanLabel={floorProps.claimedByOtherPlanLabel}
           memberAssignMode={floorProps.memberAssignMode}
           memberAssignEligibleIds={floorProps.memberAssignEligibleIds}
           memberAssignPickedLabels={floorProps.memberAssignPickedLabels}
@@ -1803,6 +1944,40 @@ export default function Availability() {
               </dd>
             </div>
           </dl>
+          {/* 曜日別の座席状況の切り替え（2026-09-16新設）。「PJは曜日によって島が変わる可能性が
+              あるので切り替えれる機能が欲しい。火曜の割当てをするとき、月曜日はどこの席に座って
+              いるのかわかりやすくしてほしい」との要望を受けた。確定した出社曜日のボタンを押すと
+              同じ週内でその曜日の日付へ切り替わり、前後矢印で土日をまたいで何度も送る必要がない */}
+          {(seatBlockFor.weekdaysFinalized ?? []).length > 0 && (
+            <div className="mt-3">
+              <div className="mb-1 text-xs text-slate-500">曜日で座席状況を切り替え</div>
+              <div className="flex flex-wrap gap-1">
+                {(seatBlockFor.weekdaysFinalized ?? []).map((w) => {
+                  const isActive = WEEKDAY_DOW[w] === new Date(`${date}T00:00:00`).getDay()
+                  return (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => setDate((d) => shiftToWeekdayInSameWeek(d, WEEKDAY_DOW[w]))}
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${isActive ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {RECURRING_WEEKDAYS.find((r) => r.key === w)?.label ?? w}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          {/* 「他の曜日にこのプロジェクトが使用中の座席」マーカーの凡例（2026-09-16新設）。
+              weekday指定（1曜日だけの例外編集）中のみotherWeekdaySeatsが渡される */}
+          {(seatBlockFor.otherWeekdaySeats?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              <span className="mr-1 inline-block h-3 w-3 align-middle outline outline-2 outline-dashed outline-amber-500" />
+              点線の座席＝このプロジェクトが他の曜日（
+              {seatBlockFor.otherWeekdaySeats!.map((w) => `${RECURRING_WEEKDAYS.find((r) => r.key === w.weekday)?.label}: ${w.seatLabel}`).join('、')}
+              ）に使用中
+            </p>
+          )}
           {blockConflicts.length > 0 && (
             <div className="mt-3 space-y-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               {blockConflicts.map((c, i) => (<p key={i}>⚠ {c}</p>))}
@@ -1834,25 +2009,57 @@ export default function Availability() {
       {seatBlockBulkFor && (
         <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <h2 className="text-sm font-semibold text-slate-800">座席の島の一括割当</h2>
+          {/* 出社曜日での絞り込み（2026-09-17新設）。表示のみの絞り込みで、選択状態は消えない。
+              「曜日に切り替えるときその曜日は現状どのような席になっているのかわかるようにしたい」
+              との指摘を受け、絞り込みと同時にフロアマップの表示日もその曜日へ切り替える。
+              2026-09-17修正: 当初は「今表示中の日付と同じ週内」で曜日をシフトしていたが、それだと
+              表示中の日付が（一括割当の対象プロジェクトの中でperiod_startが既に始まっている
+              別のプロジェクトを見ていた等の理由で）たまたま古い週のままだった場合、曜日ボタンを
+              押してもその古い週のままシフトされてしまい、「10月1日開始のプロジェクトなのに9月の
+              座席が表示される」不具合になっていた（「ちゃんと10月の曜日が表示されるように」との
+              指摘を受けた）。今選んでいるプロジェクト（activeBulkPlan）自身のperiod_startを起点に
+              計算し直すよう修正した。2026-09-17さらに修正: 「座席割り当てにおける全てという項目を
+              削除してほしい」との要望を受け、絞り込みなし（「すべて」）の選択肢自体を廃止した */}
+          <div className="mt-2 flex flex-wrap gap-1">
+            {RECURRING_WEEKDAYS.map((w) => (
+              <button
+                key={w.key}
+                type="button"
+                onClick={() => {
+                  setBulkWeekdayFilter(w.key)
+                  setDate((d) =>
+                    activeBulkPlan
+                      ? firstMatchingWeekdayOnOrAfter(activeBulkPlan.periodStart, [w.key])
+                      : shiftToWeekdayInSameWeek(d, WEEKDAY_DOW[w.key])
+                  )
+                }}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${bulkWeekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
           <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto">
-            {seatBlockBulkFor.plans.map((p) => {
-              const count = bulkSelections[p.planId]?.size ?? 0
-              const active = p.planId === activeBulkPlanId
-              return (
-                <li key={p.planId}>
-                  <button
-                    type="button"
-                    onClick={() => pickBulkProject(p.planId)}
-                    className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs ${
-                      active ? 'border-blue-400 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="truncate">{p.projectName}</span>
-                    <span className={`shrink-0 ${count > 0 ? 'text-green-700' : 'text-slate-400'}`}>{count}/{p.requiredSeats}名</span>
-                  </button>
-                </li>
-              )
-            })}
+            {seatBlockBulkFor.plans
+              .filter((p) => (p.weekdaysFinalized ?? []).includes(bulkWeekdayFilter))
+              .map((p) => {
+                const count = bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)]?.size ?? 0
+                const active = p.planId === activeBulkPlanId
+                return (
+                  <li key={p.planId}>
+                    <button
+                      type="button"
+                      onClick={() => pickBulkProject(p.planId)}
+                      className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs ${
+                        active ? 'border-blue-400 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="truncate">{p.projectName}</span>
+                      <span className={`shrink-0 ${count > 0 ? 'text-green-700' : 'text-slate-400'}`}>{count}/{p.requiredSeats}名</span>
+                    </button>
+                  </li>
+                )
+              })}
           </ul>
           {activeBulkPlan && (
             <dl className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-sm">
@@ -1877,6 +2084,31 @@ export default function Availability() {
                   {currentBlockSelection.size}席
                 </dd>
               </div>
+              {/* 曜日を絞り込んでいる間、他の確定曜日にどの座席を登録済みかを一目でわかるように表示する
+                  （2026-09-17新設。「もう一つの曜日をどの座席に登録したかが一目でわかるようにしてほしい」
+                  との要望を受けた）。曜日ごとの例外（allocated_seats_by_weekday）があればそれ、
+                  なければ基本の島（allocated_seat_ids）の座席番号を表示する */}
+              {(activeBulkPlan.weekdaysFinalized ?? []).filter((w) => w !== bulkWeekdayFilter).length > 0 && (
+                <div>
+                  <dt className="text-slate-500">他の曜日の座席</dt>
+                  <dd className="mt-0.5 space-y-0.5">
+                    {(activeBulkPlan.weekdaysFinalized ?? [])
+                      .filter((w) => w !== bulkWeekdayFilter)
+                      .map((w) => {
+                        const overrideLabel = activeBulkPlan.allocatedSeatsByWeekday?.[w]?.seat_label
+                        const baseIds = activeBulkPlan.allocatedSeatIds ?? []
+                        const baseLabel = baseIds.length > 0 ? baseIds.map((id) => seatNoById.get(id) ?? id).join('・') : null
+                        const label = overrideLabel ?? baseLabel ?? '未登録'
+                        return (
+                          <div key={w} className="flex justify-between gap-2 text-slate-700">
+                            <span>{RECURRING_WEEKDAYS.find((r) => r.key === w)?.label}曜日</span>
+                            <span className="font-medium">{label}</span>
+                          </div>
+                        )
+                      })}
+                  </dd>
+                </div>
+              )}
             </dl>
           )}
           {blockConflicts.length > 0 && (
@@ -1890,11 +2122,14 @@ export default function Availability() {
           <div className="mt-4 flex flex-col gap-2">
             <button
               type="button"
-              disabled={submitting || Object.values(bulkSelections).every((s) => s.size === 0)}
+              disabled={
+                submitting ||
+                (seatBlockBulkFor?.plans ?? []).every((p) => (bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)]?.size ?? 0) === 0)
+              }
               onClick={confirmSeatBlockBulk}
               className="rounded bg-blue-800 px-3 py-2 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
             >
-              この内容でまとめて登録する
+              {RECURRING_WEEKDAYS.find((w) => w.key === bulkWeekdayFilter)?.label}曜日の分だけまとめて保存する
             </button>
             <button
               type="button"

@@ -42,12 +42,16 @@ function formatPeriodLabel(periodStart: string, periodEnd: string): string {
 const STATUS_LABEL: Record<QuarterPlanStatus, string> = {
   seats_confirmed: 'アンケート未送信',
   survey_open: '曜日アンケート回答受付中',
+  // 仮の座席割り当て（2026-09-16追加、S-09の「仮の座席割り当てを作成する」で入る状態）。曜日・座席
+  // ともに本当に確定するまで自由にやり直せるため、PM/PL側には参照専用の情報として表示するのみ
+  seats_tentative: '仮の座席割り当て中',
   weekdays_finalized: '曜日確定済み（座席の島の割当待ち）',
   seats_allocated: '座席割当済み',
 }
 const STATUS_BADGE_CLASS: Record<QuarterPlanStatus, string> = {
   seats_confirmed: 'bg-slate-100 text-slate-500',
   survey_open: 'bg-amber-50 text-amber-700',
+  seats_tentative: 'bg-indigo-50 text-indigo-700',
   weekdays_finalized: 'bg-blue-50 text-blue-700',
   seats_allocated: 'bg-green-50 text-green-700',
 }
@@ -400,7 +404,7 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
               <td className="px-4 py-2">
                 <span className={`rounded px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS[summaryStatus]}`}>
                   {STATUS_LABEL[summaryStatus]}
-                  {summaryStatus === 'seats_allocated' && plan.allocated_seat_label && `（${plan.allocated_seat_label}）`}
+                  {(summaryStatus === 'seats_allocated' || summaryStatus === 'seats_tentative') && plan.allocated_seat_label && `（${plan.allocated_seat_label}）`}
                 </span>
               </td>
               {plan.has_previous_plan && (

@@ -10,8 +10,12 @@ from database import close_fixed_seat_assignment, get_pool
 from slack import (
     DEFAULT_MESSAGE_FINALIZE_HEADER,
     DEFAULT_MESSAGE_REMINDER,
+    DEFAULT_MESSAGE_SEAT_BLOCK_HEADER,
     SLACK_MESSAGE_FINALIZE_HEADER_KEY,
     SLACK_MESSAGE_REMINDER_KEY,
+    SLACK_MESSAGE_SEAT_BLOCK_HEADER_KEY,
+    SLACK_NOTIFY_FINALIZE_KEY,
+    SLACK_NOTIFY_SEAT_BLOCK_KEY,
     SLACK_WEBHOOK_SETTING_KEY,
 )
 
@@ -24,12 +28,20 @@ router = APIRouter(prefix="/api", tags=["roles"])
 # アンケート送信時の文言（旧SLACK_MESSAGE_SURVEY_KEY）は、2026-09-03の変更B（検討資料「プロジェクト
 # 座席・曜日調整フロー改善案」）でA-41・A-63〔システムによるアンケート送信通知〕自体を廃止し、
 # エリア責任者が自分でSlackへ連絡する運用に変えたことに伴い、編集対象から削除した。
+# 2026-09-16追加: 「座席の割り当て、曜日確定が決まったときスラックに通知されるのをオン/オフ切り替え
+# てほしい」との要望を受け、種類ごとのオン/オフスイッチ（SLACK_NOTIFY_*、値は'true'/'false'）を
+# 追加した。あわせて、従来は自動通知していなかった座席の島の割当（A-44・A-80）にも新規に自動通知を
+# 追加し、その文言・スイッチもここに含めた。
 EDITABLE_SETTINGS: list[tuple[str, str | None]] = [
     (SLACK_WEBHOOK_SETTING_KEY, None),
+    (SLACK_NOTIFY_FINALIZE_KEY, "true"),
     (SLACK_MESSAGE_REMINDER_KEY, DEFAULT_MESSAGE_REMINDER),
     (SLACK_MESSAGE_FINALIZE_HEADER_KEY, DEFAULT_MESSAGE_FINALIZE_HEADER),
+    (SLACK_NOTIFY_SEAT_BLOCK_KEY, "true"),
+    (SLACK_MESSAGE_SEAT_BLOCK_HEADER_KEY, DEFAULT_MESSAGE_SEAT_BLOCK_HEADER),
 ]
 EDITABLE_SETTING_KEYS = {key for key, _ in EDITABLE_SETTINGS}
+BOOLEAN_SETTING_KEYS = {SLACK_NOTIFY_FINALIZE_KEY, SLACK_NOTIFY_SEAT_BLOCK_KEY}
 
 
 @router.get("/users")
@@ -170,15 +182,19 @@ async def update_app_setting(key: str, body: AppSettingUpdate, _: CurrentUser = 
     """A-50: UIから編集可能な設定値の更新。keyはEDITABLE_SETTING_KEYSのいずれかのみ受け付ける
     （2026-09-02拡張、当初はproject_seat_slack_webhook_urlのみだった）。Webhook URLのみ、入力する
     場合はhttps://hooks.slack.com/services/で始まるURL形式であることを検証する（4.6節、2026-08-28
-    実装。未入力〔空文字〕は通知を送信しない設定として許可する）。通知文言3種は自由記述で、文字数
-    上限（500字）以外の形式チェックは行わない（プレースホルダーの誤記があっても送信時に初期文言へ
-    フォールバックするため、slack.render_slack_message参照）。"""
+    実装。未入力〔空文字〕は通知を送信しない設定として許可する）。通知のオン/オフスイッチ2種
+    （BOOLEAN_SETTING_KEYS）は'true'/'false'の文字列のみ受け付ける（2026-09-16追加）。それ以外の
+    通知文言3種は自由記述で、文字数上限（500字）以外の形式チェックは行わない（プレースホルダーの
+    誤記があっても送信時に初期文言へフォールバックするため、slack.render_slack_message参照）。"""
     if key not in EDITABLE_SETTING_KEYS:
         raise HTTPException(404, detail="対象が見つかりません")
     value = body.value.strip()
     if key == SLACK_WEBHOOK_SETTING_KEY:
         if value and not value.startswith("https://hooks.slack.com/services/"):
             raise HTTPException(400, detail="Slack通知先URLはhttps://hooks.slack.com/services/で始まる形式で入力してください")
+    elif key in BOOLEAN_SETTING_KEYS:
+        if value not in ("true", "false"):
+            raise HTTPException(400, detail="不正な値です")
     elif len(value) > 500:
         raise HTTPException(400, detail="通知文言は500文字以内で入力してください")
     await get_pool().execute(

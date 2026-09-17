@@ -21,6 +21,13 @@ interface SeatTileProps {
   /** S-09「座席の島の割当モード」で選択済みの座席id一覧（見た目のハイライトのみに使う。
    * クリック自体は通常の空き座席クリックと同じonReserve経由で、Availability.tsx側で分岐する） */
   selectedSeatIds?: Set<number>
+  /** 他の曜日にこのプロジェクトが使用中の座席id一覧（2026-09-16新設）。「火曜日の座席を選ぶとき、
+   * 月曜日はどこに座っているのか一目でわかるようにしてほしい」との要望を受けた。selectedSeatIdsとは
+   * 独立に、破線マーカーとして重ねて表示する（見た目のみ、クリック挙動には影響しない） */
+  otherWeekdaySeatIds?: Set<number>
+  /** 座席の島の一括割当モードで、出社曜日が重なる他プロジェクトが既に選択中の座席id→プロジェクト名
+   * （2026-09-17新設）。実際にその日空いていても選べないようにし、専用の表示にする */
+  claimedByOtherPlanLabel?: Record<number, string>
   /** S-04「メンバーへの座席確保モード」（座席表からメンバーへ座席を選ぶ、2026-08-31追加） */
   memberAssignMode?: boolean
   /** 座席の島の範囲内かつ未確定（クリックして割り当てられる）座席id */
@@ -35,6 +42,12 @@ interface SeatTileProps {
   onSeatDragPointerDown?: (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => void
   onSeatDragPointerMove?: (e: ReactPointerEvent<HTMLButtonElement>) => void
   onSeatDragPointerUp?: (e: ReactPointerEvent<HTMLButtonElement>) => void
+  /** 曜日確定の確認モーダルで、曜日ごとの座席の島を実際のフロア図に重ねて表示するプレビュー
+   * モード（2026-09-17新設。「曜日とPJ座席を確定させる際の確認画面として、座席のエリア図と
+   * 併記してほしい」との要望を受けた）。存在すること自体がプレビューモードの合図（クリック・
+   * 実際の予約状況は無視し、指定した座席だけをプロジェクトの色で塗った読み取り専用タイルにする） */
+  previewColorBySeatId?: Record<number, string>
+  previewLabelBySeatId?: Record<number, string>
 }
 
 // 実際に利用者が使用中の座席（自分の予約・使用中・固定座席・プロジェクト座席個人確定済み）は
@@ -65,14 +78,49 @@ function tileClass(seat: Seat): string {
   return `${STATUS_CLASS[seat.status]}${seat.multi_seat_holder ? ' seat-multi-holder' : ''}`
 }
 
+// 他の曜日にこのプロジェクトが使用中の座席への破線マーカー（2026-09-16新設）。選択中（緑の実線
+// リング）とは独立に重ねられるよう、outline（box-shadowベースのringとは別レイヤー）を使う
+function otherWeekdayClass(seat: Seat, otherWeekdaySeatIds?: Set<number>): string {
+  return otherWeekdaySeatIds?.has(seat.id) ? ' outline outline-2 outline-dashed outline-amber-500' : ''
+}
+
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
 export default function SeatTile({
   seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds,
-  memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
+  otherWeekdaySeatIds, claimedByOtherPlanLabel, memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
   positionEditMode, onSeatDragPointerDown, onSeatDragPointerMove, onSeatDragPointerUp,
+  previewColorBySeatId, previewLabelBySeatId,
 }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
+  }
+
+  if (previewColorBySeatId) {
+    // 色だけでは似た色同士が見分けにくい（プロジェクト数が多いと配色が循環して衝突もする）との
+    // 指摘を受け、色分けではなくプロジェクト名をそのままタイルに表示する方式に変更した
+    // （2026-09-17修正）。背景色は「割り当てあり／なし」を示す一律の1色に簡略化する
+    const label = previewLabelBySeatId?.[seat.id]
+    return (
+      <div
+        className="seat-tile overflow-hidden"
+        style={{
+          ...style,
+          background: label ? '#1e3a8a' : '#f8fafc',
+          borderColor: label ? '#1e3a8a' : '#e2e8f0',
+          color: label ? '#ffffff' : '#94a3b8',
+          fontWeight: label ? 600 : 400,
+          fontSize: label ? '9px' : undefined,
+          lineHeight: 1.2,
+          padding: '1px 2px',
+          whiteSpace: 'normal',
+          wordBreak: 'break-all',
+          textAlign: 'center',
+        }}
+        title={label ? `${label}（${seat.seat_no}）` : undefined}
+      >
+        {label ?? seat.seat_no}
+      </div>
+    )
   }
 
   if (positionEditMode) {
@@ -141,19 +189,46 @@ export default function SeatTile({
     )
   }
 
+  // 座席の島の一括割当モードで、実際は空いている（status='free'）が出社曜日が重なる他プロジェクトが
+  // 既に選択中の座席（2026-09-17新設。「前に決めた座席の内容が消えている」との指摘を受けた。以前は
+  // このケースをseatByNo側でstatus='occupied'に書き換えて対処していたが、それだと表示中の日付に
+  // よらず常に使用中に固定されてしまっていた。実際の空き状況の表示はそのままに、ここでだけ選択不可の
+  // 専用タイルに切り替える。自分自身（selectedSeatIds、選んでいる本人のプロジェクト）と重なる
+  // ことはない前提だが、念のため優先する
+  const claimedByOtherPlan = seat.status === 'free' && !selectedSeatIds?.has(seat.id) ? claimedByOtherPlanLabel?.[seat.id] : undefined
+  if (claimedByOtherPlan) {
+    return (
+      <div
+        className="seat-tile"
+        style={{ ...style, background: '#fce7f3', borderColor: '#f9a8d4', color: '#9d174d' }}
+        title={`「${claimedByOtherPlan}」がこの一括割当の中で選択中の座席です`}
+      >
+        {seat.seat_no}
+        <span className="seat-tag">{claimedByOtherPlan}</span>
+      </div>
+    )
+  }
+
   if ((seat.status === 'free' && seat.seat_type === 'free') || selectedSeatIds?.has(seat.id)) {
     // 座席の島の割当・編集モードでは、既に選択済みの座席は実際の予約状況に関わらずトグル
     // できるようにする（編集時、自分のプロジェクトの既存の個人予約がある座席も選択解除
     // できる必要があるため。2026-08-28追加）
     const selected = selectedSeatIds?.has(seat.id)
+    // 一括割当モードで自分（選択中）のプロジェクトが確定曜日として持つ座席にも、他プロジェクトと
+    // 同じくラベルを付けて表示を安定させる（2026-09-17追加。「プロジェクトを順番に押していくと
+    // 座席が消えたり出てきたりする」との指摘を受けた。以前は自分自身の座席だけラベルなしだった
+    // ため、選択中のプロジェクトが切り替わるたびに表示が入れ替わって見えていた）
+    const ownLabel = selected ? claimedByOtherPlanLabel?.[seat.id] : undefined
     return (
       <button
         type="button"
-        className={`seat-tile status-free ${selected ? 'ring-2 ring-green-600' : ''}`}
+        className={`seat-tile status-free ${selected ? 'ring-2 ring-green-600' : ''}${otherWeekdayClass(seat, otherWeekdaySeatIds)}`}
         style={style}
+        title={otherWeekdaySeatIds?.has(seat.id) ? '他の曜日にこのプロジェクトが使用中の座席です' : undefined}
         onClick={() => onReserve(seat)}
       >
         {seat.seat_no}
+        {ownLabel && <span className="seat-tag">{ownLabel}</span>}
       </button>
     )
   }
@@ -165,7 +240,11 @@ export default function SeatTile({
     )
   }
   return (
-    <div className={`seat-tile ${tileClass(seat)}`} style={style} title={seat.title ?? undefined}>
+    <div
+      className={`seat-tile ${tileClass(seat)}${otherWeekdayClass(seat, otherWeekdaySeatIds)}`}
+      style={style}
+      title={seat.title ?? (otherWeekdaySeatIds?.has(seat.id) ? '他の曜日にこのプロジェクトが使用中の座席です' : undefined)}
+    >
       <SeatContent seat={seat} />
     </div>
   )

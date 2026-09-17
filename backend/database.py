@@ -270,6 +270,23 @@ CREATE TABLE IF NOT EXISTS project_quarter_plans (
 -- こちらは調整表を使う管理部・エリア責任者自身が入力・保存する独立したメモ欄
 ALTER TABLE project_quarter_plans ADD COLUMN IF NOT EXISTS admin_note TEXT;
 
+-- seats_tentative（2026-09-16追加）: 「曜日を確定するのではなくそこから座席割り当ての仮作成を
+-- できるようにしてほしい」との要望を受けた。survey_openとweekdays_finalizedの間に位置する、
+-- 「曜日はまだ仮（自由に変更可）・座席の島も仮に割り当て済み（自由に変更可）」という状態。
+-- テーブルが既に存在する環境ではCREATE TABLE内のCHECK定義を書き換えても反映されないため、
+-- 既存の制約を都度drop・再作成する（列追加のADD COLUMN IF NOT EXISTSと同じ「毎回実行して
+-- 差分だけ効く」パターン）。本番（Supabase）には手動でこの2文を実行する必要がある。
+ALTER TABLE project_quarter_plans DROP CONSTRAINT IF EXISTS project_quarter_plans_status_check;
+ALTER TABLE project_quarter_plans ADD CONSTRAINT project_quarter_plans_status_check
+    CHECK (status IN ('seats_confirmed', 'survey_open', 'seats_tentative', 'weekdays_finalized', 'seats_allocated'));
+
+-- allocated_seats_overrides（2026-09-16追加）: 「PJは曜日によって座席が変わる前提で進めてください
+-- （同じにしてるのはあくまでこちらの善意）」との上司フィードバックを受けた。allocated_seatsは
+-- 引き続き「基本の島」（全確定曜日の既定値）として使い、この列には基本の島と異なる曜日だけを
+-- 疎に持つ（例: {"tue": [10, 11, 12]}）。該当曜日のキーがなければ基本の島（allocated_seats）を
+-- 使う（database.effective_seat_ids()参照）。
+ALTER TABLE project_quarter_plans ADD COLUMN IF NOT EXISTS allocated_seats_overrides JSONB;
+
 -- T-11 project_weekday_responses。1計画につき1回答（再送信はUPSERT、共通created_at/updated_atは持たない）
 CREATE TABLE IF NOT EXISTS project_weekday_responses (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -469,6 +486,17 @@ async def close_fixed_seat_assignment(conn, *, user_id: int | None = None, seat_
     return row["seat_id"]
 
 
+def effective_seat_ids(allocated_seats_json, overrides_json, weekday: str) -> list[int]:
+    """基本の島（allocated_seats）と曜日ごとの例外（allocated_seats_overrides）から、指定曜日の
+    実効座席id一覧を返す（2026-09-16新設。「PJは曜日によって座席が変わる前提で進めてください
+    （同じにしてるのはあくまでこちらの善意）」との上司フィードバックを受けた）。overrides_jsonに
+    その曜日のキーがあればそちらを優先し、なければ基本の島をそのまま使う。"""
+    overrides = json.loads(overrides_json) if overrides_json else {}
+    if weekday in overrides:
+        return overrides[weekday]
+    return json.loads(allocated_seats_json) if allocated_seats_json else []
+
+
 async def project_blocked_seats(target_date: Date) -> dict[int, str]:
     """指定日時点でプロジェクト座席として専有されている座席（seat_id→プロジェクト名）。
 
@@ -481,9 +509,12 @@ async def project_blocked_seats(target_date: Date) -> dict[int, str]:
     未確定（プロジェクト座席）で埋まっている」との報告を受けた。従来は期間中の曜日を問わず毎日
     専有扱いにしていたため、例えば火・水のみ出社が確定しているプロジェクトの座席が、月・木・金にも
     「未確定」表示で埋まり、他の利用者が実際には誰も使わないその座席をフリー座席として予約できない
-    不具合があった）。"""
+    不具合があった）。2026-09-16修正: 曜日ごとに座席の島が異なりうるようになった
+    （allocated_seats_overrides）ため、対象日の曜日についてeffective_seat_ids()で実効座席を
+    解決するようにした。これにより、曜日によって島を変えた場合もフロアマップ表示・予約時の
+    重複チェック（reservations.py・proxy.py）が正しい座席を専有扱いにする。"""
     rows = await get_pool().fetch(
-        """SELECT pqp.allocated_seats, pqp.weekdays_finalized, p.name
+        """SELECT pqp.allocated_seats, pqp.allocated_seats_overrides, pqp.weekdays_finalized, p.name
            FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id
            WHERE pqp.status = 'seats_allocated' AND $1 BETWEEN pqp.period_start AND pqp.period_end""",
@@ -495,9 +526,8 @@ async def project_blocked_seats(target_date: Date) -> dict[int, str]:
         weekdays = json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else []
         if target_weekday not in weekdays:
             continue
-        if r["allocated_seats"]:
-            for seat_id in json.loads(r["allocated_seats"]):
-                result[seat_id] = r["name"]
+        for seat_id in effective_seat_ids(r["allocated_seats"], r["allocated_seats_overrides"], target_weekday):
+            result[seat_id] = r["name"]
     return result
 
 

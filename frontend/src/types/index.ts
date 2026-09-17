@@ -294,7 +294,7 @@ export interface ProjectListItem {
   created_by_name: string | null
 }
 
-export type QuarterPlanStatus = 'seats_confirmed' | 'survey_open' | 'weekdays_finalized' | 'seats_allocated'
+export type QuarterPlanStatus = 'seats_confirmed' | 'survey_open' | 'seats_tentative' | 'weekdays_finalized' | 'seats_allocated'
 
 // A-38 GET /project-quarter-plans（S-09 プロジェクト一覧・出社曜日の調整表）
 export interface QuarterPlanItem {
@@ -308,8 +308,15 @@ export interface QuarterPlanItem {
   non_fixed_member_count: number
   status: QuarterPlanStatus
   weekdays_finalized: Weekday[] | null
+  /** 基本の島（allocated_seats_overridesがない曜日は常にこれを使う） */
   allocated_seat_ids: number[] | null
   allocated_seat_label: string | null
+  /** 確定曜日ごとの実効座席（基本の島＋曜日ごとの例外を解決済み、2026-09-16新設）。「PJは曜日に
+   * よって座席が変わる前提で進めてください」との上司フィードバックを受けた。座席の島が未割当なら
+   * null。キーはWeekday */
+  allocated_seats_by_weekday: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
+  /** 1曜日でも基本の島と異なる座席になっているか（2026-09-16新設）。表示切替に使う */
+  has_seat_override: boolean
   has_response: boolean
   choice1_weekdays: Weekday[] | null
   choice2_weekdays: Weekday[] | null
@@ -349,12 +356,26 @@ export interface SeatBlockFor {
   // いるときに座席の割り当てをするので、その曜日のプロジェクト始動日初日に設定してほしい」との
   // 要望を受けた。periodStart自体が確定曜日と一致しないことがあるため）
   weekdaysFinalized?: Weekday[] | null
+  // 曜日ごとに異なる座席の島を持てるようにする拡張（2026-09-16新設）。「PJは曜日によって座席が
+  // 変わる前提で進めてください（同じにしてるのはあくまでこちらの善意）」との上司フィードバックを
+  // 受けた。未指定（または'all'）なら基本の島を全確定曜日ぶん一括編集する従来どおりの動作。特定の
+  // 曜日を指定すると、その1日だけを例外として編集する（allocatedSeatIdsはその曜日の実効座席を渡す）
+  weekday?: Weekday | 'all'
+  // weekday指定時、それ以外の確定曜日にこのプロジェクトが使っている座席（フロアマップ上に破線の
+  // マーカーで表示する、2026-09-16新設。「火曜日の座席を選ぶとき、月曜日はどこに座っているのか
+  // 一目でわかるようにしてほしい」との要望を受けた）
+  otherWeekdaySeats?: { weekday: Weekday; seatLabel: string; seatIds: number[] }[]
 }
 
 // S-02をS-09から「座席の島の一括割当モード」で開く際にreact-routerのlocation.stateへ積む値
 // （A-80、2026-09-10新設。「座席の割り当てを一括で登録できるようにしてほしい」との要望を受けた）。
-// SeatBlockForと違い、対象は曜日確定済み・未割当（allocated_seat_ids=null）の複数プロジェクトの
-// 一覧のみで、編集〔allocatedSeatIdsあり〕という単一モード特有の概念は持たない
+// 当初の対象は曜日確定済み・未割当（allocated_seat_ids=null）の複数プロジェクトのみで、編集
+// 〔allocatedSeatIdsあり〕という概念を持たなかったが、「座席割り当てを登録して、再度戻すのが
+// 不便なので、座席の島の一括割当では常に全PJを編集できるようにしてほしい」との要望を受け、
+// 既に座席を持つプロジェクト（status='seats_tentative'で仮の座席が入っている場合）も対象に含め、
+// 単一モード（SeatBlockFor）と同じくallocatedSeatIdsを渡して初期選択状態を復元できるようにした
+// （2026-09-17拡張。ただしstatus='seats_allocated'まで進んだプロジェクトは対象外のまま。A-80自体が
+// 既存の個人予約〔A-18〕との整理ロジックを持たず、A-44〔単一編集〕のみがそれを行うため）
 export interface SeatBlockBulkFor {
   plans: {
     planId: number
@@ -363,6 +384,11 @@ export interface SeatBlockBulkFor {
     periodStart: string
     weekdaysFinalized: Weekday[] | null
     note: string | null
+    allocatedSeatIds?: number[]
+    // 曜日ごとの実効座席（2026-09-17追加）。「金曜日の座席を決めると木曜日にもその席が反映されるのを
+    // やめてほしい」との要望を受け、一括割当画面でも曜日を絞り込んでいる間はプロジェクトごとの
+    // 全体の島ではなく、この曜日別の実効座席（既存の例外があればそれ、なければ全体の島）を初期値にする
+    allocatedSeatsByWeekday?: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
   }[]
 }
 

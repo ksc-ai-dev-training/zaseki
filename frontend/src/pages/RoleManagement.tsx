@@ -453,9 +453,22 @@ const WEBHOOK_KEY = 'project_seat_slack_webhook_url'
 // アンケート送信時の文言（project_seat_slack_message_survey）は、2026-09-03の変更B（検討資料
 // 「プロジェクト座席・曜日調整フロー改善案」）でシステムによるアンケート送信通知自体を廃止した
 // ことに伴い削除した（エリア責任者が自分でSlackへ連絡する運用に変更）。
+// 2026-09-16追加: 「座席の割り当て、曜日確定が決まったときスラックに通知されるのをオン/オフ
+// 切り替えてほしい」との要望を受け、通知の種類ごとのオン/オフスイッチ（値は'true'/'false'の文字列）
+// を追加した。あわせて、従来自動通知していなかった座席の島の割当（A-44・A-80）にも新規に自動通知を
+// 追加し、その文言もここに含めた。2026-09-16再訂正: 「表現の問題かもすけど、通知のオン/オフ切り替え
+// は、通知機能自体のON/OFFではなくて、自動で通知する機能のON/OFFとなります」との指摘を受け、
+// ラベルに「自動で」を明記した（オフにしても、リマインドの手動送信〔A-42〕やWebhook URL自体の
+// 設定には影響しない、システムが確定・割当のタイミングで自動的に送る分のみを止める、という意味を
+// 誤解なく伝えるため）。
+const NOTIFY_TOGGLES: { key: string; label: string }[] = [
+  { key: 'project_seat_slack_notify_finalize', label: '曜日確定時に自動で通知する' },
+  { key: 'project_seat_slack_notify_seat_block', label: '座席の島の割当が決まったときに自動で通知する' },
+]
 const MESSAGE_FIELDS: { key: string; label: string; hint: string }[] = [
   { key: 'project_seat_slack_message_reminder', label: 'リマインド送信時の文言', hint: '使える項目: {project_name}' },
   { key: 'project_seat_slack_message_finalize_header', label: '曜日確定時の文言（見出し行）', hint: 'この後にプロジェクトごとの確定曜日一覧（固定フォーマット）が続く' },
+  { key: 'project_seat_slack_message_seat_block_header', label: '座席の島の割当時の文言（見出し行）', hint: 'この後にプロジェクトごとの割当座席一覧（固定フォーマット）が続く' },
 ]
 
 function NotificationsTab() {
@@ -505,6 +518,25 @@ function NotificationsTab() {
           className="h-9 w-full rounded border border-slate-300 px-3"
         />
       </label>
+
+      <div className="mt-6 space-y-2">
+        <div className="text-sm font-semibold text-slate-700">自動通知のオン/オフ</div>
+        <p className="text-xs text-slate-400">
+          オフにするのはシステムがこのタイミングで自動的に送る通知のみです。リマインドの手動送信（S-09の「リマインドを送る」）やWebhook URLの設定自体には影響しません。
+        </p>
+        {NOTIFY_TOGGLES.map((t) => (
+          <label key={t.key} className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={(values[t.key] ?? 'true') === 'true'}
+              onChange={(e) => setField(t.key, e.target.checked ? 'true' : 'false')}
+              disabled={isLoading}
+              className="h-4 w-4"
+            />
+            {t.label}
+          </label>
+        ))}
+      </div>
 
       <div className="mt-6 space-y-4">
         <div className="text-sm font-semibold text-slate-700">通知文言</div>

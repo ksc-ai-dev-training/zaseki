@@ -7,6 +7,7 @@ import Availability from './pages/Availability'
 import AdminMenu from './pages/AdminMenu'
 import FixedSeats from './pages/FixedSeats'
 import ProjectSeatAllocation from './pages/ProjectSeatAllocation'
+import ConfirmWeekdays from './pages/ConfirmWeekdays'
 import ProjectSeatRequest from './pages/ProjectSeatRequest'
 import ProxyBooking from './pages/ProxyBooking'
 import RoleManagement from './pages/RoleManagement'
@@ -54,6 +55,10 @@ export default function App() {
         <Route path="/help" element={<Help />} />
         <Route path="/project-seats" element={<ProjectSeatRequest />} />
         <Route path="/project-seats-area" element={requireAdmin(<ProjectSeatAllocation />)} />
+        {/* 「この内容で本当に曜日を確定する」の確認画面（2026-09-17新設）。「プロジェクト座席
+            （エリア担当）ではなく別の画面としてみれるようにしたい」との要望を受け、独立した
+            画面に切り出した。権限は元のプロジェクト座席（エリア担当）と同じadmin必須 */}
+        <Route path="/project-seats-area/confirm-weekdays" element={requireAdmin(<ConfirmWeekdays />)} />
         <Route path="/admin" element={requireAdmin(<AdminMenu />)} />
         <Route path="/fixed-seats" element={requireAdmin(<FixedSeats />)} />
         <Route path="/proxy-booking" element={requireAdmin(<ProxyBooking />)} />

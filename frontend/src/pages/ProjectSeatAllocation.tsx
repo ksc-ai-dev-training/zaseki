@@ -84,12 +84,19 @@ function MonthDurationPicker({ onApply }: { onApply: (start: string, end: string
 const STATUS_LABEL: Record<QuarterPlanStatus, (p: QuarterPlanItem) => string> = {
   seats_confirmed: () => 'アンケート未送信',
   survey_open: (p) => `アンケート回答受付中（${p.has_response ? '回答済み' : '未回答'}）`,
+  // 仮の座席割り当て（2026-09-16追加。「曜日を確定するのではなくそこから座席割り当ての仮作成を
+  // できるようにしてほしい」との要望を受けた）。本当に曜日を確定するまでは曜日・座席island双方を
+  // 自由にやり直せる状態のため、他のstatusと違い「まだ仮である」ことが伝わる文言にする。
+  // 2026-09-17短縮: 「仮の座席割り当て中（...）」は座席数が多いプロジェクトだと長くなるとの
+  // 指摘を受け、「仮（...）」に短縮した
+  seats_tentative: (p) => `仮${p.allocated_seat_label ? `（${p.allocated_seat_label}）` : '（座席未選択）'}`,
   weekdays_finalized: () => '曜日確定済み（座席の島の割当待ち）',
   seats_allocated: (p) => `座席割当済み（${p.allocated_seat_label}）`,
 }
 const STATUS_BADGE_CLASS: Record<QuarterPlanStatus, string> = {
   seats_confirmed: 'bg-slate-100 text-slate-500',
   survey_open: 'bg-amber-50 text-amber-700',
+  seats_tentative: 'bg-indigo-50 text-indigo-700',
   weekdays_finalized: 'bg-blue-50 text-blue-700',
   seats_allocated: 'bg-green-50 text-green-700',
 }
@@ -117,7 +124,7 @@ const noSeatNeeded = (p: QuarterPlanItem) => {
 // 失敗する」との報告を受けた）。required_seatsの上書き自体は尊重しつつ、実際に割り当てても必ず
 // 失敗する（対象メンバーが実在しない）ケースだけはボタン自体を出さないようにする
 const seatBlockDoomed = (p: QuarterPlanItem) =>
-  p.status === 'weekdays_finalized' && !noSeatNeeded(p) && p.non_fixed_member_count === 0
+  (p.status === 'weekdays_finalized' || p.status === 'seats_tentative') && !noSeatNeeded(p) && p.non_fixed_member_count === 0
 const statusLabel = (p: QuarterPlanItem) => {
   if (!noSeatNeeded(p)) return STATUS_LABEL[p.status](p)
   return p.status === 'seats_confirmed' ? '座席不要（全員固定座席／在宅）' : '座席不要（必要座席数0）'
@@ -190,6 +197,33 @@ export default function ProjectSeatAllocation() {
     () => (periodTab === 'all' ? plans : plans.filter((p) => `${p.period_start}__${p.period_end}` === periodTab)),
     [plans, periodTab]
   )
+
+  // 曜日絞り込み（2026-09-16新設）。「曜日調整、座席割り当てで一つの曜日に絞り込む機能が欲しい」
+  // との要望を受けた。曜日調整表（WeekdayMatrix）では選んだ曜日の列以外を非表示にし、下の
+  // 「座席割り当て」一覧では選んだ曜日に出社しないプロジェクトの行を非表示にする、という表示のみの
+  // 絞り込み（データ・チェック状態自体は変更しない）。1つの選択を両方の表示に共通して使う
+  const [weekdayFilter, setWeekdayFilter] = useState<Weekday | 'all'>('all')
+  // 座席割り当て一覧の絞り込みに使う「そのプロジェクトの出社曜日」。確定済みならweekdays_finalized、
+  // 未確定（アンケート回答済みだが曜日調整前）なら第一希望を暫定的に使う（WeekdayMatrixの初期
+  // チェック状態と同じ考え方）。どちらもなければ絞り込みの対象外（常に表示する。アンケート未回答
+  // でリマインドが必要なプロジェクト等を、曜日で絞り込んでも見失わないようにするため）
+  const planWeekdaysForFilter = (p: QuarterPlanItem): Weekday[] | null =>
+    p.weekdays_finalized ?? p.choice1_weekdays ?? null
+  // アンケート未回答（status='survey_open'かつhas_response=false）のプロジェクトを一覧の先頭に
+  // まとめる（2026-09-17追加。「未回答のPJを上に表示させたい」との要望を受けた。エリア責任者が
+  // リマインドを送るべき対象をすぐ見つけられるようにするのが目的で、それ以外の並び順
+  // （APIが返す期間・名前順）は変えない、安定ソート）
+  const isUnanswered = (p: QuarterPlanItem) => p.status === 'survey_open' && !p.has_response
+  const seatListPlans = useMemo(() => {
+    const base =
+      weekdayFilter === 'all'
+        ? visiblePlans
+        : visiblePlans.filter((p) => {
+            const days = planWeekdaysForFilter(p)
+            return days === null || days.includes(weekdayFilter)
+          })
+    return [...base].sort((a, b) => Number(isUnanswered(b)) - Number(isUnanswered(a)))
+  }, [visiblePlans, weekdayFilter])
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -373,32 +407,100 @@ export default function ProjectSeatAllocation() {
     }
   }
 
-  const goSeatBlock = (p: QuarterPlanItem) => {
+  // weekday指定時は、その1日だけを例外として編集する（2026-09-16新設。「PJは曜日によって座席が
+  // 変わる前提で進めてください」との上司フィードバックを受けた）。allocatedSeatIdsはその曜日の
+  // 実効座席（基本の島か、既に例外があればその座席）を渡し、otherWeekdaySeatsで他の確定曜日の
+  // 座席をフロアマップのマーカー表示用に渡す
+  const goSeatBlock = (p: QuarterPlanItem, weekday?: Weekday) => {
+    const byWeekday = p.allocated_seats_by_weekday
+    const allocatedSeatIds = weekday && byWeekday ? byWeekday[weekday]?.seat_ids : p.allocated_seat_ids ?? undefined
+    const otherWeekdaySeats =
+      weekday && byWeekday
+        ? Object.entries(byWeekday)
+            .filter(([w]) => w !== weekday)
+            .map(([w, v]) => ({ weekday: w as Weekday, seatLabel: v.seat_label, seatIds: v.seat_ids }))
+        : undefined
     navigate('/', {
       state: {
         seatBlockFor: {
           planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
-          allocatedSeatIds: p.allocated_seat_ids ?? undefined, periodStart: p.period_start,
-          weekdaysFinalized: p.weekdays_finalized,
+          allocatedSeatIds: allocatedSeatIds ?? undefined, periodStart: p.period_start,
+          weekdaysFinalized: p.weekdays_finalized, weekday, otherWeekdaySeats,
         },
       },
     })
   }
 
   // 座席の島の一括割当（A-80、2026-09-10新設）。「座席の割り当てを一括で登録できるようにしてほしい」
-  // との要望を受けた。対象は行ごとの「座席の島を割り当てる」ボタンと同じ条件（曜日確定済み・未割当）
-  // のプロジェクトのみとし、既に割当済み（座席を編集）は対象外のまま個別の導線を使う
-  const bulkBlockEligiblePlans = useMemo(
-    () => visiblePlans.filter((p) => p.status === 'weekdays_finalized' && !noSeatNeeded(p) && !seatBlockDoomed(p)),
-    [visiblePlans]
-  )
-  const goSeatBlockBulk = () => {
+  // との要望を受けた。当初は行ごとの「座席の島を割り当てる」ボタンと同じ条件（status='weekdays_finalized'・
+  // 未割当）のプロジェクトのみを対象とし、既に座席を持つものは対象外にしていたが、「座席割り当てを
+  // 登録して、再度戻すのが不便なので、座席の島の一括割当では常に全PJを編集できるようにしてほしい」
+  // との要望を受け、status='seats_tentative'（仮の座席割り当て中、既に仮の座席を持つ場合を含む）も
+  // 対象に追加した（2026-09-17拡張。バックエンドのA-80は元々この2状態を受け付けており、フロント側の
+  // 絞り込みだけが古いままだった）。既にallocated_seatIdsを渡すことで、Availability.tsx側が単一編集
+  // モード〔SeatBlockFor〕と同じ要領で現在の座席を初期選択状態として復元する。status='seats_allocated'
+  // （本当に確定済み）は引き続き対象外のまま「座席を編集」（1件ずつ、A-44）を使う（A-80自体が
+  // 既存の個人予約〔A-18〕との整理ロジックを持たないため、そこまで進んだプロジェクトを一括画面で
+  // 再割当てすると古い座席の予約が残ってしまう恐れがある）
+  const bulkEligible = (p: QuarterPlanItem) =>
+    (p.status === 'weekdays_finalized' || p.status === 'seats_tentative') && !noSeatNeeded(p) && !seatBlockDoomed(p)
+  const bulkBlockEligiblePlans = useMemo(() => visiblePlans.filter(bulkEligible), [visiblePlans])
+  // 座席の島の一括割当画面（Availability.tsx）は、開いた時点のプロジェクト一覧をlocation.stateへ
+  // 積んだ「スナップショット」として持ち、以降その画面を開いている間は自動で更新されない。他の
+  // プロジェクトの座席（allocatedSeatIds等）が、この画面を開く直前の別の操作やタブで変わっていた
+  // 場合にスナップショットが古いままだと、実際には重ならないはずの曜日のプロジェクト同士が
+  // 「重複しています」と誤警告される不具合につながっていた（2026-09-17修正。「ODTの座席を選んだら
+  // 本来出社日ではないIKI_ビリングONEと重複していると出た。IKI_ビリングONEはその席を選んでいない」
+  // との報告を受けた）。ボタンを押した瞬間に必ずサーバーから最新の一覧を取り直してから
+  // スナップショットを作るようにし、古いデータを持ち込む可能性を減らす
+  const goSeatBlockBulk = async () => {
+    const fresh = await refreshAll()
+    const freshPlans = (fresh?.items ?? plans).filter(
+      (p) => periodTab === 'all' || `${p.period_start}__${p.period_end}` === periodTab
+    )
+    const eligible = freshPlans.filter(bulkEligible)
     navigate('/', {
       state: {
         seatBlockBulkFor: {
-          plans: bulkBlockEligiblePlans.map((p) => ({
+          plans: eligible.map((p) => ({
             planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
             periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
+            allocatedSeatIds: p.allocated_seat_ids ?? undefined,
+            allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
+          })),
+        },
+      },
+    })
+  }
+
+  // 仮の座席割り当て（A-84、2026-09-16新設）。「曜日を確定するのではなくそこから座席割り当ての
+  // 仮作成をできるようにしてほしい」との要望を受けた。WeekdayMatrixの「仮の座席割り当てを作成する」
+  // から呼ばれ、渡された各プロジェクトの現在のチェック状態をA-84で仮の曜日として保存したうえで、
+  // 一括割当画面へ引き継ぐ。以前は既に座席を持つプロジェクトを除外していたが、上記
+  // bulkBlockEligiblePlansと同じ理由で対象に含めるよう変更した（2026-09-17拡張。既存の座席は
+  // allocatedSeatIds経由で初期選択状態として復元されるため、除外する必要がなくなった）
+  const createTentativeAndAssign = async (items: { planId: number; weekdaysFinalized: Weekday[] }[]) => {
+    await apiFetch('/api/project-quarter-plans/tentative-weekdays', {
+      method: 'PUT',
+      body: JSON.stringify({
+        plans: items.map((i) => ({ plan_id: i.planId, weekdays_finalized: i.weekdaysFinalized })),
+      }),
+    })
+    const fresh = await refreshAll()
+    const freshPlans = fresh?.items ?? []
+    const targetIds = new Set(items.map((i) => i.planId))
+    const toAssign = freshPlans.filter(
+      (p) => targetIds.has(p.id) && p.status === 'seats_tentative' && !noSeatNeeded(p) && !seatBlockDoomed(p)
+    )
+    if (toAssign.length === 0) return
+    navigate('/', {
+      state: {
+        seatBlockBulkFor: {
+          plans: toAssign.map((p) => ({
+            planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
+            periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
+            allocatedSeatIds: p.allocated_seat_ids ?? undefined,
+            allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
           })),
         },
       },
@@ -434,7 +536,7 @@ export default function ProjectSeatAllocation() {
               onClick={openBulkCreate}
               className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
             >
-              座席期間を一括で新規設定する
+              期間設定
             </button>
           </div>
         </section>
@@ -466,15 +568,40 @@ export default function ProjectSeatAllocation() {
           </div>
         )}
 
+        {/* 曜日での絞り込み（2026-09-16新設）。「曜日調整、座席割り当てで一つの曜日に絞り込む機能が
+            欲しい」との要望を受けた。下の「曜日調整表」（列の絞り込み）・「座席割り当て」一覧（行の
+            絞り込み）の両方に共通して効く */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">曜日で絞り込み:</span>
+          <button
+            type="button"
+            onClick={() => setWeekdayFilter('all')}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+          >
+            すべて
+          </button>
+          {WEEKDAYS.map((w) => (
+            <button
+              key={w.key}
+              type="button"
+              onClick={() => setWeekdayFilter(w.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            >
+              {w.label}
+            </button>
+          ))}
+        </div>
+
         {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧。次のサイクルの座席割り当てを
             行う際に前回の曜日調整表を参考にしたいとの要望を受け、座席割り当てより上に表示するよう
             順序を入れ替えた（2026-09-15修正。以前は座席割り当て→曜日調整表の順だった） */}
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
           <WeekdayMatrix
-            plans={visiblePlans.filter((p) => p.status === 'survey_open')}
+            plans={visiblePlans.filter((p) => p.status === 'survey_open' || p.status === 'seats_tentative')}
             areaSeatCapacity={areaSeatCapacity}
-            onFinalized={refreshAll}
+            onCreateTentative={createTentativeAndAssign}
+            weekdayFilter={weekdayFilter}
           />
 
           <ConfirmedWeekdaysTable
@@ -518,7 +645,7 @@ export default function ProjectSeatAllocation() {
                 </tr>
               </thead>
               <tbody>
-                {visiblePlans.map((p) => (
+                {seatListPlans.map((p) => (
                   <tr key={p.id} className="border-b border-slate-100">
                     <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
                       {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
@@ -528,6 +655,19 @@ export default function ProjectSeatAllocation() {
                     <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
                     <td className="px-4 py-2">
                       <span className={`rounded px-2 py-0.5 text-xs ${statusBadgeClass(p)}`}>{statusLabel(p)}</span>
+                      {/* 曜日によって座席の島が異なる場合の目印（2026-09-16新設。「PJは曜日によって
+                          座席が変わる前提で進めてください」との上司フィードバックを受けた）。
+                          内訳は曜日で絞り込んで確認する想定のため、ここではtitleで簡易表示のみ */}
+                      {p.has_seat_override && p.allocated_seats_by_weekday && (
+                        <span
+                          className="ml-1 cursor-help"
+                          title={`曜日によって座席が異なります: ${Object.entries(p.allocated_seats_by_weekday)
+                            .map(([w, v]) => `${WEEKDAYS.find((wd) => wd.key === w)?.label}: ${v.seat_label}`)
+                            .join('／')}`}
+                        >
+                          🔀
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex justify-end gap-2">
@@ -552,14 +692,36 @@ export default function ProjectSeatAllocation() {
                         {(p.status === 'seats_confirmed' || p.status === 'survey_open') && (
                           <button type="button" onClick={() => openPeriod(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">期間を修正</button>
                         )}
-                        {p.status === 'seats_allocated' && (
-                          <button type="button" onClick={() => goSeatBlock(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">座席を編集</button>
+                        {/* 仮の座席割り当て（seats_tentative、2026-09-16追加）は本当に確定するまで
+                            自由にやり直せるため、座席割当済み（seats_allocated）と同じ「座席を編集」
+                            導線（1件ずつ、A-44）で選び直す。座席をまだ選んでいない（一括割当画面から
+                            離脱した等）場合はボタンの表示自体はそのまま出し、A-44側で新規割当として扱う */}
+                        {/* 曜日で絞り込み中は、その曜日だけを例外として編集する（2026-09-16新設。
+                            「PJは曜日によって座席が変わる前提で進めてください」との上司フィードバック
+                            を受けた）。「すべて」表示中は従来どおり基本の島（全確定曜日）を編集する */}
+                        {(p.status === 'seats_allocated' || p.status === 'seats_tentative') && (
+                          seatBlockDoomed(p) ? (
+                            <span
+                              className="cursor-help rounded bg-slate-100 px-3 py-1 text-xs text-slate-400"
+                              title="現在のメンバーが全員固定座席保有者または在宅のため不要のため、座席の島を割り当てられません。メンバー構成を見直すか、必要座席数を0に修正してください。"
+                            >
+                              {weekdayFilter === 'all' ? '座席を編集' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を編集`}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => goSeatBlock(p, weekdayFilter === 'all' ? undefined : weekdayFilter)}
+                              className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                            >
+                              {weekdayFilter === 'all' ? '座席を編集' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を編集`}
+                            </button>
+                          )
                         )}
                       </div>
                     </td>
                   </tr>
                 ))}
-                {visiblePlans.length === 0 && (
+                {seatListPlans.length === 0 && (
                   <tr><td colSpan={6} className="py-6 text-center text-slate-400">該当する計画がありません</td></tr>
                 )}
               </tbody>
@@ -806,9 +968,10 @@ function weekdayBadge(p: QuarterPlanItem, day: Weekday, confirmed: Set<Weekday>)
 // 確定の取り消し（A-62）は、行ごとに即時実行する「取り消す」ボタン → 先頭列のチェックボックスで
 // 選んでから一括実行、と試したが、「プロジェクトの確定を取り消すを押した後、どのプロジェクトにするか
 // 選択するようにしてほしい」との要望を受け、まず「プロジェクトの確定を取り消す」ボタンを押し、
-// 開いたモーダルで対象プロジェクトを選んでから実行する順序に変更した（2026-09-02）。A-62自体は
-// status='seats_allocated'を引き続き対象外とするため（座席割当後の「取り消し」はA-44の「座席を編集」
-// で行う別の操作のまま）、その選択候補（unfinalizeCandidates）は下記editablePlansとは別に絞り込む。
+// 開いたモーダルで対象プロジェクトを選んでから実行する順序に変更した（2026-09-02）。
+// 2026-09-16再拡張: 「割り当て済みからアンケート回答後に戻せるボタンが欲しい」との要望を受け、
+// status='seats_allocated'（割当済み）もunfinalizeCandidatesに含めた。A-62は起点の状態を問わず常に
+// status='survey_open'まで一段階で戻す（下記editablePlansとは対象が異なるため、引き続き別に絞り込む）。
 // 曜日調整表・確定した出社曜日の両テーブルで使う「備考」欄（A-83、2026-09-14新設）。既存のnote
 // （T-11、PM/PLがアンケート回答時に入力する読み取り専用の備考）とは別物で、こちらは調整表を使う
 // 管理部・エリア責任者自身が入力・保存するメモ。プロジェクトごとに独立して保存するため、行の再描画で
@@ -872,7 +1035,10 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
     () => plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated'),
     [plans]
   )
-  const unfinalizeCandidates = useMemo(() => plans.filter((p) => p.status === 'weekdays_finalized'), [plans])
+  const unfinalizeCandidates = useMemo(
+    () => plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated'),
+    [plans]
+  )
   const editableIds = editablePlans.map((p) => p.id).join(',')
   const hasSeatsAllocatedEdit = editablePlans.some((p) => p.status === 'seats_allocated')
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
@@ -1115,9 +1281,20 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
                 <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50">
                   <input type="checkbox" checked={cancelSelected.has(p.id)} onChange={() => toggleCancelSelect(p.id)} />
                   <span>{p.project_name}</span>
+                  {p.status === 'seats_allocated' && (
+                    <span className="rounded bg-amber-50 px-1 text-xs font-normal text-amber-600">割当済み</span>
+                  )}
                 </label>
               ))}
             </div>
+            {[...cancelSelected].some((id) => unfinalizeCandidates.find((p) => p.id === id)?.status === 'seats_allocated') && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                割当済みのプロジェクトが含まれています。取り消すとアンケート回答後（出社曜日未確定）の状態まで
+                一気に戻り、出社曜日の確定・座席の島の割当を最初からやり直す必要があります（確定していた曜日・
+                割り当て済みだった座席は初期値として残ります）。メンバー個別の座席予約は自動的には取り消されない
+                ため、必要に応じて別途調整してください。
+              </p>
+            )}
             {cancelError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{cancelError}</p>}
           </div>
         </Modal>
@@ -1126,17 +1303,21 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
   )
 }
 
-function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
+function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilter }: {
   plans: QuarterPlanItem[]
   areaSeatCapacity: { NORTH: number; EAST_WEST: number }
-  onFinalized: () => void
+  // 仮の座席割り当てを作成する（A-84、2026-09-16新設）。呼び出し元（親）がAPI呼び出し・座席割当
+  // 画面への遷移までまとめて行う。WeekdayMatrix自身は対象と現在のチェック状態を渡すだけ
+  onCreateTentative: (items: { planId: number; weekdaysFinalized: Weekday[] }[]) => Promise<void>
+  // 曜日での絞り込み（2026-09-16新設）。'all'以外なら、選んだ曜日の列以外を非表示にする
+  // （チェック状態・確定操作の対象自体は変更しない、表示のみの絞り込み）
+  weekdayFilter: Weekday | 'all'
 }) {
+  const navigate = useNavigate()
+  const visibleWeekdays = weekdayFilter === 'all' ? WEEKDAYS : WEEKDAYS.filter((w) => w.key === weekdayFilter)
   const [checked, setChecked] = useState<Record<number, Set<Weekday>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // ConfirmedWeekdaysTableと同じ理由（weekdaysSummary参照）で、確定前に各プロジェクトの
-  // 出社曜日を一覧確認できる確認モーダルを設ける（2026-09-11追加）
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const { items: fixedAssignments } = useFixedSeatAssignments()
   // AI提案（FR-03-11、2026-09-08追加）: aiSuggestedはAIが埋めた「未編集の」セルのみを保持し、
   // エリア責任者がセルを直接編集する（toggle）とそのセルだけ取り除く（バッジが消え、通常の
@@ -1167,13 +1348,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plans.map((p) => p.id).join(',')])
-  // 前回の割当エリアなし（previous_area === null）のプロジェクトの扱い（2026-09-15変更）。
-  // 以前は独立した「UNKNOWN」グループにまとめていたが、「基本的にEAST・WESTの区分になるので、
-  // そのエリアの扱いにしてほしい。NORTHエリアの場合は切り替えるボタンを押すような感じ」との
-  // 要望を受け、既定でEAST・WESTグループへ含め、プロジェクトごとにNORTHへ切り替えられる
-  // ボタンを設けた（未指定＝EAST_WEST扱い）
-  const [areaOverride, setAreaOverride] = useState<Record<number, 'NORTH' | 'EAST_WEST'>>({})
-
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
     plans.forEach((p) => {
@@ -1220,8 +1394,11 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   // エリア（A-38のprevious_area、backend/routers/project_seats.pyのlist_quarter_plans参照）で代用する、
   // との回答による。一度も割り当てたことがないプロジェクト（previous_area=null）は、以前は独立した
   // 「UNKNOWN」グループにまとめていたが、「基本的にEAST・WESTの区分になるので、そのエリアの扱いに
-  // してほしい。NORTHエリアの場合は切り替えるボタンを押すような感じ」との要望を受け、既定でEAST・WEST
-  // グループへ含めるよう変更した（areaOverrideでプロジェクトごとにNORTHへ切り替え可能、2026-09-15変更）。
+  // してほしい」との要望を受け、既定でEAST・WESTグループへ含めるよう変更した（2026-09-15変更）。
+  // 当初はプロジェクトごとにNORTHへ切り替えるボタンを設けていたが、「このボタンはいらないかもです。
+  // 新規プロジェクトはEAST・WESTエリアに入れるようにお願いします」との要望を受け、切り替え自体を
+  // 廃止し常にEAST・WESTへ固定した（2026-09-17変更。新規プロジェクトである目印は「NEW」バッジ
+  // 〔表示のみ、下記〕に置き換えた）。
   // seatCapacity: そのグループの物理座席数（座席タイプ問わず）。「曜日ごとの合計」がこれを超えた
   // 曜日を警告表示するために使う（2026-09-09追加）。
   const AREA_GROUPS: {
@@ -1232,25 +1409,28 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
   }[] = [
     {
       key: 'NORTH', label: 'NORTHエリア',
-      matchPlan: (p) => p.previous_area === 'NORTH' || (p.previous_area === null && areaOverride[p.id] === 'NORTH'),
+      matchPlan: (p) => p.previous_area === 'NORTH',
       matchFixed: (a) => a.area === 'NORTH', seatCapacity: areaSeatCapacity.NORTH,
     },
     {
       key: 'EAST_WEST', label: 'EAST・WESTエリア',
-      matchPlan: (p) =>
-        p.previous_area === 'EAST' || p.previous_area === 'WEST' ||
-        (p.previous_area === null && areaOverride[p.id] !== 'NORTH'),
+      matchPlan: (p) => p.previous_area === 'EAST' || p.previous_area === 'WEST' || p.previous_area === null,
       matchFixed: (a) => a.area === 'EAST' || a.area === 'WEST', seatCapacity: areaSeatCapacity.EAST_WEST,
     },
   ]
   const groups = AREA_GROUPS.map((g) => {
     // 新規プロジェクト（previous_area === null、座席の島の割当実績がなくNORTH⇔EAST・WESTの
     // 切り替えボタンが出る対象）を各グループの上に優先表示する（2026-09-15追加、「新規プロジェクトは
-    // 上に優先的に表示させて」との要望を受けた）。Array.prototype.sortは安定ソートのため、
-    // 新規・既存それぞれの中でのAPIから返ってきた順序（period_start DESC等）は保たれる
+    // 上に優先的に表示させて」との要望を受けた）。新規・既存それぞれの中は、APIの返却順
+    // （period_start DESCの次にp.name、DBの既定の照合順序で英数字名が仮名・漢字名より先に来やすく
+    // 素直な「あいうえお順」になっていなかった）ではなく、プロジェクト名のlocaleCompare('ja')で
+    // 並べ替える（2026-09-16変更、「それ以外の順番はあいうえお順にできる？」との要望を受けた）
     const groupPlans = plans
       .filter(g.matchPlan)
-      .sort((a, b) => Number(a.previous_area !== null) - Number(b.previous_area !== null))
+      .sort((a, b) => {
+        const newDiff = Number(a.previous_area !== null) - Number(b.previous_area !== null)
+        return newDiff !== 0 ? newDiff : a.project_name.localeCompare(b.project_name, 'ja')
+      })
     const fixedSeatCount = fixedAssignments.filter(g.matchFixed).length
     return {
       ...g, plans: groupPlans, fixedSeatCount,
@@ -1322,24 +1502,24 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
     }
   }
 
-  const confirmWeekdays = async () => {
+  const createTentative = async () => {
     setSubmitting(true)
     setError(null)
     try {
-      await apiFetch('/api/project-quarter-plans/finalize-weekdays', {
-        method: 'PUT',
-        body: JSON.stringify({
-          plans: plans.map((p) => ({ plan_id: p.id, weekdays_finalized: [...(checked[p.id] ?? [])] })),
-        }),
-      })
-      setConfirmModalOpen(false)
-      await onFinalized()
+      await onCreateTentative(
+        plans.map((p) => ({ planId: p.id, weekdaysFinalized: [...(checked[p.id] ?? [])] }))
+      )
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '確定に失敗しました')
+      setError(e instanceof ApiError ? e.message : '仮の座席割り当ての作成に失敗しました')
     } finally {
       setSubmitting(false)
     }
   }
+
+  // 「この内容で本当に曜日を確定する」対象（仮の座席割り当て済みの行のみ、2026-09-16新設）。
+  // 確定の実行自体は独立した確認画面（ConfirmWeekdays.tsx）に切り出したため、ここでは件数の
+  // 判定にのみ使う
+  const tentativePlans = plans.filter((p) => p.status === 'seats_tentative')
 
   return (
     <div className="rounded border border-slate-200 bg-white">
@@ -1385,7 +1565,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                         required_seatsのままで変更していない） */}
                     <th className="pb-1 pr-3">必要座席数</th>
                     <th className="pb-1 pr-3">備考</th>
-                    {WEEKDAYS.map((w) => <th key={w.key} className="pb-1 px-2 text-center">{w.label}</th>)}
+                    {visibleWeekdays.map((w) => <th key={w.key} className="pb-1 px-2 text-center">{w.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -1406,41 +1586,62 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                             AI提案
                           </span>
                         )}
-                        {/* 座席の島の割当実績がなく（previous_area === null）どちらのエリアになるか未定な
-                            プロジェクト向けの切り替えボタン（2026-09-15追加）。既定ではEAST・WESTグループに
-                            含めており、実際にはNORTHになる見込みの場合だけこのボタンで切り替える */}
+                        {/* 座席の島の割当実績がない（previous_area === null）新規プロジェクトの目印
+                            （2026-09-15追加、2026-09-17変更）。当初はNORTH⇔EAST・WESTを切り替える
+                            ボタンだったが、「このボタンはいらないかもです。新規プロジェクトはEAST・WEST
+                            エリアに入れるようにお願いします」との要望を受け、切り替え機能は廃止し
+                            常にEAST・WESTグループへ固定した。あわせて「NEWマークがあるとわかりやすい」
+                            との要望を受け、表示のみのバッジに置き換えた */}
                         {p.previous_area === null && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setAreaOverride((prev) => ({
-                                ...prev,
-                                [p.id]: (prev[p.id] ?? 'EAST_WEST') === 'NORTH' ? 'EAST_WEST' : 'NORTH',
-                              }))
-                            }
-                            title="座席の島の割当実績がないため、どちらのエリアになるか未定です。実際に配置される見込みのエリアに合わせて切り替えてください"
-                            className="ml-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs font-normal text-slate-500 hover:bg-slate-50"
+                          <span
+                            title="座席の島の割当実績がない新規プロジェクトです（EAST・WESTエリア扱い）"
+                            className="ml-1 cursor-help rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-normal text-emerald-600"
                           >
-                            {(areaOverride[p.id] ?? 'EAST_WEST') === 'NORTH'
-                              ? 'NORTH扱い中（EAST・WESTに戻す）'
-                              : 'EAST・WEST扱い中（NORTHに切替）'}
-                          </button>
+                            NEW
+                          </span>
                         )}
-                        {p.has_previous_plan && (
-                          <div className="mt-0.5 text-xs font-normal text-slate-400">
-                            前回:{' '}
-                            {previousByPlan[p.id] ? (
-                              <>
-                                {previousByPlan[p.id].weekdays_finalized === null
-                                  ? '曜日未確定'
-                                  : previousByPlan[p.id].weekdays_finalized!.length > 0
-                                    ? formatWeekdays(previousByPlan[p.id].weekdays_finalized!)
-                                    : '出社なし'}
-                                {previousByPlan[p.id].allocated_seat_label
-                                  ? `／${previousByPlan[p.id].allocated_seat_label}`
-                                  : '／座席未確保'}
-                              </>
-                            ) : '読み込み中...'}
+                        {/* 2026-09-16修正: 「前回: 木・金／F1、F2、F3、F4、F5、F6、F7、H3、H4」のように
+                            座席数が多いプロジェクトだと1行が長くなり画面が煩雑になるとの指摘を受け、
+                            常時全文表示からラベル＋titleツールチップ（カーソルを合わせると表示）に
+                            変更したが、続けて「文字が多すぎて目が疲れるので絵文字でもいいから表現
+                            できるものが欲しい」との要望を受け、ラベル文字も🕐（前回分）・🪑（仮の
+                            座席）の絵文字アイコンに置き換えた。前回分・仮の座席の情報自体は変更なく
+                            引き続き常に取得済みで、隠しているのは表示のみ（titleツールチップで
+                            カーソルを合わせると詳細が見える） */}
+                        {(p.has_previous_plan || p.status === 'seats_tentative') && (
+                          <div className="mt-0.5 flex items-center gap-1.5 text-xs">
+                            {p.has_previous_plan && (
+                              <span
+                                className="cursor-help"
+                                title={
+                                  previousByPlan[p.id]
+                                    ? `前回: ${
+                                        previousByPlan[p.id].weekdays_finalized === null
+                                          ? '曜日未確定'
+                                          : previousByPlan[p.id].weekdays_finalized!.length > 0
+                                            ? formatWeekdays(previousByPlan[p.id].weekdays_finalized!)
+                                            : '出社なし'
+                                      }／${previousByPlan[p.id].allocated_seat_label ?? '座席未確保'}`
+                                    : '読み込み中...'
+                                }
+                              >
+                                🕐
+                              </span>
+                            )}
+                            {p.status === 'seats_tentative' && (
+                              <span
+                                className="cursor-help"
+                                title={
+                                  p.has_seat_override && p.allocated_seats_by_weekday
+                                    ? `仮の座席（曜日によって異なる）: ${Object.entries(p.allocated_seats_by_weekday)
+                                        .map(([w, v]) => `${WEEKDAYS.find((wd) => wd.key === w)?.label}: ${v.seat_label}`)
+                                        .join('／')}`
+                                    : `仮の座席: ${p.allocated_seat_label ?? '未選択（下の「座席割り当て」欄から選んでください）'}`
+                                }
+                              >
+                                🪑
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>
@@ -1448,7 +1649,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                       <td className="py-1 pr-3 align-top">
                         <AdminNoteField planId={p.id} initialValue={p.admin_note} />
                       </td>
-                      {WEEKDAYS.map((w) => {
+                      {visibleWeekdays.map((w) => {
                         const badge = badgeFor(p, w.key)
                         const isChecked = checked[p.id]?.has(w.key) ?? false
                         const isAiSuggested = aiSuggested[p.id]?.has(w.key) ?? false
@@ -1478,7 +1679,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                     </tr>
                   ))}
                   {g.plans.length === 0 && (
-                    <tr><td colSpan={3 + WEEKDAYS.length} className="py-4 text-center text-slate-400">曜日調整が必要なプロジェクトはありません（固定座席のみ）</td></tr>
+                    <tr><td colSpan={3 + visibleWeekdays.length} className="py-4 text-center text-slate-400">曜日調整が必要なプロジェクトはありません（固定座席のみ）</td></tr>
                   )}
                 </tbody>
                 <tfoot>
@@ -1494,7 +1695,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
                     </td>
                     <td className="py-1 pr-3" title="全プロジェクトの必要座席数と固定座席の利用者数を合計した目標値">{totalRequired}名</td>
                     <td className="py-1 pr-3"></td>
-                    {WEEKDAYS.map((w) => {
+                    {visibleWeekdays.map((w) => {
                       const total = dayTotal(w.key)
                       const filled = totalRequired > 0 && total === totalRequired
                       // 座席不足の警告（2026-09-09追加）: その曜日の合計が物理座席数を超えている場合、
@@ -1529,38 +1730,25 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onFinalized }: {
         })}
       </div>
       {error && <p className="mx-4 mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <div className="border-t border-slate-200 p-4 text-right">
-        <button type="button" disabled={submitting} onClick={() => setConfirmModalOpen(true)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-          この内容で全プロジェクトの曜日を確定する
+
+      <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-4">
+        {/* 「本当に確定する」内容の確認・実行は、以前はこの画面内にモーダル・その後ページ内表示として
+            持っていたが、「プロジェクト座席（エリア担当）ではなく別の画面としてみれるようにしたい」
+            との要望を受け、独立した確認画面（/project-seats-area/confirm-weekdays、ConfirmWeekdays.tsx）
+            に切り出した（2026-09-17変更）。仮の座席割り当て済みの行が1件以上あるときだけ表示する */}
+        {tentativePlans.length > 0 && (
+          <button
+            type="button"
+            onClick={() => navigate('/project-seats-area/confirm-weekdays')}
+            className="rounded bg-green-700 px-4 py-1.5 text-sm text-white"
+          >
+            この内容で本当に曜日を確定する
+          </button>
+        )}
+        <button type="button" disabled={submitting} onClick={createTentative} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
+          仮の座席割り当てを作成する
         </button>
       </div>
-
-      {confirmModalOpen && (
-        <Modal
-          title="この内容で確定しますか"
-          onClose={() => setConfirmModalOpen(false)}
-          footer={
-            <>
-              <button type="button" onClick={() => setConfirmModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-              <button type="button" disabled={submitting} onClick={confirmWeekdays} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-                この内容で確定する
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3 text-sm">
-            <ul className="max-h-72 space-y-1.5 overflow-y-auto">
-              {plans.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">
-                  <span className="font-semibold">{p.project_name}</span>
-                  <span className="text-slate-600">{weekdaysSummary(checked[p.id])}</span>
-                </li>
-              ))}
-            </ul>
-            {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>}
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

@@ -12,6 +12,14 @@ interface FloorProps {
   // 座席の島の割当モード（selectedSeatIdsがある時のみ意味を持つ）で、ブロックのラベルをクリック
   // したときにそのブロック内の座席をまとめて選択・解除するコールバック（2026-09-09追加）
   onToggleBlock?: (seatIds: number[], select: boolean) => void
+  // 他の曜日にこのプロジェクトが使用中の座席（2026-09-16新設）。「火曜日の座席を選ぶとき、月曜日は
+  // どこに座っているのか一目でわかるようにしてほしい」との要望を受けた。SeatTile.tsxで破線
+  // マーカーとして表示する
+  otherWeekdaySeatIds?: Set<number>
+  // 座席の島の一括割当モードで、出社曜日が重なる他プロジェクトが既に選択中の座席id→プロジェクト名
+  // （2026-09-17新設。Availability.tsxのclaimedByOtherPlanLabel参照）。実際は空いている日でも
+  // 選べないようにする
+  claimedByOtherPlanLabel?: Record<number, string>
   memberAssignMode?: boolean
   memberAssignEligibleIds?: Set<number>
   memberAssignPickedLabels?: Record<number, string>
@@ -22,6 +30,9 @@ interface FloorProps {
   onSeatDragPointerDown?: (seat: Seat, e: ReactPointerEvent<HTMLButtonElement>) => void
   onSeatDragPointerMove?: (e: ReactPointerEvent<HTMLButtonElement>) => void
   onSeatDragPointerUp?: (e: ReactPointerEvent<HTMLButtonElement>) => void
+  // 曜日確定の確認モーダル用の読み取り専用プレビュー（2026-09-17新設、SeatTile.tsx参照）
+  previewColorBySeatId?: Record<number, string>
+  previewLabelBySeatId?: Record<number, string>
 }
 
 // ブロックの見出しラベル。座席の島の割当モード（selectedSeatIds・onToggleBlockが両方渡された時）
