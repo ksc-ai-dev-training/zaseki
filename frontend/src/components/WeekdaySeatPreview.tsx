@@ -4,9 +4,12 @@ import { NorthFloor, EastFloor, WestFloor } from './FloorAreas'
 import SeatTile from './SeatTile'
 import type { QuarterPlanItem, Seat, Weekday } from '../types'
 
-const WEEKDAYS: { key: Weekday; label: string }[] = [
-  { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
-  { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
+const WEEKDAYS: { key: Weekday; label: string; headerClass: string }[] = [
+  { key: 'mon', label: '月', headerClass: 'bg-blue-700' },
+  { key: 'tue', label: '火', headerClass: 'bg-rose-600' },
+  { key: 'wed', label: '水', headerClass: 'bg-emerald-600' },
+  { key: 'thu', label: '木', headerClass: 'bg-amber-600' },
+  { key: 'fri', label: '金', headerClass: 'bg-purple-600' },
 ]
 
 // 「曜日とPJ座席を確定させる際の確認画面として、設定した内容を一画面で表示してほしい。
@@ -91,9 +94,14 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
           })
           const tileProps = { onReserve: () => {}, onCancel: () => {}, previewColorBySeatId, previewLabelBySeatId }
           return (
-            <div key={w.key} className="shrink-0 rounded border border-slate-200 bg-white p-1.5">
-              <div className="mb-1 text-center text-xs font-semibold text-slate-600">{w.label}曜日</div>
-              <div style={{ zoom: 1 }}>
+            <div key={w.key} className="shrink-0 overflow-hidden rounded border border-slate-200 bg-white">
+              {/* 曜日ラベル（2026-09-17拡大）: 「曜日の表示がわかりにくい」との指摘を受け、小さい
+                  グレー文字だったものを、曜日ごとに色分けした帯にして視認性を上げた。2列×複数行に
+                  並ぶため、上下にスクロールしても今どの曜日を見ているか一目でわかるようにする狙い */}
+              <div className={`px-3 py-1.5 text-center text-base font-bold text-white ${w.headerClass}`}>
+                {w.label}曜日
+              </div>
+              <div className="p-1.5" style={{ zoom: 0.75 }}>
                 <div className="floor-overview inline-flex">
                   {hasNorth && (
                     <div className="north-column">

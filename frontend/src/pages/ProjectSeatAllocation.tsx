@@ -536,7 +536,7 @@ export default function ProjectSeatAllocation() {
               onClick={openBulkCreate}
               className="rounded border border-amber-300 bg-white px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-100"
             >
-              期間設定
+              座席期間を新規設定する
             </button>
           </div>
         </section>
@@ -614,14 +614,18 @@ export default function ProjectSeatAllocation() {
 
         {/* 座席期間の一括修正（A-66）: 「座席期間を一括で新規設定する」（新しい計画行を追加するA-68）と
             紛らわしく、隣に並んでいると勘違いしやすいとの指摘を受け、座席割り当てと曜日調整表の間へ
-            分離して配置した（2026-09-11修正） */}
+            分離して配置した（2026-09-11修正）。2026-09-17再修正: 配置を離しても、A-68「座席期間を
+            新規設定する」（新規に計画行を作る）とA-66「既存の計画の座席期間をまとめて修正する」
+            （既にある計画行の日付を書き換える）が同じ機能に見えるとの指摘を受け、ボタン名・モーダル
+            見出しの両方に「既存の計画」「まとめて修正」という言葉を入れ、新規作成とは別物だと
+            わかるようにした */}
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={openBulkPeriod}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            プロジェクトを選んで座席期間を一括設定する
+            既存の計画の座席期間をまとめて修正する
           </button>
         </div>
 
@@ -877,7 +881,7 @@ export default function ProjectSeatAllocation() {
 
       {bulkPeriodModalOpen && (
         <Modal
-          title="座席期間の一括設定"
+          title="既存の計画の座席期間をまとめて修正する"
           onClose={() => setBulkPeriodModalOpen(false)}
           footer={
             <>
