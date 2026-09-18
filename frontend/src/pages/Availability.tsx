@@ -276,7 +276,7 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
           onClose={() => setOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={!plan || selectedMembers.size === 0}
@@ -294,7 +294,7 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
               <select
                 value={projectId}
                 onChange={(e) => pickProject(Number(e.target.value))}
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
               >
                 <option value="">選択してください</option>
                 {eligibleProjects.map((p) => (
@@ -1356,7 +1356,7 @@ export default function Availability() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">空き状況・予約</h1>
       </header>
 
@@ -1551,7 +1551,7 @@ export default function Availability() {
                 onClick={() => setDate((d) => shiftDateStr(d, -1))}
                 aria-label="前日"
                 disabled={Boolean(availability?.history_min_date) && date <= availability!.history_min_date}
-                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 shrink-0 rounded border border-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
                 ‹
               </button>
@@ -1560,20 +1560,20 @@ export default function Availability() {
                 value={date}
                 min={availability?.history_min_date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm sm:flex-none"
+                className="h-8 min-w-0 flex-1 rounded border border-slate-500 px-2 text-sm sm:flex-none"
               />
               <button
                 type="button"
                 onClick={() => setDate((d) => shiftDateStr(d, 1))}
                 aria-label="翌日"
-                className="h-8 w-8 shrink-0 rounded border border-slate-300 hover:bg-slate-50"
+                className="h-8 w-8 shrink-0 rounded border border-slate-500 hover:bg-slate-50"
               >
                 ›
               </button>
               <button
                 type="button"
                 onClick={() => setDate(todayStr())}
-                className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50"
+                className="h-8 shrink-0 rounded border border-slate-500 px-3 text-sm hover:bg-slate-50"
               >
                 今日
               </button>
@@ -1596,21 +1596,21 @@ export default function Availability() {
           <button
             type="button"
             onClick={() => setViewMode('floormap')}
-            className={`rounded-full px-3 py-1 text-sm ${viewMode === 'floormap' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            className={`rounded-full px-3 py-1 text-sm ${viewMode === 'floormap' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
           >
             フロアマップ表示
           </button>
           <button
             type="button"
             onClick={() => setViewMode('period')}
-            className={`rounded-full px-3 py-1 text-sm ${viewMode === 'period' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            className={`rounded-full px-3 py-1 text-sm ${viewMode === 'period' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
           >
             期間ビュー
           </button>
         </div>
       </div>
 
-      <div className="scrollbar-hide mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+      <div className="scrollbar-hide mb-4 flex gap-1 overflow-x-auto border-b border-slate-400">
         {AREA_TABS.map((t) => (
           <button
             key={t.key}
@@ -1684,7 +1684,7 @@ export default function Availability() {
       )}
 
       {extraSeatGroups.size > 0 && (
-        <div className="mb-6 rounded border border-slate-200 bg-white p-4">
+        <div className="mb-6 rounded border border-slate-400 bg-white p-4">
           <div className="mb-3 flex items-center gap-2">
             <h3 className="font-semibold">追加座席</h3>
             <span className="text-xs text-slate-400">
@@ -1742,7 +1742,7 @@ export default function Availability() {
               value={periodStart}
               disabled={!period}
               onChange={(e) => setPeriodOverride({ start: e.target.value, end: periodEnd })}
-              className="h-8 rounded border border-slate-300 px-2 text-sm"
+              className="h-8 rounded border border-slate-500 px-2 text-sm"
             />
             <span className="text-center text-sm text-slate-500 sm:text-left">〜</span>
             <input
@@ -1750,12 +1750,12 @@ export default function Availability() {
               value={periodEnd}
               disabled={!period}
               onChange={(e) => setPeriodOverride({ start: periodStart, end: e.target.value })}
-              className="h-8 rounded border border-slate-300 px-2 text-sm"
+              className="h-8 rounded border border-slate-500 px-2 text-sm"
             />
             <button
               type="button"
               onClick={resetPeriodFilter}
-              className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50 sm:ml-2"
+              className="h-8 shrink-0 rounded border border-slate-500 px-3 text-sm hover:bg-slate-50 sm:ml-2"
             >
               予約可能期間全体を表示
             </button>
@@ -1770,7 +1770,7 @@ export default function Availability() {
           {periodLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
           {period && (
-            <div className="overflow-x-auto rounded border border-slate-300 bg-white">
+            <div className="overflow-x-auto rounded border border-slate-500 bg-white">
               <table className="text-sm">
                 <thead>
                   {/* 期間ビューを「箱の中でスクロール」から「ページ全体のスクロール」に変更した
@@ -1784,14 +1784,14 @@ export default function Availability() {
                       左端の列（日付・曜日・予約数・空席）の横方向のstickyのみ残した */}
                   <tr className="text-left text-slate-500">
                     <th
-                      className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
+                      className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
                       style={{ minWidth: periodDateColW }}
                     >
                       日付
                     </th>
                     {!isMobile && (
                       <th
-                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                       >
                         曜日
@@ -1799,14 +1799,14 @@ export default function Availability() {
                     )}
                     {!isMobile && (
                       <th
-                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                       >
                         予約数
                       </th>
                     )}
                     <th
-                      className="sticky z-30 whitespace-nowrap border-r border-b border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                      className="sticky z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
                       style={{ left: periodVacantLeftOffset, minWidth: PERIOD_COL_VAC_W }}
                     >
                       空席
@@ -1814,7 +1814,7 @@ export default function Availability() {
                     {period.seats.map((seat) => (
                       <th
                         key={seat.id}
-                        className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
+                        className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
                       >
                         <div className="font-semibold text-slate-700">{seat.seat_no}</div>
                         <div className="text-slate-400">{SEAT_TYPE_JA[seat.seat_type]}</div>
@@ -1828,15 +1828,15 @@ export default function Availability() {
                     const vacant = period.seats.length - reserved
                     const { wd } = formatDateShort(d)
                     return (
-                      <tr key={d} className="border-b border-slate-300">
+                      <tr key={d} className="border-b border-slate-500">
                         <td
-                          className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-300 bg-white px-3 py-1.5 font-semibold"
+                          className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-500 bg-white px-3 py-1.5 font-semibold"
                         >
                           {isMobile ? d.slice(5).replaceAll('-', '/') : d.replaceAll('-', '/')}
                         </td>
                         {!isMobile && (
                           <td
-                            className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-500"
+                            className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-500"
                             style={{ left: periodDateColW }}
                           >
                             {wd}
@@ -1844,14 +1844,14 @@ export default function Availability() {
                         )}
                         {!isMobile && (
                           <td
-                            className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
+                            className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-600"
                             style={{ left: periodDateColW + PERIOD_COL_WD_W }}
                           >
                             {reserved}
                           </td>
                         )}
                         <td
-                          className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
+                          className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-600"
                           style={{ left: periodVacantLeftOffset }}
                         >
                           {vacant}
@@ -1865,7 +1865,7 @@ export default function Availability() {
                           // statusしか見ていなかった）。座席タイプもフリーの場合のみボタンにする
                           const bookable = status === 'free' && seat.seat_type === 'free'
                           return (
-                            <td key={seat.id} className="border-r border-slate-200 px-1 py-1.5 text-center">
+                            <td key={seat.id} className="border-r border-slate-400 px-1 py-1.5 text-center">
                               {bookable ? (
                                 <button
                                   type="button"
@@ -1896,9 +1896,9 @@ export default function Availability() {
         </div>
       )}
 
-      <div className="rounded border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3 font-semibold">自分の予約</div>
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-200 px-4 pt-2">
+      <div className="rounded border border-slate-400 bg-white">
+        <div className="border-b border-slate-400 px-4 py-3 font-semibold">自分の予約</div>
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-400 px-4 pt-2">
           <button
             type="button"
             onClick={() => setReservationTab('upcoming')}
@@ -1917,7 +1917,7 @@ export default function Availability() {
         <div className="overflow-x-auto p-4">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
+              <tr className="border-b border-slate-400 text-left text-slate-500">
                 <th className="pb-2 pr-3">予約日</th>
                 <th className="pb-2 pr-3">座席</th>
                 <th className="pb-2 pr-3">エリア</th>
@@ -1928,7 +1928,7 @@ export default function Availability() {
             </thead>
             <tbody>
               {(reservationTab === 'upcoming' ? upcoming.items : past.items).map((r) => (
-                <tr key={r.id} className="border-b border-slate-100">
+                <tr key={r.id} className="border-b border-slate-400">
                   <td className="py-2 pr-3">{formatDateJa(r.date)}</td>
                   <td className="py-2 pr-3">{r.seat_no}</td>
                   <td className="py-2 pr-3">{r.area}</td>
@@ -1944,7 +1944,7 @@ export default function Availability() {
                         <button
                           type="button"
                           onClick={() => changeFromList(r)}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
                         >
                           変更
                         </button>
@@ -1977,7 +1977,7 @@ export default function Availability() {
       </div>
 
       {seatBlockFor && (
-        <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
+        <aside className="shrink-0 border-t border-slate-400 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <h2 className="text-sm font-semibold text-slate-800">
             座席の島の{seatBlockFor.allocatedSeatIds ? '編集' : '割当'}
           </h2>
@@ -2009,7 +2009,7 @@ export default function Availability() {
                       key={w}
                       type="button"
                       onClick={() => setDate((d) => shiftToWeekdayInSameWeek(d, WEEKDAY_DOW[w]))}
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${isActive ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${isActive ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
                     >
                       {RECURRING_WEEKDAYS.find((r) => r.key === w)?.label ?? w}
                     </button>
@@ -2048,7 +2048,7 @@ export default function Availability() {
             <button
               type="button"
               onClick={exitSeatBlockMode}
-              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              className="rounded border border-slate-500 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
             >
               キャンセル
             </button>
@@ -2057,7 +2057,7 @@ export default function Availability() {
       )}
 
       {seatBlockBulkFor && (
-        <aside className="shrink-0 border-t border-slate-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
+        <aside className="shrink-0 border-t border-slate-400 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <h2 className="text-sm font-semibold text-slate-800">座席の島の一括割当</h2>
           {/* 出社曜日での絞り込み（2026-09-17新設）。表示のみの絞り込みで、選択状態は消えない。
               「曜日に切り替えるときその曜日は現状どのような席になっているのかわかるようにしたい」
@@ -2083,7 +2083,7 @@ export default function Availability() {
                       : shiftToWeekdayInSameWeek(d, WEEKDAY_DOW[w.key])
                   )
                 }}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ${bulkWeekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${bulkWeekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
               >
                 {w.label}
               </button>
@@ -2101,7 +2101,7 @@ export default function Availability() {
                       type="button"
                       onClick={() => pickBulkProject(p.planId)}
                       className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs ${
-                        active ? 'border-blue-400 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 hover:bg-slate-50'
+                        active ? 'border-blue-400 bg-blue-50 font-semibold text-blue-800' : 'border-slate-400 hover:bg-slate-50'
                       }`}
                     >
                       <span className="truncate">{p.projectName}</span>
@@ -2112,7 +2112,7 @@ export default function Availability() {
               })}
           </ul>
           {activeBulkPlan && (
-            <dl className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-sm">
+            <dl className="mt-4 space-y-2 border-t border-slate-400 pt-3 text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-500">プロジェクト</dt>
                 <dd className="text-right font-medium">{activeBulkPlan.projectName}</dd>
@@ -2184,7 +2184,7 @@ export default function Availability() {
             <button
               type="button"
               onClick={exitSeatBlockBulkMode}
-              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              className="rounded border border-slate-500 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
             >
               キャンセル
             </button>
@@ -2202,7 +2202,7 @@ export default function Availability() {
               <button type="button" onClick={() => setReserveTarget(null)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white">閉じる</button>
             ) : (
               <>
-                <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
                 {/* 重複解決の「両方予約する」ボタンは、上の事前通知バナー（anySameDayReservation
                     ベース）に既に同じ操作のボタンがあり、existingSameDayReservationが真になる条件
                     （＝プロジェクト座席以外の同日予約がある）は常にanySameDayReservationも真になる
@@ -2229,14 +2229,14 @@ export default function Availability() {
               )}
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="border-b border-slate-400 text-left text-slate-500">
                     <th className="pb-1 pr-3">日付</th>
                     <th className="pb-1">結果</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recurringResult.results.map((r) => (
-                    <tr key={r.date} className="border-b border-slate-100">
+                    <tr key={r.date} className="border-b border-slate-400">
                       <td className="py-1 pr-3">{formatDateJa(r.date)}</td>
                       <td className="py-1">
                         {r.status === 'created' ? (
@@ -2295,7 +2295,7 @@ export default function Availability() {
                       type="button"
                       disabled={submitting}
                       onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                      className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                     >
                       両方予約する（既存の予約は残す）
                     </button>
@@ -2303,7 +2303,7 @@ export default function Availability() {
                 </div>
               )}
               {!proxyBookingFor && (
-                <div className="mt-3 border-t border-slate-200 pt-3">
+                <div className="mt-3 border-t border-slate-400 pt-3">
                   <label className="flex items-center gap-1.5 text-sm">
                     <input
                       type="checkbox"
@@ -2365,7 +2365,7 @@ export default function Availability() {
                           max={me?.role === 'admin' ? undefined : period?.full_end}
                           value={recurringEndDate}
                           onChange={(e) => setRecurringEndDate(e.target.value)}
-                          className="h-9 w-44 rounded border border-slate-300 px-3"
+                          className="h-9 w-44 rounded border border-slate-500 px-3"
                         />
                       </label>
                     </div>
@@ -2400,7 +2400,7 @@ export default function Availability() {
                             type="button"
                             disabled={submitting}
                             onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                            className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                            className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                           >
                             両方予約する（既存の予約は残す）
                           </button>
@@ -2421,7 +2421,7 @@ export default function Availability() {
           onClose={() => setCancelTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">戻る</button>
+              <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">戻る</button>
               <button type="button" disabled={submitting} onClick={confirmCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">予約を取り消す</button>
             </>
           }
@@ -2441,7 +2441,7 @@ export default function Availability() {
           onClose={() => setListCancelTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setListCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">戻る</button>
+              <button type="button" onClick={() => setListCancelTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">戻る</button>
               <button type="button" disabled={listCancelSubmitting} onClick={confirmListCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">予約を取り消す</button>
             </>
           }
@@ -2461,7 +2461,7 @@ export default function Availability() {
           onClose={() => setAssignFixedSeatTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setAssignFixedSeatTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setAssignFixedSeatTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={submitting || !assignValidFrom || (!assignIndefinite && !assignValidUntil)}
@@ -2483,14 +2483,14 @@ export default function Availability() {
               現在の固定座席（{assignFixedSeatFor.currentSeatNo}）は自動的に解除され、この座席に変更されます。先に解除する必要はありません。
             </p>
           )}
-          <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm">
+          <div className="mt-3 space-y-2 border-t border-slate-400 pt-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-slate-500">開始日（過去日を指定すると記録の補正、未来日を指定すると事前の予約設定になります）</span>
               <input
                 type="date"
                 value={assignValidFrom}
                 onChange={(e) => setAssignValidFrom(e.target.value)}
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
               />
             </label>
             <label className="flex items-center gap-2">
@@ -2509,7 +2509,7 @@ export default function Availability() {
                   value={assignValidUntil}
                   onChange={(e) => setAssignValidUntil(e.target.value)}
                   min={shiftDateStr(assignValidFrom || todayStr(), 1)}
-                  className="h-9 w-full rounded border border-slate-300 px-3"
+                  className="h-9 w-full rounded border border-slate-500 px-3"
                 />
               </label>
             )}
@@ -2524,7 +2524,7 @@ export default function Availability() {
           onClose={() => setPlaceSeatTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setPlaceSeatTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setPlaceSeatTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting || !newSeatNo.trim()} onClick={confirmPlaceSeat} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">配置する</button>
             </>
           }
@@ -2538,7 +2538,7 @@ export default function Availability() {
                 value={newSeatNo}
                 onChange={(e) => setNewSeatNo(e.target.value)}
                 placeholder="例: Q1"
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
                 autoFocus
               />
             </label>
@@ -2547,7 +2547,7 @@ export default function Availability() {
               <select
                 value={newSeatType}
                 onChange={(e) => setNewSeatType(e.target.value as SeatType)}
-                className="h-9 w-full rounded border border-slate-300 px-2"
+                className="h-9 w-full rounded border border-slate-500 px-2"
               >
                 <option value="free">フリー</option>
                 <option value="fixed">固定</option>
@@ -2569,7 +2569,7 @@ export default function Availability() {
           <Modal
             title={`${pickMemberTarget.seatNo} を割り当てる相手（${formatDateJa(date)}）`}
             onClose={() => setPickMemberTarget(null)}
-            footer={<button type="button" onClick={() => setPickMemberTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>}
+            footer={<button type="button" onClick={() => setPickMemberTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>}
           >
             <div className="space-y-1.5">
               {memberSeatAssignFor.members.filter(isAvailable).map((m) => (
@@ -2591,7 +2591,7 @@ export default function Availability() {
                     }
                     setPickMemberTarget(null)
                   }}
-                  className="block w-full rounded border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  className="block w-full rounded border border-slate-400 px-3 py-2 text-left text-sm hover:bg-slate-50"
                 >
                   {m.name}
                 </button>
@@ -2610,7 +2610,7 @@ export default function Availability() {
           onClose={() => setPickMemberConfig(null)}
           footer={
             <>
-              <button type="button" onClick={() => setPickMemberConfig(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setPickMemberConfig(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={pickRecurring && (
@@ -2648,7 +2648,7 @@ export default function Availability() {
             <div className="flex justify-between"><dt className="text-slate-500">座席</dt><dd>{pickMemberConfig.seatNo}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">{pickRecurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(pickMemberConfig.startDate)}</dd></div>
           </dl>
-          <div className="mt-3 border-t border-slate-200 pt-3">
+          <div className="mt-3 border-t border-slate-400 pt-3">
             <label className="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
@@ -2696,7 +2696,7 @@ export default function Availability() {
                     max={period?.full_end}
                     value={pickRecurringEndDate}
                     onChange={(e) => setPickRecurringEndDate(e.target.value)}
-                    className="h-9 w-44 rounded border border-slate-300 px-3"
+                    className="h-9 w-44 rounded border border-slate-500 px-3"
                   />
                 </label>
               </div>

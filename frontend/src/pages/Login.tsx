@@ -46,7 +46,7 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+      <div className="w-full max-w-sm rounded-lg border border-slate-400 bg-white p-8 shadow-sm">
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-blue-800 text-lg font-bold text-white">
           Z
         </div>
@@ -60,7 +60,7 @@ export default function Login() {
 
         <a
           href="/api/auth/login"
-          className="mt-6 flex h-11 items-center justify-center gap-2.5 rounded border border-slate-300 text-sm font-medium hover:bg-slate-50"
+          className="mt-6 flex h-11 items-center justify-center gap-2.5 rounded border border-slate-500 text-sm font-medium hover:bg-slate-50"
         >
           <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -72,7 +72,7 @@ export default function Login() {
         </a>
 
         {data && data.items.length > 0 && (
-          <div className="mt-8 border-t border-slate-200 pt-4">
+          <div className="mt-8 border-t border-slate-400 pt-4">
             <p className="mb-2 text-xs font-semibold text-amber-600">
               開発用ログイン（Google認証の代替）
             </p>
@@ -81,7 +81,7 @@ export default function Login() {
                 <li key={u.email}>
                   <button
                     onClick={() => devLogin(u.email)}
-                    className="flex w-full items-center justify-between rounded border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    className="flex w-full items-center justify-between rounded border border-slate-400 px-3 py-2 text-left text-sm hover:bg-slate-50"
                   >
                     <span>
                       {u.last_name} {u.first_name}
@@ -99,7 +99,7 @@ export default function Login() {
 
         {error && <p className="mt-4 text-center text-sm text-red-600">{error}</p>}
 
-        <div className="mt-7 border-t border-slate-200 pt-4 text-center text-[11px] text-slate-400">
+        <div className="mt-7 border-t border-slate-400 pt-4 text-center text-[11px] text-slate-400">
           コガソフトウェア株式会社 社内システム
         </div>
       </div>

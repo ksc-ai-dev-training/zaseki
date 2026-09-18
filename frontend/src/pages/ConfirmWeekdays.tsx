@@ -67,7 +67,7 @@ export default function ConfirmWeekdays() {
         <button
           type="button"
           onClick={() => navigate('/project-seats-area')}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          className="rounded border border-slate-500 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
         >
           戻る
         </button>
@@ -76,14 +76,14 @@ export default function ConfirmWeekdays() {
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
       {!isLoading && tentativePlans.length === 0 && (
-        <div className="rounded border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">
+        <div className="rounded border border-slate-400 bg-white p-6 text-center text-sm text-slate-400">
           仮の座席割り当て中のプロジェクトはありません。「プロジェクト座席（エリア担当）」の出社曜日の調整表から
           「仮の座席割り当てを作成する」を行ってください。
         </div>
       )}
 
       {tentativePlans.length > 0 && (
-        <div className="space-y-4 rounded border border-slate-200 bg-white p-4">
+        <div className="space-y-4 rounded border border-slate-400 bg-white p-4">
           <p className="text-sm text-slate-500">
             仮に割り当てた座席の島がそのまま座席割当済みになります。以降は曜日・座席を変更するとやり直しが必要になります。
           </p>
@@ -94,9 +94,9 @@ export default function ConfirmWeekdays() {
               曜日×座席の対応はこのプレビュー自体で確認できるため） */}
           <WeekdaySeatPreview plans={tentativePlans} />
           {/* プロジェクトごとに個別に取り消せるチップ一覧（2026-09-17新設） */}
-          <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+          <div className="flex flex-wrap gap-2 border-t border-slate-400 pt-3">
             {tentativePlans.map((p) => (
-              <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-3 pr-1.5 text-xs text-slate-700">
+              <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-slate-50 py-1 pl-3 pr-1.5 text-xs text-slate-700">
                 {p.project_name}
                 <button
                   type="button"
@@ -112,11 +112,11 @@ export default function ConfirmWeekdays() {
           </div>
           {cancelError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{cancelError}</p>}
           {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+          <div className="flex justify-end gap-2 border-t border-slate-400 pt-3">
             <button
               type="button"
               onClick={() => navigate('/project-seats-area')}
-              className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              className="rounded border border-slate-500 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
             >
               キャンセル
             </button>

@@ -18,7 +18,7 @@ export default function Layout({ me, onLogout }: LayoutProps) {
     <div className="sm:flex sm:min-h-screen">
       <Sidebar me={me} onLogout={onLogout} />
 
-      <div className="flex items-center justify-end gap-2 border-b border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 sm:hidden">
+      <div className="flex items-center justify-end gap-2 border-b border-slate-400 bg-white px-4 py-2 text-sm text-slate-500 sm:hidden">
         {/* 空き状況・予約への戻りリンク（2026-09-14追加。「スマホ版でプロフィールの画面に
             行ったとき、座席予約に戻ることができない」との報告を受けた。この上部バーには
             従来マイプロフィール・ログアウトしかなく、スマホ幅では非表示のサイドバーが持つ
@@ -30,7 +30,7 @@ export default function Layout({ me, onLogout }: LayoutProps) {
             end
             aria-label="空き状況・予約に戻る"
             title="空き状況・予約に戻る"
-            className="flex shrink-0 items-center justify-center rounded border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-50"
+            className="flex shrink-0 items-center justify-center rounded border border-slate-500 p-1.5 text-slate-600 hover:bg-slate-50"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -38,10 +38,10 @@ export default function Layout({ me, onLogout }: LayoutProps) {
           </NavLink>
         )}
         <span className="mr-auto min-w-0 truncate">{me.last_name} {me.first_name}</span>
-        <NavLink to="/profile" className="shrink-0 rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+        <NavLink to="/profile" className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
           プロフィール
         </NavLink>
-        <button type="button" onClick={onLogout} className="shrink-0 rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50">
+        <button type="button" onClick={onLogout} className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs hover:bg-slate-50">
           ログアウト
         </button>
       </div>

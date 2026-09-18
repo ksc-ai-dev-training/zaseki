@@ -57,7 +57,7 @@ button:disabled {
   justify-content: center;
   gap: 2px;
   border-radius: 6px;
-  border: 1px solid #d9dde3;
+  border: 1px solid #8b93a1;
   font-size: 12.5px;
   font-weight: 600;
 }
@@ -120,7 +120,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   text-align: center;
   min-height: 60px;
   padding: 8px;
-  border: 1px solid #e7eaee;
+  border: 1px solid #b6bcc7;
   border-radius: 8px;
   background: #f5f7f9;
   color: #8a8f98;
@@ -137,7 +137,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   border-radius: 6px;
   background: #f5f7f9;
   color: #8a8f98;
-  border: 1px solid #e7eaee;
+  border: 1px solid #b6bcc7;
   font-size: 11px;
   font-weight: 600;
 }
@@ -149,7 +149,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   justify-content: center;
   gap: 6px;
   padding: 10px;
-  border: 1px solid #e7eaee;
+  border: 1px solid #b6bcc7;
   border-radius: 8px;
   background: #fafbfc;
 }
@@ -165,7 +165,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   gap: 0;
   align-items: stretch;
   border-radius: 8px;
-  border: 1px solid #e7eaee;
+  border: 1px solid #b6bcc7;
   width: fit-content;
   max-width: 100%;
 }

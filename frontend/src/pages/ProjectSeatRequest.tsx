@@ -169,7 +169,7 @@ export default function ProjectSeatRequest() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">プロジェクト座席</h1>
         <button
           type="button"
@@ -201,7 +201,7 @@ export default function ProjectSeatRequest() {
         )}
 
         {quarterTabs.length > 0 && (
-          <div className="scrollbar-hide mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
+          <div className="scrollbar-hide mb-6 flex gap-1 overflow-x-auto border-b border-slate-400">
             {quarterTabs.map((q) => (
               <button
                 key={q}
@@ -224,7 +224,7 @@ export default function ProjectSeatRequest() {
             <Fragment key={mp.project_id}>
               {/* プロジェクトが多いと、どこまでが1件分か分かりにくいため区切り線を入れる
                   （2026-09-10追加。「その他の画面にも区切るポイントがあったら線を作成してほしい」との要望を受けた） */}
-              {i > 0 && <hr className="border-slate-200" />}
+              {i > 0 && <hr className="border-slate-400" />}
               <ProjectSection
                 item={mp}
                 selectedQuarter={selectedQuarter}
@@ -318,7 +318,7 @@ function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChange
               type="button"
               disabled={!projectDetail}
               onClick={openEdit}
-              className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              className="rounded border border-slate-500 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               編集
             </button>
@@ -334,13 +334,13 @@ function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChange
         )}
       </h2>
       {item.plans.length === 0 ? (
-        <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+        <p className="rounded border border-slate-400 bg-white px-4 py-3 text-sm text-slate-400">
           対象四半期の計画はまだ開始されていません。
         </p>
       ) : plan ? (
         <PlanPanel key={plan.id} planId={plan.id} summaryStatus={plan.status} />
       ) : (
-        <p className="rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+        <p className="rounded border border-slate-400 bg-white px-4 py-3 text-sm text-slate-400">
           この四半期の計画はありません。
         </p>
       )}
@@ -389,10 +389,10 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded border border-slate-400 bg-white">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="px-4 py-2">対象四半期</th>
               <th className="px-4 py-2">状態</th>
               {plan.has_previous_plan && <th className="px-4 py-2"></th>}
@@ -409,7 +409,7 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
               </td>
               {plan.has_previous_plan && (
                 <td className="px-4 py-2 text-right">
-                  <button type="button" onClick={loadPrevious} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                  <button type="button" onClick={loadPrevious} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
                     前回分を見る
                   </button>
                 </td>
@@ -421,8 +421,8 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
 
       {previousError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{previousError}</p>}
       {showPrevious && previous && (
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 font-semibold">
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-400 px-4 py-3 font-semibold">
             <span>前回分（{previous.period_start} 〜 {previous.period_end}）の確定曜日・座席割当</span>
             <button type="button" onClick={() => setShowPrevious(false)} className="text-xs font-normal text-slate-400 hover:text-slate-600">閉じる</button>
           </div>
@@ -444,14 +444,14 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
             </p>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="pb-2 pr-3">氏名</th>
                   <th className="pb-2">座席</th>
                 </tr>
               </thead>
               <tbody>
                 {previous.assignments.map((a) => (
-                  <tr key={a.user_id} className="border-b border-slate-100">
+                  <tr key={a.user_id} className="border-b border-slate-400">
                     <td className="py-2 pr-3">{a.name}</td>
                     <td className="py-2">{a.seat_no ?? '未確保'}</td>
                   </tr>
@@ -499,12 +499,12 @@ function SurveyPanel({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitt
 
   if (mode === 'hidden' && plan.response) {
     return (
-      <div className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-2 rounded border border-slate-400 bg-white px-4 py-3">
         <span className="flex items-center gap-2 font-semibold">
           出社曜日アンケートの回答
           <span className="rounded bg-green-50 px-2 py-0.5 text-xs font-normal text-green-700">回答済み</span>
         </span>
-        <button type="button" onClick={() => setMode('summary')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+        <button type="button" onClick={() => setMode('summary')} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
           表示する
         </button>
       </div>
@@ -513,8 +513,8 @@ function SurveyPanel({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitt
 
   if (mode === 'summary' && plan.response) {
     return (
-      <div className="rounded border border-slate-200 bg-white">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+      <div className="rounded border border-slate-400 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-400 px-4 py-3 font-semibold">
           出社曜日アンケートの回答
           <span className="rounded bg-green-50 px-2 py-0.5 text-xs font-normal text-green-700">回答済み</span>
         </div>
@@ -526,10 +526,10 @@ function SurveyPanel({ plan, onSubmitted }: { plan: ProjectPlanDetail; onSubmitt
             <div><span className="text-slate-500">必要座席数の変更希望: </span>{plan.response.requested_seats}名</div>
           )}
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setMode('hidden')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+            <button type="button" onClick={() => setMode('hidden')} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
               非表示にする
             </button>
-            <button type="button" onClick={() => setMode('editing')} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+            <button type="button" onClick={() => setMode('editing')} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
               回答を修正する
             </button>
           </div>
@@ -605,15 +605,15 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-400 px-4 py-3 font-semibold">
         出社曜日アンケートの回答
         {plan.has_previous_plan && (
           <button
             type="button"
             disabled={copying}
             onClick={copyPrevious}
-            className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded border border-slate-500 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           >
             {copying ? 'コピー中...' : '前回の回答をコピーする'}
           </button>
@@ -630,7 +630,7 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
             onChange={(e) => setNote(e.target.value)}
             maxLength={500}
             placeholder="エリア責任者への伝達事項があれば入力"
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded border border-slate-500 px-3 py-2 text-sm"
           />
         </label>
         <label className="block">
@@ -641,13 +641,13 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
             value={requestedSeats}
             onChange={(e) => setRequestedSeats(e.target.value)}
             placeholder="変更後の人数（変更がなければ空欄のまま）"
-            className="h-9 w-56 rounded border border-slate-300 px-3 text-sm"
+            className="h-9 w-56 rounded border border-slate-500 px-3 text-sm"
           />
         </label>
         {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2">
           {onCancel && (
-            <button type="button" onClick={onCancel} className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+            <button type="button" onClick={onCancel} className="rounded border border-slate-500 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
               キャンセル
             </button>
           )}
@@ -682,12 +682,12 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3 font-semibold">メンバー管理（席決め権限）</div>
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="border-b border-slate-400 px-4 py-3 font-semibold">メンバー管理（席決め権限）</div>
       <div className="p-4">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="pb-2 pr-3">氏名</th>
               <th className="pb-2 pr-3">役割</th>
               <th className="pb-2">席決め権限</th>
@@ -695,7 +695,7 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
           </thead>
           <tbody>
             {plan.members.map((m) => (
-              <tr key={m.member_id} className="border-b border-slate-100">
+              <tr key={m.member_id} className="border-b border-slate-400">
                 <td className="py-2 pr-3">{m.name}</td>
                 <td className="py-2 pr-3 text-xs text-slate-500">{m.project_title ?? '一般メンバー'}</td>
                 <td className="py-2">
@@ -766,7 +766,7 @@ function SeatIslandExcludedRetry({
         <select
           value={seatId}
           onChange={(e) => setSeatId(e.target.value ? Number(e.target.value) : '')}
-          className="h-7 rounded border border-slate-300 px-2 text-xs"
+          className="h-7 rounded border border-slate-500 px-2 text-xs"
         >
           <option value="">座席を選択</option>
           {seatOptions.map((s) => (
@@ -994,15 +994,15 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-400 px-4 py-3 font-semibold">
         メンバーへの座席確保
         {plan.has_previous_plan && unassigned.length > 0 && (
           <button
             type="button"
             disabled={copying}
             onClick={copyPreviousSeats}
-            className="rounded border border-slate-300 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded border border-slate-500 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           >
             {copying ? 'コピー中...' : '前回の座席をコピーする'}
           </button>
@@ -1011,7 +1011,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
       <div className="p-4">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="pb-2 pr-3">氏名</th>
               <th className="pb-2 pr-3">座席の確保状況</th>
               <th className="pb-2 pr-3">割り当てる座席</th>
@@ -1020,7 +1020,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           </thead>
           <tbody>
             {plan.members.map((m) => (
-              <tr key={m.member_id} className="border-b border-slate-100">
+              <tr key={m.member_id} className="border-b border-slate-400">
                 <td className="py-2 pr-3">
                   {m.name}
                   {m.has_fixed_seat && (
@@ -1037,7 +1037,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                     <select
                       value={picks[m.user_id] ?? ''}
                       onChange={(e) => setPicks((prev) => ({ ...prev, [m.user_id]: e.target.value ? Number(e.target.value) : '' }))}
-                      className="h-8 w-32 rounded border border-slate-300 px-2 text-sm"
+                      className="h-8 w-32 rounded border border-slate-500 px-2 text-sm"
                     >
                       <option value="">座席を選択</option>
                       {seatOptions.map((s) => (
@@ -1052,7 +1052,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                           ...prev,
                           [m.user_id]: e.target.value ? (e.target.value === 'home' ? 'home' : Number(e.target.value)) : '',
                         }))}
-                        className="h-8 w-36 rounded border border-slate-300 px-2 text-sm"
+                        className="h-8 w-36 rounded border border-slate-500 px-2 text-sm"
                       >
                         <option value="">変更先を選択</option>
                         <option value="home">在宅勤務</option>
@@ -1069,7 +1069,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                         type="button"
                         disabled={!changePicks[m.user_id] || changingMemberId === m.member_id}
                         onClick={() => changeSeat(m)}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                       >
                         確保する
                       </button>
@@ -1093,7 +1093,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
         {changeError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{changeError}</p>}
         {changeMessage && <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{changeMessage}</p>}
         <div className="mt-3 flex items-center justify-between">
-          <button type="button" disabled={unassigned.length === 0} onClick={goSeatMap} className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={unassigned.length === 0} onClick={goSeatMap} className="rounded border border-slate-500 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             座席表から選ぶ
           </button>
           <button type="button" disabled={submitting || unassigned.length === 0} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
@@ -1105,7 +1105,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           <div className="mt-4">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="pb-2 pr-3">氏名</th>
                   <th className="pb-2 pr-3">座席</th>
                   <th className="pb-2">結果</th>
@@ -1116,7 +1116,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                   const member = plan.members.find((m) => m.user_id === r.member_user_id)
                   return (
                     <Fragment key={i}>
-                      <tr className="border-b border-slate-100">
+                      <tr className="border-b border-slate-400">
                         <td className="py-2 pr-3">{member?.name ?? r.member_user_id}</td>
                         <td className="py-2 pr-3">{r.seat_no}</td>
                         <td className="py-2">
@@ -1130,7 +1130,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                         </td>
                       </tr>
                       {r.excluded_dates && r.excluded_dates.length > 0 && (
-                        <tr className="border-b border-slate-100">
+                        <tr className="border-b border-slate-400">
                           <td colSpan={3} className="py-1">
                             <SeatIslandExcludedRetry
                               excludedDates={r.excluded_dates}

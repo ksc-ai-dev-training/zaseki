@@ -32,7 +32,7 @@ export default function AdminMenu() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">管理メニュー</h1>
       </header>
 
@@ -43,7 +43,7 @@ export default function AdminMenu() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">サマリー</h2>
           <div className="flex flex-wrap gap-4">
             {stats.map((s) => (
-              <div key={s.label} className="min-w-[140px] flex-1 rounded border border-slate-200 bg-white px-5 py-4">
+              <div key={s.label} className="min-w-[140px] flex-1 rounded border border-slate-400 bg-white px-5 py-4">
                 <div className="text-xs text-slate-500">{s.label}</div>
                 <div className="mt-1 text-2xl font-bold text-slate-800">
                   {isLoading || s.value === undefined ? '—' : s.value}
@@ -54,7 +54,7 @@ export default function AdminMenu() {
           </div>
         </section>
 
-        <hr className="border-slate-200" />
+        <hr className="border-slate-400" />
 
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">各画面への入口</h2>
@@ -63,7 +63,7 @@ export default function AdminMenu() {
               <Link
                 key={c.id}
                 to={c.to}
-                className="rounded border border-slate-200 bg-white p-4 hover:border-blue-300 hover:shadow-sm"
+                className="rounded border border-slate-400 bg-white p-4 hover:border-blue-300 hover:shadow-sm"
               >
                 <div className="font-semibold text-slate-800">{c.name}</div>
               </Link>

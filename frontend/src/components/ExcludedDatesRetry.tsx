@@ -50,7 +50,7 @@ export default function ExcludedDatesRetry({ excludedDates, onRetry, onRetried }
           value={seatNo}
           onChange={(e) => setSeatNo(e.target.value)}
           placeholder="座席番号（例: C3）"
-          className="h-7 w-32 rounded border border-slate-300 px-2 text-xs"
+          className="h-7 w-32 rounded border border-slate-500 px-2 text-xs"
         />
         <button
           type="button"

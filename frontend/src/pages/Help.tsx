@@ -19,7 +19,7 @@ const CATEGORY_OPTIONS: { key: FeedbackCategory; label: string }[] = [
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded border border-slate-200 bg-white p-5">
+    <div className="rounded border border-slate-400 bg-white p-5">
       <h2 className="mb-3 text-[15px] font-semibold text-slate-800">{title}</h2>
       <div className="space-y-3 text-sm leading-relaxed text-slate-700">{children}</div>
     </div>
@@ -39,9 +39,9 @@ function Note({ children }: { children: ReactNode }) {
 // 配置し、ここから参照する）
 function Screenshot({ src, caption }: { src: string; caption: string }) {
   return (
-    <figure className="overflow-hidden rounded border border-slate-200">
+    <figure className="overflow-hidden rounded border border-slate-400">
       <img src={src} alt={caption} className="block w-full" />
-      <figcaption className="border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+      <figcaption className="border-t border-slate-400 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
         {caption}
       </figcaption>
     </figure>
@@ -111,7 +111,7 @@ function FeedbackForm() {
           rows={5}
           maxLength={2000}
           placeholder="気づいたことを自由に記入してください"
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          className="w-full rounded border border-slate-500 px-3 py-2 text-sm"
         />
       </div>
       {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
@@ -138,11 +138,11 @@ export default function Help() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">ヘルプ（操作マニュアル）</h1>
       </header>
 
-      <div className="border-b border-slate-200 bg-white px-6">
+      <div className="border-b border-slate-400 bg-white px-6">
         <div className="flex gap-1">
           {TABS.map((t) => (
             <button

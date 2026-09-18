@@ -32,7 +32,7 @@ export default function FeedbackList() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">フィードバック一覧</h1>
       </header>
 
@@ -43,7 +43,7 @@ export default function FeedbackList() {
               key={o.key}
               type="button"
               onClick={() => setFilter(o.key)}
-              className={`rounded-full px-3 py-1 text-sm ${filter === o.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-full px-3 py-1 text-sm ${filter === o.key ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
             >
               {o.label}
             </button>
@@ -53,10 +53,10 @@ export default function FeedbackList() {
         {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
         {!isLoading && (
-          <div className="rounded border border-slate-200 bg-white">
+          <div className="rounded border border-slate-400 bg-white">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="w-40 px-4 py-2">日時</th>
                   <th className="w-28 px-4 py-2">分類</th>
                   <th className="w-32 px-4 py-2">送信者</th>
@@ -65,7 +65,7 @@ export default function FeedbackList() {
               </thead>
               <tbody>
                 {filtered.map((it) => (
-                  <tr key={it.id} className="border-b border-slate-100 align-top">
+                  <tr key={it.id} className="border-b border-slate-400 align-top">
                     <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">{formatDateTime(it.created_at)}</td>
                     <td className="px-4 py-2">
                       <span className={`rounded px-2 py-0.5 text-xs ${CATEGORY_BADGE_CLASS[it.category]}`}>{it.category_ja}</span>

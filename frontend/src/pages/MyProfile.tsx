@@ -183,7 +183,7 @@ export default function MyProfile() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">マイプロフィール</h1>
       </header>
 
@@ -191,19 +191,19 @@ export default function MyProfile() {
         {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
         {!isLoading && (
-          <div className="rounded border border-slate-200 bg-white p-5">
+          <div className="rounded border border-slate-400 bg-white p-5">
             <div className="mb-6">
               <div className="mb-2 text-sm font-semibold text-slate-700">アイコン（任意）</div>
               <div className="flex items-center gap-4">
                 {avatarImage ? (
-                  <img src={avatarImage} alt="アイコン" className="h-16 w-16 rounded-full border border-slate-200 object-cover" />
+                  <img src={avatarImage} alt="アイコン" className="h-16 w-16 rounded-full border border-slate-400 object-cover" />
                 ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 text-xl font-semibold text-slate-600">
                     {me?.last_name?.slice(0, 1) ?? '?'}
                   </div>
                 )}
                 <div className="flex flex-col gap-2">
-                  <label className="cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
+                  <label className="cursor-pointer rounded border border-slate-500 px-3 py-1.5 text-sm hover:bg-slate-50">
                     画像を選択
                     <input type="file" accept={ACCEPTED_TYPES.join(',')} onChange={onFileChange} className="hidden" />
                   </label>
@@ -226,7 +226,7 @@ export default function MyProfile() {
                 <select
                   value={birthMonth ?? ''}
                   onChange={(e) => onMonthChange(e.target.value)}
-                  className="h-9 rounded border border-slate-300 px-2 text-sm"
+                  className="h-9 rounded border border-slate-500 px-2 text-sm"
                 >
                   <option value="">月</option>
                   {MONTHS.map((m) => (
@@ -237,7 +237,7 @@ export default function MyProfile() {
                   value={birthDay ?? ''}
                   onChange={(e) => { setSaved(false); setBirthDay(e.target.value === '' ? null : Number(e.target.value)) }}
                   disabled={birthMonth === null}
-                  className="h-9 rounded border border-slate-300 px-2 text-sm disabled:opacity-50"
+                  className="h-9 rounded border border-slate-500 px-2 text-sm disabled:opacity-50"
                 >
                   <option value="">日</option>
                   {Array.from({ length: birthMonth ? daysInMonth(birthMonth) : 31 }, (_, i) => i + 1).map((d) => (
@@ -277,14 +277,14 @@ export default function MyProfile() {
           onClose={cancelCrop}
           footer={
             <>
-              <button type="button" onClick={cancelCrop} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={cancelCrop} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" onClick={confirmCrop} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white hover:bg-blue-900">適用する</button>
             </>
           }
         >
           <div className="flex flex-col items-center gap-4">
             <div
-              className="relative touch-none overflow-hidden rounded-full border border-slate-300 bg-slate-100"
+              className="relative touch-none overflow-hidden rounded-full border border-slate-500 bg-slate-100"
               style={{ width: CROP_SIZE, height: CROP_SIZE, cursor: 'grab' }}
               onPointerDown={onCropPointerDown}
               onPointerMove={onCropPointerMove}

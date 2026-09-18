@@ -208,25 +208,25 @@ export default function ProxyBooking() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">代理予約・取消（対象者選択）</h1>
       </header>
 
       <div className="space-y-6 p-6">
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 font-semibold">代理予約する対象者を選ぶ</div>
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="border-b border-slate-400 px-4 py-3 font-semibold">代理予約する対象者を選ぶ</div>
           <div className="p-4">
             <input
               type="search"
               value={candidateQuery}
               onChange={(e) => setCandidateQuery(e.target.value)}
               placeholder="氏名で検索（登録済みの利用者が対象）"
-              className="mb-3 h-9 w-full max-w-sm rounded border border-slate-300 px-3 text-sm"
+              className="mb-3 h-9 w-full max-w-sm rounded border border-slate-500 px-3 text-sm"
             />
             <div className="max-h-96 overflow-y-auto overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-slate-500">
+                  <tr className="sticky top-0 z-10 border-b border-slate-400 bg-white text-left text-slate-500">
                     <th className="pb-2 pr-3">氏名</th>
                     <th className="pb-2 pr-3">雇用形態</th>
                     <th className="pb-2 pr-3">現在の座席利用状況</th>
@@ -235,7 +235,7 @@ export default function ProxyBooking() {
                 </thead>
                 <tbody>
                   {candidates.map((c) => (
-                    <tr key={c.user_id} className="border-b border-slate-100">
+                    <tr key={c.user_id} className="border-b border-slate-400">
                       <td className="py-2 pr-3">{c.user_name}</td>
                       <td className="py-2 pr-3">{c.employment_type}</td>
                       <td className="py-2 pr-3">
@@ -265,8 +265,8 @@ export default function ProxyBooking() {
           </div>
         </div>
 
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 font-semibold">座席の予約・割当を代理で取り消す・変更する</div>
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="border-b border-slate-400 px-4 py-3 font-semibold">座席の予約・割当を代理で取り消す・変更する</div>
           <div className="p-4">
             <div className="mb-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               <span className="shrink-0 text-sm font-medium text-slate-600">表示期間</span>
@@ -275,7 +275,7 @@ export default function ProxyBooking() {
                 value={gridPeriodStart}
                 disabled={!grid}
                 onChange={(e) => setGridPeriodOverride({ start: e.target.value, end: gridPeriodEnd })}
-                className="h-8 rounded border border-slate-300 px-2 text-sm"
+                className="h-8 rounded border border-slate-500 px-2 text-sm"
               />
               <span className="text-center text-sm text-slate-500 sm:text-left">〜</span>
               <input
@@ -283,12 +283,12 @@ export default function ProxyBooking() {
                 value={gridPeriodEnd}
                 disabled={!grid}
                 onChange={(e) => setGridPeriodOverride({ start: gridPeriodStart, end: e.target.value })}
-                className="h-8 rounded border border-slate-300 px-2 text-sm"
+                className="h-8 rounded border border-slate-500 px-2 text-sm"
               />
               <button
                 type="button"
                 onClick={resetGridPeriod}
-                className="h-8 shrink-0 rounded border border-slate-300 px-3 text-sm hover:bg-slate-50 sm:ml-2"
+                className="h-8 shrink-0 rounded border border-slate-500 px-3 text-sm hover:bg-slate-50 sm:ml-2"
               >
                 予約可能期間全体を表示
               </button>
@@ -299,7 +299,7 @@ export default function ProxyBooking() {
               <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{gridError}</p>
             )}
 
-            <div className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-200">
+            <div className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-400">
               {AREA_TABS.map((t) => (
                 <button
                   key={t.key}
@@ -319,7 +319,7 @@ export default function ProxyBooking() {
             {gridLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
             {grid && (
-              <div className="overflow-x-auto rounded border border-slate-300 bg-white">
+              <div className="overflow-x-auto rounded border border-slate-500 bg-white">
                 <table className="text-sm">
                   <thead>
                     {/* S-02と同じ理由で縦方向のsticky（top-0）は外し、横方向のsticky（左端の列）
@@ -327,14 +327,14 @@ export default function ProxyBooking() {
                         の期間ビュー側コメント参照） */}
                     <tr className="text-left text-slate-500">
                       <th
-                        className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-3 py-2"
+                        className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
                         style={{ minWidth: periodDateColW }}
                       >
                         日付
                       </th>
                       {!isMobile && (
                         <th
-                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                           style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                         >
                           曜日
@@ -342,14 +342,14 @@ export default function ProxyBooking() {
                       )}
                       {!isMobile && (
                         <th
-                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                           style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                         >
                           予約数
                         </th>
                       )}
                       <th
-                        className="sticky z-30 whitespace-nowrap border-r border-b border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodVacantLeftOffset, minWidth: PERIOD_COL_VAC_W }}
                       >
                         空席
@@ -357,7 +357,7 @@ export default function ProxyBooking() {
                       {grid.seats.map((seat) => (
                         <th
                           key={seat.id}
-                          className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-300 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
+                          className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
                         >
                           <div className="font-semibold text-slate-700">{seat.seat_no}</div>
                           <div className="text-slate-400">{SEAT_TYPE_JA[seat.seat_type]}</div>
@@ -372,13 +372,13 @@ export default function ProxyBooking() {
                       const { wd } = formatDateShort(d)
                       const isPast = d < todayStr()
                       return (
-                        <tr key={d} className="border-b border-slate-300">
-                          <td className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-300 bg-white px-3 py-1.5 font-semibold">
+                        <tr key={d} className="border-b border-slate-500">
+                          <td className="sticky left-0 z-10 whitespace-nowrap border-r border-slate-500 bg-white px-3 py-1.5 font-semibold">
                             {isMobile ? d.slice(5).replaceAll('-', '/') : d.replaceAll('-', '/')}
                           </td>
                           {!isMobile && (
                             <td
-                              className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-500"
+                              className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-500"
                               style={{ left: periodDateColW }}
                             >
                               {wd}
@@ -386,14 +386,14 @@ export default function ProxyBooking() {
                           )}
                           {!isMobile && (
                             <td
-                              className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
+                              className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-600"
                               style={{ left: periodDateColW + PERIOD_COL_WD_W }}
                             >
                               {reserved}
                             </td>
                           )}
                           <td
-                            className="sticky z-10 whitespace-nowrap border-r border-slate-300 bg-white px-2 py-1.5 text-center text-slate-600"
+                            className="sticky z-10 whitespace-nowrap border-r border-slate-500 bg-white px-2 py-1.5 text-center text-slate-600"
                             style={{ left: periodVacantLeftOffset }}
                           >
                             {vacant}
@@ -402,7 +402,7 @@ export default function ProxyBooking() {
                             const cell = seat.days[d]
                             const status = cell?.status ?? 'free'
                             return (
-                              <td key={seat.id} className="border-r border-slate-200 px-1 py-1.5 text-center">
+                              <td key={seat.id} className="border-r border-slate-400 px-1 py-1.5 text-center">
                                 {status === 'free' ? (
                                   <span className="whitespace-nowrap text-[11px] text-slate-300">空き</span>
                                 ) : isPast ? (
@@ -446,7 +446,7 @@ export default function ProxyBooking() {
             )}
           </div>
 
-          <div className="border-t border-slate-200 p-4">
+          <div className="border-t border-slate-400 p-4">
             <div className="mb-2 text-xs font-semibold text-slate-500">氏名・期間でまとめて取り消す</div>
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -454,13 +454,13 @@ export default function ProxyBooking() {
                 value={rowUserName}
                 onChange={(e) => setRowUserName(e.target.value)}
                 placeholder="氏名で検索"
-                className="h-9 w-full max-w-[220px] rounded border border-slate-300 px-3 text-sm"
+                className="h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm"
               />
               <span className="text-sm text-slate-500">座席種別</span>
               <select
                 value={seatType}
                 onChange={(e) => setSeatType(e.target.value as ProxySeatTypeFilter)}
-                className="h-9 rounded border border-slate-300 px-2 text-sm"
+                className="h-9 rounded border border-slate-500 px-2 text-sm"
               >
                 {SEAT_TYPE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
@@ -469,14 +469,14 @@ export default function ProxyBooking() {
                 type="month"
                 value={bulkPeriodStart}
                 onChange={(e) => setBulkPeriodStart(e.target.value)}
-                className="h-9 rounded border border-slate-300 px-2 text-sm"
+                className="h-9 rounded border border-slate-500 px-2 text-sm"
               />
               <span className="text-slate-400">〜</span>
               <input
                 type="month"
                 value={bulkPeriodEnd}
                 onChange={(e) => setBulkPeriodEnd(e.target.value)}
-                className="h-9 rounded border border-slate-300 px-2 text-sm"
+                className="h-9 rounded border border-slate-500 px-2 text-sm"
               />
               <button
                 type="button"
@@ -505,14 +505,14 @@ export default function ProxyBooking() {
           footer={
             cancelTarget.kind === 'fixed_absent' ? (
               <>
-                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
                 <button type="button" disabled={submitting} onClick={confirmUndoOneDay} className="rounded bg-blue-700 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                   元に戻す（固定座席に戻す）
                 </button>
               </>
             ) : (
               <>
-                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" onClick={() => setCancelTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
                 <button type="button" disabled={submitting} onClick={confirmChange} className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-800 disabled:opacity-50">
                   変更する（座席を選び直す）
                 </button>
@@ -544,7 +544,7 @@ export default function ProxyBooking() {
           onClose={() => setBulkModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setBulkModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setBulkModalOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={bulkSubmitting} onClick={confirmBulkCancel} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                 取り消す
               </button>

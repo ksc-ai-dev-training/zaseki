@@ -59,11 +59,11 @@ export default function RoleManagement() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">権限・PJ管理</h1>
       </header>
 
-      <div className="border-b border-slate-200 bg-white px-6">
+      <div className="border-b border-slate-400 bg-white px-6">
         <div className="flex gap-1">
           {TABS.map((t) => (
             <button
@@ -134,21 +134,21 @@ function UsersTab() {
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-400 p-4">
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="氏名・メールで検索"
-          className="h-9 w-full max-w-[220px] rounded border border-slate-300 px-3 text-sm"
+          className="h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm"
         />
         <span className="text-sm text-slate-500">役割</span>
-        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UserRoleFilter)} className="h-9 rounded border border-slate-300 px-2 text-sm">
+        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UserRoleFilter)} className="h-9 rounded border border-slate-500 px-2 text-sm">
           {ROLE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
         <span className="text-sm text-slate-500">在籍状況</span>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as UserStatusFilter)} className="h-9 rounded border border-slate-300 px-2 text-sm">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as UserStatusFilter)} className="h-9 rounded border border-slate-500 px-2 text-sm">
           {STATUS_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -160,7 +160,7 @@ function UsersTab() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="px-4 py-2">氏名</th>
               <th className="px-4 py-2">メールアドレス</th>
               <th className="px-4 py-2">雇用形態</th>
@@ -172,7 +172,7 @@ function UsersTab() {
           </thead>
           <tbody>
             {items.map((u) => (
-              <tr key={u.id} className="border-b border-slate-100">
+              <tr key={u.id} className="border-b border-slate-400">
                 <td className="px-4 py-2 font-semibold">{u.last_name} {u.first_name}</td>
                 <td className="px-4 py-2 text-xs text-slate-500">{u.email}</td>
                 <td className="px-4 py-2">{EMPLOYMENT_TYPE_JA[u.employment_type]}</td>
@@ -191,7 +191,7 @@ function UsersTab() {
                   </span>
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <button type="button" onClick={() => openEdit(u)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                  <button type="button" onClick={() => openEdit(u)} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
                     編集
                   </button>
                 </td>
@@ -210,7 +210,7 @@ function UsersTab() {
           onClose={() => setForm(null)}
           footer={
             <>
-              <button type="button" onClick={() => setForm(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setForm(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={submitForm} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">保存する</button>
             </>
           }
@@ -219,11 +219,11 @@ function UsersTab() {
             <div className="flex gap-2">
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">姓</span>
-                <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="h-9 w-full rounded border border-slate-300 px-3" />
+                <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="h-9 w-full rounded border border-slate-500 px-3" />
               </label>
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">名</span>
-                <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="h-9 w-full rounded border border-slate-300 px-3" />
+                <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="h-9 w-full rounded border border-slate-500 px-3" />
               </label>
             </div>
             <label className="block">
@@ -231,7 +231,7 @@ function UsersTab() {
               <select
                 value={form.employmentType}
                 onChange={(e) => setForm({ ...form, employmentType: e.target.value as EmploymentType })}
-                className="h-9 w-full rounded border border-slate-300 px-2"
+                className="h-9 w-full rounded border border-slate-500 px-2"
               >
                 <option value="employee">社員</option>
                 <option value="contract">契約職員</option>
@@ -252,7 +252,7 @@ function UsersTab() {
                 value={form.areaManagerRole ?? ''}
                 disabled={!form.isAdmin}
                 onChange={(e) => setForm({ ...form, areaManagerRole: (e.target.value || null) as AreaManagerRole })}
-                className="h-9 w-full rounded border border-slate-300 px-2 disabled:bg-slate-50 disabled:text-slate-400"
+                className="h-9 w-full rounded border border-slate-500 px-2 disabled:bg-slate-50 disabled:text-slate-400"
               >
                 <option value="">なし</option>
                 <option value="manager">エリア責任者</option>
@@ -264,7 +264,7 @@ function UsersTab() {
               <select
                 value={form.employmentStatus}
                 onChange={(e) => setForm({ ...form, employmentStatus: e.target.value as EmploymentStatus })}
-                className="h-9 w-full rounded border border-slate-300 px-2"
+                className="h-9 w-full rounded border border-slate-500 px-2"
               >
                 <option value="active">在籍中</option>
                 <option value="leave">休職中</option>
@@ -366,8 +366,8 @@ function ProjectsTab() {
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="flex justify-end border-b border-slate-200 p-4">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="flex justify-end border-b border-slate-400 p-4">
         <button type="button" onClick={openAdd} className="rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900">
           ＋ プロジェクトを追加
         </button>
@@ -375,7 +375,7 @@ function ProjectsTab() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="px-4 py-2">プロジェクト名</th>
               <th className="px-4 py-2">PM・PL・SL</th>
               <th className="px-4 py-2">PJ席決担当</th>
@@ -388,7 +388,7 @@ function ProjectsTab() {
             {items.map((p) => {
               const titled = p.members.filter((m): m is ProjectMemberSummary & { project_title: 'PM' | 'PL' | 'SL' } => m.project_title !== null)
               return (
-                <tr key={p.id} className="border-b border-slate-100">
+                <tr key={p.id} className="border-b border-slate-400">
                   <td className="px-4 py-2 font-semibold">{p.name}</td>
                   <td className="px-4 py-2">
                     {titled.length > 0 ? (
@@ -406,7 +406,7 @@ function ProjectsTab() {
                   <td className="px-4 py-2">{p.member_count}名</td>
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => openEdit(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                      <button type="button" onClick={() => openEdit(p)} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
                         編集
                       </button>
                       <button type="button" onClick={() => { setDeleteError(null); setDeleteTarget(p) }} className="rounded border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50">
@@ -506,7 +506,7 @@ function NotificationsTab() {
   }
 
   return (
-    <div className="max-w-2xl rounded border border-slate-200 bg-white p-6">
+    <div className="max-w-2xl rounded border border-slate-400 bg-white p-6">
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Slack通知先（Webhook URL）</span>
         <input
@@ -515,7 +515,7 @@ function NotificationsTab() {
           onChange={(e) => setField(WEBHOOK_KEY, e.target.value)}
           placeholder="https://hooks.slack.com/services/..."
           disabled={isLoading}
-          className="h-9 w-full rounded border border-slate-300 px-3"
+          className="h-9 w-full rounded border border-slate-500 px-3"
         />
       </label>
 
@@ -549,7 +549,7 @@ function NotificationsTab() {
               onChange={(e) => setField(f.key, e.target.value)}
               disabled={isLoading}
               maxLength={500}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded border border-slate-500 px-3 py-2 text-sm"
             />
             <span className="mt-1 block text-xs text-slate-400">{f.hint}</span>
           </label>

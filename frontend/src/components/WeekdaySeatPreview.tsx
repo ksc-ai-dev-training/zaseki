@@ -77,7 +77,7 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
   if (seatMaster.length === 0 || weekdaysInvolved.length === 0 || areasInvolved.length === 0) return null
 
   return (
-    <div className="space-y-4 rounded border border-slate-200 bg-slate-50 p-3">
+    <div className="space-y-4 rounded border border-slate-400 bg-slate-50 p-3">
       <div className="grid max-h-[88vh] grid-cols-[repeat(2,max-content)] gap-3 overflow-auto pb-1">
         {weekdaysInvolved.map((w) => {
           // previewColorBySeatIdの値自体は使わず（SeatTile.tsx側は名前表示に変えたため）、
@@ -94,7 +94,7 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
           })
           const tileProps = { onReserve: () => {}, onCancel: () => {}, previewColorBySeatId, previewLabelBySeatId }
           return (
-            <div key={w.key} className="shrink-0 overflow-hidden rounded border border-slate-200 bg-white">
+            <div key={w.key} className="shrink-0 overflow-hidden rounded border border-slate-400 bg-white">
               {/* 曜日ラベル（2026-09-17拡大）: 「曜日の表示がわかりにくい」との指摘を受け、小さい
                   グレー文字だったものを、曜日ごとに色分けした帯にして視認性を上げた。2列×複数行に
                   並ぶため、上下にスクロールしても今どの曜日を見ているか一目でわかるようにする狙い */}

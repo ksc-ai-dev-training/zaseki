@@ -49,14 +49,14 @@ function MonthDurationPicker({ onApply }: { onApply: (start: string, end: string
   const [month, setMonth] = useState('')
   const [months, setMonths] = useState(3)
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+    <div className="flex flex-wrap items-end gap-2 rounded border border-slate-400 bg-slate-50 px-3 py-2">
       <label className="block">
         <span className="mb-1 block text-xs text-slate-500">開始月</span>
         <input
           type="month"
           value={month}
           onChange={(e) => setMonth(e.target.value)}
-          className="h-8 rounded border border-slate-300 px-2 text-sm"
+          className="h-8 rounded border border-slate-500 px-2 text-sm"
         />
       </label>
       <label className="block">
@@ -66,14 +66,14 @@ function MonthDurationPicker({ onApply }: { onApply: (start: string, end: string
           min={1}
           value={months}
           onChange={(e) => setMonths(Math.max(1, Number(e.target.value) || 1))}
-          className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+          className="h-8 w-20 rounded border border-slate-500 px-2 text-sm"
         />
       </label>
       <button
         type="button"
         disabled={!month}
         onClick={() => onApply(monthStartDate(month), monthPlusDurationEndDate(month, months))}
-        className="h-8 rounded border border-slate-300 px-3 text-xs font-semibold text-slate-600 disabled:opacity-40"
+        className="h-8 rounded border border-slate-500 px-3 text-xs font-semibold text-slate-600 disabled:opacity-40"
       >
         開始日・終了日に反映
       </button>
@@ -535,7 +535,7 @@ export default function ProjectSeatAllocation() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">プロジェクト座席（エリア担当）</h1>
       </header>
 
@@ -553,7 +553,7 @@ export default function ProjectSeatAllocation() {
               ジェクトについて次のサイクル分の期間を先に作成しておく手段がなかった（「9月〜11月の
               プロジェクトを、次の期間を作成するときの対象にできない」との報告）。期間未設定の警告と
               一括新規設定ボタンの表示自体は分離し、ボタンは常に表示する */}
-          <div className={`rounded border p-4 ${unplannedProjects.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className={`rounded border p-4 ${unplannedProjects.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-400 bg-slate-50'}`}>
             {unplannedProjects.length > 0 && (
               <div className="mb-2 text-sm font-semibold text-amber-800">期間未設定のプロジェクト（{unplannedProjects.length}件）</div>
             )}
@@ -567,7 +567,7 @@ export default function ProjectSeatAllocation() {
           </div>
         </section>
 
-        <hr className="border-slate-200" />
+        <hr className="border-slate-400" />
 
         {/* 期間タブ: 存在する座席期間が2件以上のときだけ表示する。以降の「座席割り当て」「曜日調整表」
             セクションはこのタブで選んだ期間だけに絞り込む（「期間」セクション自体は期間を問わず
@@ -577,7 +577,7 @@ export default function ProjectSeatAllocation() {
             <button
               type="button"
               onClick={() => setPeriodTab('all')}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
             >
               すべて
             </button>
@@ -586,7 +586,7 @@ export default function ProjectSeatAllocation() {
                 key={per.key}
                 type="button"
                 onClick={() => setPeriodTab(per.key)}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === per.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === per.key ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
               >
                 {per.start} 〜 {per.end}
               </button>
@@ -602,7 +602,7 @@ export default function ProjectSeatAllocation() {
           <button
             type="button"
             onClick={() => setWeekdayFilter('all')}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
           >
             すべて
           </button>
@@ -611,7 +611,7 @@ export default function ProjectSeatAllocation() {
               key={w.key}
               type="button"
               onClick={() => setWeekdayFilter(w.key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${weekdayFilter === w.key ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
             >
               {w.label}
             </button>
@@ -627,7 +627,7 @@ export default function ProjectSeatAllocation() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilterKey)}
-              className="h-7 rounded border border-slate-300 px-1.5 text-xs"
+              className="h-7 rounded border border-slate-500 px-1.5 text-xs"
             >
               {STATUS_FILTER_OPTIONS.map((o) => (
                 <option key={o.key} value={o.key}>{o.label}</option>
@@ -646,7 +646,7 @@ export default function ProjectSeatAllocation() {
                 key={o.key}
                 type="button"
                 onClick={() => setAreaFilter(o.key)}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${areaFilter === o.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${areaFilter === o.key ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
               >
                 {o.label}
               </button>
@@ -659,7 +659,7 @@ export default function ProjectSeatAllocation() {
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
               placeholder="キーワードで絞り込み"
-              className="h-7 w-44 rounded border border-slate-300 px-2 text-xs"
+              className="h-7 w-44 rounded border border-slate-500 px-2 text-xs"
             />
           </label>
           {(statusFilter !== 'all' || areaFilter !== 'all' || nameFilter.trim() !== '') && (
@@ -691,7 +691,7 @@ export default function ProjectSeatAllocation() {
           />
         </section>
 
-        <hr className="border-slate-200" />
+        <hr className="border-slate-400" />
 
         {/* 座席期間の一括修正（A-66）: 「座席期間を一括で新規設定する」（新しい計画行を追加するA-68）と
             紛らわしく、隣に並んでいると勘違いしやすいとの指摘を受け、座席割り当てと曜日調整表の間へ
@@ -704,23 +704,23 @@ export default function ProjectSeatAllocation() {
           <button
             type="button"
             onClick={openBulkPeriod}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded border border-slate-500 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
             既存の計画の座席期間をまとめて修正する
           </button>
         </div>
 
-        <hr className="border-slate-200" />
+        <hr className="border-slate-400" />
 
         {/* 座席割り当て: 一覧（対象期間・状態・行ごとの割当操作）と、一括割当の起点ボタン。
             一括割当ボタンは従来ページ最上部にあったが、「上に表示されているが下の方に表示してほしい」
             との要望を受け、この一覧の下（同じ座席割り当てセクション内）へ移動した（2026-09-10） */}
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">座席割り当て</h2>
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded border border-slate-400 bg-white">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="px-4 py-2">プロジェクト</th>
                   <th className="px-4 py-2">席決め担当</th>
                   <th className="px-4 py-2">対象期間</th>
@@ -730,7 +730,7 @@ export default function ProjectSeatAllocation() {
               </thead>
               <tbody>
                 {seatListPlans.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100">
+                  <tr key={p.id} className="border-b border-slate-400">
                     <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
                       {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
                       {/* 曜日によって座席の島が異なる場合の目印（2026-09-16新設。「PJは曜日によって
@@ -755,7 +755,7 @@ export default function ProjectSeatAllocation() {
                     <td className="px-4 py-2">
                       <div className="flex justify-end gap-2">
                         {p.status === 'survey_open' && !noSeatNeeded(p) && (
-                          <button type="button" onClick={() => sendReminder(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">リマインドを送る</button>
+                          <button type="button" onClick={() => sendReminder(p)} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">リマインドを送る</button>
                         )}
                         {p.status === 'weekdays_finalized' && !noSeatNeeded(p) && (
                           seatBlockDoomed(p) ? (
@@ -770,10 +770,10 @@ export default function ProjectSeatAllocation() {
                           )
                         )}
                         {p.status !== 'seats_allocated' && (
-                          <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
+                          <button type="button" onClick={() => openHeadcount(p)} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">人数を修正</button>
                         )}
                         {(p.status === 'seats_confirmed' || p.status === 'survey_open') && (
-                          <button type="button" onClick={() => openPeriod(p)} className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">期間を修正</button>
+                          <button type="button" onClick={() => openPeriod(p)} className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">期間を修正</button>
                         )}
                         {/* 仮の座席割り当て（seats_tentative、2026-09-16追加）は本当に確定するまで
                             自由にやり直せるため、座席割当済み（seats_allocated）と同じ「座席を編集」
@@ -794,7 +794,7 @@ export default function ProjectSeatAllocation() {
                             <button
                               type="button"
                               onClick={() => goSeatBlock(p, weekdayFilter === 'all' ? undefined : weekdayFilter)}
-                              className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                              className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
                             >
                               {weekdayFilter === 'all' ? '座席を編集' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を編集`}
                             </button>
@@ -832,7 +832,7 @@ export default function ProjectSeatAllocation() {
           onClose={() => setHeadcountTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setHeadcountTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setHeadcountTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={submitHeadcount} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">この内容で保存する</button>
             </>
           }
@@ -846,7 +846,7 @@ export default function ProjectSeatAllocation() {
                 min={1}
                 value={headcountValue}
                 onChange={(e) => setHeadcountValue(Number(e.target.value))}
-                className="h-9 w-28 rounded border border-slate-300 px-3"
+                className="h-9 w-28 rounded border border-slate-500 px-3"
               />
             </label>
             {actionError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{actionError}</p>}
@@ -860,7 +860,7 @@ export default function ProjectSeatAllocation() {
           onClose={() => setPeriodTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setPeriodTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setPeriodTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={submitPeriod} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">この内容で保存する</button>
             </>
           }
@@ -873,7 +873,7 @@ export default function ProjectSeatAllocation() {
                 type="date"
                 value={periodStartValue}
                 onChange={(e) => setPeriodStartValue(e.target.value)}
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
               />
             </label>
             <label className="block">
@@ -882,7 +882,7 @@ export default function ProjectSeatAllocation() {
                 type="date"
                 value={periodEndValue}
                 onChange={(e) => setPeriodEndValue(e.target.value)}
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
               />
             </label>
             {actionError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{actionError}</p>}
@@ -896,7 +896,7 @@ export default function ProjectSeatAllocation() {
           onClose={() => setBulkCreateModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setBulkCreateModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setBulkCreateModalOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={bulkCreateSubmitting || bulkCreateSelected.size === 0 || !bulkCreateStartValue || !bulkCreateEndValue}
@@ -917,7 +917,7 @@ export default function ProjectSeatAllocation() {
                   type="date"
                   value={bulkCreateStartValue}
                   onChange={(e) => setBulkCreateStartValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-300 px-3"
+                  className="h-9 w-full rounded border border-slate-500 px-3"
                 />
               </label>
               <label className="block flex-1">
@@ -926,7 +926,7 @@ export default function ProjectSeatAllocation() {
                   type="date"
                   value={bulkCreateEndValue}
                   onChange={(e) => setBulkCreateEndValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-300 px-3"
+                  className="h-9 w-full rounded border border-slate-500 px-3"
                 />
               </label>
             </div>
@@ -964,7 +964,7 @@ export default function ProjectSeatAllocation() {
           onClose={() => setBulkPeriodModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setBulkPeriodModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setBulkPeriodModalOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={bulkPeriodSubmitting || bulkPeriodSelected.size === 0 || !bulkPeriodStartValue || !bulkPeriodEndValue}
@@ -985,7 +985,7 @@ export default function ProjectSeatAllocation() {
                   type="date"
                   value={bulkPeriodStartValue}
                   onChange={(e) => setBulkPeriodStartValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-300 px-3"
+                  className="h-9 w-full rounded border border-slate-500 px-3"
                 />
               </label>
               <label className="block flex-1">
@@ -994,7 +994,7 @@ export default function ProjectSeatAllocation() {
                   type="date"
                   value={bulkPeriodEndValue}
                   onChange={(e) => setBulkPeriodEndValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-300 px-3"
+                  className="h-9 w-full rounded border border-slate-500 px-3"
                 />
               </label>
             </div>
@@ -1108,7 +1108,7 @@ function AdminNoteField({ planId, initialValue }: { planId: number; initialValue
       disabled={saving}
       rows={1}
       placeholder="備考を入力"
-      className="w-56 resize-none overflow-hidden rounded border border-slate-200 px-1.5 py-0.5 text-xs leading-snug disabled:opacity-50"
+      className="w-56 resize-none overflow-hidden rounded border border-slate-400 px-1.5 py-0.5 text-xs leading-snug disabled:opacity-50"
     />
   )
 }
@@ -1207,14 +1207,14 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3 font-semibold">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="border-b border-slate-400 px-4 py-3 font-semibold">
         確定した出社曜日
       </div>
       <div className="overflow-x-auto p-4">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
+            <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="pb-1 pr-3">プロジェクト</th>
               <th className="pb-1 pr-3">備考</th>
               {WEEKDAYS.map((w) => <th key={w.key} className="pb-1 px-2 text-center">{w.label}</th>)}
@@ -1225,7 +1225,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
               const editable = p.status === 'weekdays_finalized' || p.status === 'seats_allocated'
               const confirmed = editable ? (checked[p.id] ?? new Set<Weekday>()) : new Set(p.weekdays_finalized ?? [])
               return (
-                <tr key={p.id} className="border-b border-slate-100">
+                <tr key={p.id} className="border-b border-slate-400">
                   <td className="py-1 pr-3 font-semibold align-top">
                     {p.project_name}
                     {p.note && (
@@ -1292,7 +1292,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
         </p>
       )}
       {editablePlans.length > 0 && (
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-4">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-400 p-4">
           {unfinalizeCandidates.length > 0 && (
             <button
               type="button"
@@ -1314,7 +1314,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           onClose={() => setConfirmModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setConfirmModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setConfirmModalOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={submitChanges} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                 この内容で変更する
               </button>
@@ -1324,7 +1324,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           <div className="space-y-3 text-sm">
             <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {editablePlans.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-1.5">
+                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-slate-400 pb-1.5">
                   <span className="font-semibold">{p.project_name}</span>
                   <span className="text-slate-600">{weekdaysSummary(checked[p.id])}</span>
                 </li>
@@ -1346,7 +1346,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
           onClose={() => setCancelModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setCancelModalOpen(false)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setCancelModalOpen(false)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button
                 type="button"
                 disabled={canceling || cancelSelected.size === 0}
@@ -1605,8 +1605,8 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
   const tentativePlans = plans.filter((p) => p.status === 'seats_tentative')
 
   return (
-    <div className="rounded border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3 font-semibold">
+    <div className="rounded border border-slate-400 bg-white">
+      <div className="border-b border-slate-400 px-4 py-3 font-semibold">
         出社曜日の調整表
       </div>
       <div className="space-y-4 p-4">
@@ -1640,7 +1640,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
               )}
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="border-b border-slate-400 text-left text-slate-500">
                     <th className="pb-1 pr-3">プロジェクト</th>
                     {/* 「人数」という表記だとメンバーの現在の人数と誤解されやすいため、実際に表示している
                         値（required_seats）に合わせて「必要座席数」に改めた（2026-09-14修正。「まず人数を
@@ -1653,7 +1653,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                 </thead>
                 <tbody>
                   {g.plans.map((p) => (
-                    <tr key={p.id} className="border-b border-slate-100">
+                    <tr key={p.id} className="border-b border-slate-400">
                       <td className="py-1 pr-3 font-semibold align-top">
                         {p.project_name}
                         {p.note && (
@@ -1766,7 +1766,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                   )}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-slate-300 font-semibold">
+                  <tr className="border-t-2 border-slate-500 font-semibold">
                     {/* 「曜日ごとの合計」という行名だったが、必要座席数列に表示している値
                         （totalRequired）は曜日ごとの値ではなく、全プロジェクトの必要座席数＋固定座席数を
                         合計した目標値（各曜日の実際のチェック合計と比較するための基準）だったため、
@@ -1814,7 +1814,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
       </div>
       {error && <p className="mx-4 mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-4">
+      <div className="flex items-center justify-end gap-2 border-t border-slate-400 p-4">
         {/* 「本当に確定する」内容の確認・実行は、以前はこの画面内にモーダル・その後ページ内表示として
             持っていたが、「プロジェクト座席（エリア担当）ではなく別の画面としてみれるようにしたい」
             との要望を受け、独立した確認画面（/project-seats-area/confirm-weekdays、ConfirmWeekdays.tsx）

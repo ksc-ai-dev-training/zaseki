@@ -184,25 +184,25 @@ export default function SeatMaster() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">座席マスタ管理</h1>
       </header>
 
       <div className="p-6">
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-400 p-4">
             <input
               type="search"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setPage(1) }}
               placeholder="座席番号で検索"
-              className="h-9 w-full max-w-[220px] rounded border border-slate-300 px-3 text-sm"
+              className="h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm"
             />
             <span className="text-sm text-slate-500">エリア</span>
             <select
               value={areaFilter}
               onChange={(e) => { setAreaFilter(e.target.value as AreaFilter); setPage(1) }}
-              className="h-9 rounded border border-slate-300 px-2 text-sm"
+              className="h-9 rounded border border-slate-500 px-2 text-sm"
             >
               {AREA_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
@@ -210,7 +210,7 @@ export default function SeatMaster() {
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value as SeatStatusFilter); setPage(1) }}
-              className="h-9 rounded border border-slate-300 px-2 text-sm"
+              className="h-9 rounded border border-slate-500 px-2 text-sm"
             >
               {STATUS_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
@@ -240,7 +240,7 @@ export default function SeatMaster() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="px-4 py-2">座席番号</th>
                   <th className="px-4 py-2">エリア</th>
                   <th className="px-4 py-2">座席タイプ</th>
@@ -250,7 +250,7 @@ export default function SeatMaster() {
               </thead>
               <tbody>
                 {pageItems.map((s) => (
-                  <tr key={s.id} className="border-b border-slate-100">
+                  <tr key={s.id} className="border-b border-slate-400">
                     <td className="px-4 py-2 font-semibold">{s.seat_no}</td>
                     <td className="px-4 py-2">{s.area}</td>
                     <td className="px-4 py-2">
@@ -268,7 +268,7 @@ export default function SeatMaster() {
                         <button
                           type="button"
                           onClick={() => openEdit(s)}
-                          className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
                         >
                           編集
                         </button>
@@ -303,7 +303,7 @@ export default function SeatMaster() {
                   type="button"
                   disabled={currentPage === 1}
                   onClick={() => setPage(currentPage - 1)}
-                  className="h-7 w-7 rounded border border-slate-300 text-sm disabled:opacity-40"
+                  className="h-7 w-7 rounded border border-slate-500 text-sm disabled:opacity-40"
                 >
                   ‹
                 </button>
@@ -316,7 +316,7 @@ export default function SeatMaster() {
                       type="button"
                       onClick={() => setPage(p)}
                       className={`h-7 min-w-7 rounded border px-1.5 text-sm ${
-                        p === currentPage ? 'border-blue-800 bg-blue-800 text-white' : 'border-slate-300 hover:bg-slate-50'
+                        p === currentPage ? 'border-blue-800 bg-blue-800 text-white' : 'border-slate-500 hover:bg-slate-50'
                       }`}
                     >
                       {p}
@@ -327,7 +327,7 @@ export default function SeatMaster() {
                   type="button"
                   disabled={currentPage === totalPages}
                   onClick={() => setPage(currentPage + 1)}
-                  className="h-7 w-7 rounded border border-slate-300 text-sm disabled:opacity-40"
+                  className="h-7 w-7 rounded border border-slate-500 text-sm disabled:opacity-40"
                 >
                   ›
                 </button>
@@ -343,7 +343,7 @@ export default function SeatMaster() {
           onClose={() => setForm(null)}
           footer={
             <>
-              <button type="button" onClick={() => setForm(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setForm(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={submitForm} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">保存する</button>
             </>
           }
@@ -356,7 +356,7 @@ export default function SeatMaster() {
                 value={form.seatNo}
                 onChange={(e) => setForm({ ...form, seatNo: e.target.value })}
                 placeholder="例: A1"
-                className="h-9 w-full rounded border border-slate-300 px-3"
+                className="h-9 w-full rounded border border-slate-500 px-3"
               />
             </label>
             <div className="flex gap-3">
@@ -365,7 +365,7 @@ export default function SeatMaster() {
                 <select
                   value={form.areaId}
                   onChange={(e) => setForm({ ...form, areaId: Number(e.target.value) })}
-                  className="h-9 w-full rounded border border-slate-300 px-2"
+                  className="h-9 w-full rounded border border-slate-500 px-2"
                 >
                   {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
@@ -375,7 +375,7 @@ export default function SeatMaster() {
                 <select
                   value={form.seatType}
                   onChange={(e) => setForm({ ...form, seatType: e.target.value as SeatType })}
-                  className="h-9 w-full rounded border border-slate-300 px-2"
+                  className="h-9 w-full rounded border border-slate-500 px-2"
                 >
                   <option value="free">フリー</option>
                   <option value="fixed">固定</option>
@@ -411,7 +411,7 @@ export default function SeatMaster() {
               <button type="button" onClick={() => setBulkForm(null)} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white">閉じる</button>
             ) : (
               <>
-                <button type="button" onClick={() => setBulkForm(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+                <button type="button" onClick={() => setBulkForm(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
                 <button type="button" disabled={bulkSubmitting} onClick={submitBulkForm} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">まとめて登録する</button>
               </>
             )
@@ -436,7 +436,7 @@ export default function SeatMaster() {
                   <select
                     value={bulkForm.areaId}
                     onChange={(e) => setBulkForm({ ...bulkForm, areaId: Number(e.target.value) })}
-                    className="h-9 w-full rounded border border-slate-300 px-2"
+                    className="h-9 w-full rounded border border-slate-500 px-2"
                   >
                     {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
@@ -446,7 +446,7 @@ export default function SeatMaster() {
                   <select
                     value={bulkForm.seatType}
                     onChange={(e) => setBulkForm({ ...bulkForm, seatType: e.target.value as SeatType })}
-                    className="h-9 w-full rounded border border-slate-300 px-2"
+                    className="h-9 w-full rounded border border-slate-500 px-2"
                   >
                     <option value="free">フリー</option>
                     <option value="fixed">固定</option>
@@ -454,7 +454,7 @@ export default function SeatMaster() {
                 </label>
               </div>
 
-              <div className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div className="rounded border border-slate-400 bg-slate-50 p-3">
                 <span className="mb-2 block text-xs text-slate-500">連番で入力欄を作成（任意。「プレフィックス＋開始〜終了」の座席番号を下の欄にまとめて入力する）</span>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="block">
@@ -464,7 +464,7 @@ export default function SeatMaster() {
                       value={bulkForm.rangePrefix}
                       onChange={(e) => setBulkForm({ ...bulkForm, rangePrefix: e.target.value })}
                       placeholder="例: Q"
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                      className="h-8 w-20 rounded border border-slate-500 px-2 text-sm"
                     />
                   </label>
                   <label className="block">
@@ -474,7 +474,7 @@ export default function SeatMaster() {
                       value={bulkForm.rangeStart}
                       onChange={(e) => setBulkForm({ ...bulkForm, rangeStart: e.target.value })}
                       placeholder="1"
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                      className="h-8 w-20 rounded border border-slate-500 px-2 text-sm"
                     />
                   </label>
                   <label className="block">
@@ -484,7 +484,7 @@ export default function SeatMaster() {
                       value={bulkForm.rangeEnd}
                       onChange={(e) => setBulkForm({ ...bulkForm, rangeEnd: e.target.value })}
                       placeholder="20"
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+                      className="h-8 w-20 rounded border border-slate-500 px-2 text-sm"
                     />
                   </label>
                   <button type="button" onClick={applyRangeToText} className="h-8 rounded border border-blue-800 px-3 text-xs text-blue-800 hover:bg-blue-50">
@@ -500,7 +500,7 @@ export default function SeatMaster() {
                   value={bulkForm.seatNosText}
                   onChange={(e) => setBulkForm({ ...bulkForm, seatNosText: e.target.value })}
                   placeholder={'例:\nQ1, Q2, Q3\nQ4'}
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded border border-slate-500 px-3 py-2 text-sm"
                 />
               </label>
               {bulkError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{bulkError}</p>}
@@ -515,7 +515,7 @@ export default function SeatMaster() {
           onClose={() => setDeleteTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={deleting} onClick={confirmDelete} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">削除する</button>
             </>
           }

@@ -90,7 +90,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+          <button type="button" onClick={onClose} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
           <button type="button" disabled={submitting} onClick={onSubmit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">保存する</button>
         </>
       }
@@ -103,7 +103,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例: Zaseki研修プロジェクト"
-            className="h-9 w-full rounded border border-slate-300 px-3"
+            className="h-9 w-full rounded border border-slate-500 px-3"
           />
         </label>
 
@@ -130,10 +130,10 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="氏名で検索してメンバーを追加"
-              className="h-9 w-full rounded border border-slate-300 px-3 text-sm"
+              className="h-9 w-full rounded border border-slate-500 px-3 text-sm"
             />
             {searchResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow">
+              <div className="absolute z-10 mt-1 w-full rounded border border-slate-400 bg-white shadow">
                 {searchResults.map((u) => (
                   <button
                     key={u.id}
@@ -147,10 +147,10 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
               </div>
             )}
           </div>
-          <div className="overflow-x-auto rounded border border-slate-200">
+          <div className="overflow-x-auto rounded border border-slate-400">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                <tr className="border-b border-slate-400 bg-slate-50 text-left text-slate-500">
                   <th className="px-3 py-1.5">氏名</th>
                   <th className="px-3 py-1.5">役割</th>
                   <th className="px-3 py-1.5">PJ席決担当</th>
@@ -162,13 +162,13 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
                 {form.members.map((m) => {
                   const canBeProxy = m.project_title === 'PM' || m.project_title === 'PL'
                   return (
-                    <tr key={m.user_id} className="border-b border-slate-100">
+                    <tr key={m.user_id} className="border-b border-slate-400">
                       <td className="px-3 py-1.5">{m.name}</td>
                       <td className="px-3 py-1.5">
                         <select
                           value={m.project_title ?? ''}
                           onChange={(e) => setTitle(m.user_id, (e.target.value || null) as ProjectTitle)}
-                          className="h-8 rounded border border-slate-300 px-2"
+                          className="h-8 rounded border border-slate-500 px-2"
                         >
                           <option value="">なし</option>
                           <option value="PM">PM</option>
@@ -196,7 +196,7 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
                         </td>
                       )}
                       <td className="px-3 py-1.5 text-right">
-                        <button type="button" onClick={() => removeMember(m.user_id)} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">削除</button>
+                        <button type="button" onClick={() => removeMember(m.user_id)} className="rounded border border-slate-500 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">削除</button>
                       </td>
                     </tr>
                   )
@@ -229,7 +229,7 @@ export function ProjectDeleteConfirmModal({ projectName, onClose, onConfirm, del
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+          <button type="button" onClick={onClose} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
           <button type="button" disabled={deleting} onClick={onConfirm} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">削除する</button>
         </>
       }

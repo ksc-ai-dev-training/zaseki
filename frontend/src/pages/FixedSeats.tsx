@@ -61,25 +61,25 @@ export default function FixedSeats() {
 
   return (
     <div>
-      <header className="flex items-baseline gap-2 border-b border-slate-200 bg-white px-8 py-4">
+      <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">固定座席の指定（対象者選択）</h1>
       </header>
 
       <div className="space-y-6 p-6">
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 font-semibold">新しく固定座席を指定する</div>
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="border-b border-slate-400 px-4 py-3 font-semibold">新しく固定座席を指定する</div>
           <div className="p-4">
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="氏名で検索（固定座席を持たない利用者が対象）"
-              className="mb-3 h-9 w-full max-w-sm rounded border border-slate-300 px-3 text-sm"
+              className="mb-3 h-9 w-full max-w-sm rounded border border-slate-500 px-3 text-sm"
             />
             <div className="max-h-96 overflow-y-auto overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-white">
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="border-b border-slate-400 text-left text-slate-500">
                     <th className="pb-2 pr-3">氏名</th>
                     <th className="pb-2 pr-3">現在の座席利用状況</th>
                     <th className="pb-2"></th>
@@ -87,7 +87,7 @@ export default function FixedSeats() {
                 </thead>
                 <tbody>
                   {candidates.map((c) => (
-                    <tr key={c.user_id} className="border-b border-slate-100">
+                    <tr key={c.user_id} className="border-b border-slate-400">
                       <td className="py-2 pr-3">{c.user_name}</td>
                       <td className="py-2 pr-3">
                         <span className={`rounded px-2 py-0.5 text-xs ${SEAT_STATUS_BADGE_CLASS[c.current_status]}`}>
@@ -116,8 +116,8 @@ export default function FixedSeats() {
           </div>
         </div>
 
-        <div className="rounded border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
+        <div className="rounded border border-slate-400 bg-white">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-400 px-4 py-3 font-semibold">
             固定座席利用者（現在の割当）
             <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500">{assignments.length}件</span>
             <input
@@ -125,13 +125,13 @@ export default function FixedSeats() {
               value={assignmentQuery}
               onChange={(e) => setAssignmentQuery(e.target.value)}
               placeholder="氏名で検索"
-              className="ml-auto h-9 w-full max-w-[220px] rounded border border-slate-300 px-3 text-sm font-normal"
+              className="ml-auto h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm font-normal"
             />
           </div>
           <div className="overflow-x-auto p-4">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-slate-400 text-left text-slate-500">
                   <th className="pb-2 pr-3">氏名</th>
                   <th className="pb-2 pr-3">固定座席</th>
                   <th className="pb-2 pr-3">エリア</th>
@@ -147,7 +147,7 @@ export default function FixedSeats() {
                   // つかず、実際には誰でも予約できる状態だと気づけなかった（2026-09-18修正）
                   const isFuture = a.valid_from > todayStr()
                   return (
-                  <tr key={a.seat_id} className={`border-b border-slate-100 ${isFuture ? 'bg-amber-50/60' : ''}`}>
+                  <tr key={a.seat_id} className={`border-b border-slate-400 ${isFuture ? 'bg-amber-50/60' : ''}`}>
                     <td className="py-2 pr-3">{a.user_name}</td>
                     <td className="py-2 pr-3">
                       {a.seat_no}
@@ -164,7 +164,7 @@ export default function FixedSeats() {
                         <button
                           type="button"
                           onClick={() => goAssign({ userId: a.user_id, userName: a.user_name, currentSeatNo: a.seat_no })}
-                          className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
                         >
                           座席を変更する
                         </button>
@@ -199,7 +199,7 @@ export default function FixedSeats() {
           onClose={() => setUnassignTarget(null)}
           footer={
             <>
-              <button type="button" onClick={() => setUnassignTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
+              <button type="button" onClick={() => setUnassignTarget(null)} className="rounded border border-slate-500 px-4 py-1.5 text-sm">キャンセル</button>
               <button type="button" disabled={submitting} onClick={confirmUnassign} className="rounded bg-red-600 px-4 py-1.5 text-sm text-white disabled:opacity-50">解除する</button>
             </>
           }
