@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 import ai_weekday
 from auth_helpers import CurrentUser, require_auth, require_roles
-from database import effective_seat_ids, get_pool
+from database import effective_seat_ids, get_pool, seats_by_weekday
 from slack import (
     DEFAULT_MESSAGE_FINALIZE_HEADER,
     DEFAULT_MESSAGE_REMINDER,
@@ -404,20 +404,19 @@ async def list_quarter_plans(
         weekdays_finalized = json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else None
         # 曜日ごとの実効座席（2026-09-16新設。「PJは曜日によって座席が変わる前提で進めてください」との
         # 上司フィードバックを受けた）。allocated_seats自体が未設定（座席の島が未割当）ならNone。
-        # has_seat_overrideは1曜日でも基本の島と異なる座席になっているかどうか（フロント側の表示切替に使う）
-        allocated_seats_by_weekday = None
-        has_seat_override = False
-        if allocated_seat_ids and weekdays_finalized:
-            allocated_seats_by_weekday = {}
-            distinct_seat_sets = set()
-            for w in weekdays_finalized:
-                w_seat_ids = effective_seat_ids(r["allocated_seats"], r["allocated_seats_overrides"], w)
-                allocated_seats_by_weekday[w] = {
-                    "seat_ids": w_seat_ids,
-                    "seat_label": _format_seat_range([seat_no_by_id[sid] for sid in w_seat_ids if sid in seat_no_by_id]),
+        # has_seat_overrideは確定曜日どうしで実効座席が異なるかどうか（フロント側の表示切替に使う。
+        # 2026-09-18: database.seats_by_weekday()へ統合、project_pm.py〔A-13・A-14〕と共通化）
+        raw_by_weekday, has_seat_override = seats_by_weekday(r["allocated_seats"], r["allocated_seats_overrides"], weekdays_finalized)
+        allocated_seats_by_weekday = (
+            {
+                w: {
+                    "seat_ids": seat_ids,
+                    "seat_label": _format_seat_range([seat_no_by_id[sid] for sid in seat_ids if sid in seat_no_by_id]),
                 }
-                distinct_seat_sets.add(frozenset(w_seat_ids))
-            has_seat_override = len(distinct_seat_sets) > 1
+                for w, seat_ids in raw_by_weekday.items()
+            }
+            if raw_by_weekday is not None else None
+        )
         items.append({
             "id": r["id"], "project_id": r["project_id"], "project_name": r["project_name"],
             "seat_assigner_names": r["seat_assigner_names"] or "未設定",
@@ -1120,6 +1119,10 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
 class SeatBlockBulkAssignItem(BaseModel):
     plan_id: int
     seat_ids: list[int]
+    # A-44と同じ意味（2026-09-18追加。曜日ごとに座席の島が異なりうるようになったことに伴う修正、
+    # 詳細は関数docstring参照）。Noneなら基本の島を全確定曜日ぶん一括更新、指定時はその曜日だけの
+    # 例外編集
+    weekday: Literal["mon", "tue", "wed", "thu", "fri"] | None = None
 
 
 class SeatBlockBulkAssign(BaseModel):
@@ -1131,8 +1134,7 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
     """A-80: 複数プロジェクトの座席の島をまとめて割り当てる（FR-03-6の一括版、2026-09-10新設）。
     「S-09で座席の割り当てを一括で登録できるようにしてほしい。右画面にプロジェクト名を並べ、選ぶと
     備考・曜日・座席数を表示し、左の座席表で割り当てる」との要望を受けた。対象はA-44と異なり
-    status='weekdays_finalized'（未割当）の新規割当のみとし、既存の割当の編集はA-44（1件ずつ）の
-    ままとする（old_seat_idsとの結合が不要になるぶん単純化できる）。
+    status='weekdays_finalized'（未割当）またはstatus='seats_tentative'（仮割当中、再編集含む）のみ。
     検証はプロジェクトごとにA-44と同じ内容を繰り返す（計画の存在・状態、メンバー全員が固定座席／
     在宅で不要でないか、指定座席が有効なフリー座席か、既にseats_allocatedな他プロジェクトとの
     曜日重複）のに加え、A-44には無い「この一括リクエスト内の他プロジェクトとの重複」も検証する
@@ -1142,11 +1144,18 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
     単一のdetailメッセージのみを返す（この2つの既存の一括系APIと同じレスポンス形状）。status='seats_allocated'
     になった項目（仮のままではなく決まった項目）をまとめて1通のSlack通知にする（2026-09-16新設、
     A-43と同じ「対象をまとめて1通」の方針。通知設定タブのproject_seat_slack_notify_seat_blockで
-    オン/オフを切り替えられる）。2026-09-16再拡張: 他プロジェクトとの重複判定を、A-44と同じ
-    (座席id, 曜日)単位（database.effective_seat_ids()で他プロジェクトの当該曜日の実効座席を
-    解決）に改めた（他プロジェクトが曜日ごとに異なる島を持つ場合にも正しく衝突を検出するため）。
-    本API自体は常に全確定曜日に同じ座席を割り当てる新規割当のみを対象とし、曜日ごとの例外的な
-    上書きは引き続きA-44で行う（allocated_seats_overridesは常にNULLで作成する）。"""
+    オン/オフを切り替えられる）。
+
+    2026-09-18再拡張: 各項目にA-44と同じweekday（省略可）を追加し、項目ごとの座席計算・重複判定・
+    取消す予約の範囲を丸ごとA-44と同じロジックへ揃えた（QA調査で発見した不具合の修正）。従来は
+    「曜日別の例外を編集する場合はA-44（1件ずつ、それぞれ別のHTTPリクエスト・別のトランザクション）
+    を使う」設計だったため、フロントエンド（Availability.tsx confirmSeatBlockBulk）はプロジェクトごとに
+    A-44をループ呼び出しするようになっており、本API（1つのトランザクションで全件atomicに処理する）は
+    実質使われなくなっていた。その結果、複数プロジェクトを一括登録する際、途中の1件で重複エラーが
+    起きると、それより前のプロジェクトは登録済みのまま、後のプロジェクトは未処理のまま止まる
+    ―― 「全部成功か全部失敗か」ではなくなる不具合があった。本APIを両方のケース（基本の島の一括更新・
+    曜日ごとの例外編集）に対応させ、フロントエンドを本APIの1回呼び出しに戻すことで、複数プロジェクト
+    ぶんの変更を再び1つのDBトランザクションでatomicに扱えるようにした。"""
     if not body.assignments:
         raise HTTPException(400, detail="対象プロジェクトを1つ以上選択してください")
     pool = get_pool()
@@ -1159,6 +1168,7 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                     raise HTTPException(400, detail="座席を1つ以上選択してください")
                 plan = await conn.fetchrow(
                     """SELECT pqp.id, pqp.project_id, pqp.status, pqp.period_start, pqp.period_end,
+                              pqp.allocated_seats, pqp.allocated_seats_overrides,
                               pqp.weekdays_finalized, p.name AS project_name
                        FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
                        WHERE pqp.id = $1""",
@@ -1191,6 +1201,12 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                 seat_no_by_id = {s["id"]: s["seat_no"] for s in seats}
 
                 my_weekdays = set(json.loads(plan["weekdays_finalized"])) if plan["weekdays_finalized"] else set()
+                if item.weekday is not None and item.weekday not in my_weekdays:
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」に指定した曜日はこのプロジェクトの確定した出社曜日に含まれていません")
+                # 対象曜日: weekday指定時はその1日のみの例外編集、未指定時は基本の島として全確定曜日を一括更新
+                # （A-44と同じ考え方、2026-09-18追加）
+                target_weekdays = {item.weekday} if item.weekday is not None else my_weekdays
+
                 other_plans = await conn.fetch(
                     """SELECT pqp.allocated_seats, pqp.allocated_seats_overrides, pqp.weekdays_finalized,
                               p.name AS project_name
@@ -1201,60 +1217,85 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                 )
                 # (座席id, 曜日) → 重複先のプロジェクト名（2026-09-10追加。「どのプロジェクトがかぶって
                 # いるのかわかるようにできる？」との要望を受け、A-44と同様にエラーメッセージへ座席番号・
-                # 重複先のプロジェクト名を含めるようにした。2026-09-16修正: 他プロジェクトが曜日ごとに
-                # 異なる島を持ちうるようになったため、A-44と同じくその曜日の実効座席だけを見る判定に
-                # 改めた。一括割当（本API）自体は常に全確定曜日に同じ座席を割り当てるため、対象曜日は
-                # my_weekdaysの全体）
+                # 重複先のプロジェクト名を含めるようにした。2026-09-18修正: 対象曜日をtarget_weekdays
+                # （weekday指定時はその1日だけ）に絞るようA-44と揃えた）
                 conflict_owner: dict[tuple[int, str], str] = {}
                 for r in other_plans:
                     other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
-                    for w in my_weekdays & other_weekdays:
+                    for w in target_weekdays & other_weekdays:
                         for sid in effective_seat_ids(r["allocated_seats"], r["allocated_seats_overrides"], w):
                             conflict_owner[(sid, w)] = r["project_name"]
-                allocated_owner = {sid: name for (sid, _w), name in conflict_owner.items()}
-                conflicting_seat_ids = [sid for sid in item.seat_ids if sid in allocated_owner]
-                if conflicting_seat_ids:
-                    detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{allocated_owner[sid]}」と重複）" for sid in conflicting_seat_ids)
+                conflicts = [(sid, w) for w in target_weekdays for sid in item.seat_ids if (sid, w) in conflict_owner]
+                if conflicts:
+                    detail = "、".join(
+                        f"{_WEEKDAY_JA[w]}: {seat_no_by_id.get(sid, sid)}（「{conflict_owner[(sid, w)]}」と重複）"
+                        for sid, w in conflicts
+                    )
                     raise HTTPException(409, detail=f"「{plan['project_name']}」に、既に他プロジェクトへ割り当てられている座席が含まれています: {detail}")
 
-                my_isodows = [_WEEKDAY_ISODOW[w] for w in my_weekdays]
+                target_isodows = [_WEEKDAY_ISODOW[w] for w in target_weekdays]
                 batch_conflict_owner: dict[int, str] = {}
                 for sid in item.seat_ids:
-                    for isodow in my_isodows:
+                    for isodow in target_isodows:
                         owner = claimed_by_isodow.get(isodow, {}).get(sid)
                         if owner and owner != plan["project_name"]:
                             batch_conflict_owner[sid] = owner
                 if batch_conflict_owner:
                     detail = "、".join(f"{seat_no_by_id.get(sid, sid)}（「{owner}」と重複）" for sid, owner in batch_conflict_owner.items())
                     raise HTTPException(409, detail=f"「{plan['project_name']}」に、この一括登録内の他のプロジェクトと重複する座席が含まれています: {detail}")
-                for isodow in my_isodows:
+                for isodow in target_isodows:
                     claimants = claimed_by_isodow.setdefault(isodow, {})
                     for sid in item.seat_ids:
                         claimants.setdefault(sid, plan["project_name"])
 
-                await conn.execute(
-                    """UPDATE reservations SET status = 'cancelled', updated_at = now()
-                       WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3
-                         AND EXTRACT(ISODOW FROM date)::int = ANY($4::int[])""",
-                    item.seat_ids, plan["period_start"], plan["period_end"], my_isodows,
-                )
-                # seats_tentativeからの割当（初回の仮割当）はseats_tentativeのまま維持し、本当に
-                # 確定する（A-43）までは自由にやり直せるようにする（2026-09-16追加）
+                # 仮の座席割り当て（seats_tentative、2026-09-16追加）の間は、座席を選び直しても本当に
+                # 確定する（A-43）まではstatusをseats_tentativeのまま維持する
                 next_status = "seats_tentative" if plan["status"] == "seats_tentative" else "seats_allocated"
-                # A-80は常に新規割当のみが対象（既存の割当を編集する場合はA-44を使う）のため、
-                # allocated_seats_overridesは常にNULL（曜日ごとの例外はまだ存在しえない、2026-09-16追加）
+
+                current_base = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
+                current_overrides = json.loads(plan["allocated_seats_overrides"]) if plan["allocated_seats_overrides"] else {}
+                if item.weekday is None:
+                    # 基本の島を一括更新。一括更新は例外を含めたクリーンな状態に戻す操作として扱い、
+                    # 既存の曜日別の例外は全てクリアする（A-44と同じ、2026-09-18追加）
+                    new_allocated_seats = item.seat_ids
+                    new_overrides: dict | None = None
+                else:
+                    new_allocated_seats = current_base
+                    overrides_copy = dict(current_overrides)
+                    if set(item.seat_ids) == set(current_base):
+                        # 基本の島と同じ座席へ戻す＝この曜日の例外を解除する
+                        overrides_copy.pop(item.weekday, None)
+                    else:
+                        overrides_copy[item.weekday] = item.seat_ids
+                    new_overrides = overrides_copy or None
+
+                # 取り消す予約は対象曜日ごとに絞る（A-44と同じ、2026-09-18追加。例外的に1曜日だけ
+                # 座席を変えても、他の曜日の予約には一切触れない）
+                for w in target_weekdays:
+                    old_effective_w = effective_seat_ids(plan["allocated_seats"], plan["allocated_seats_overrides"], w)
+                    cancel_ids_w = list(set(old_effective_w) | set(item.seat_ids))
+                    if not cancel_ids_w:
+                        continue
+                    await conn.execute(
+                        """UPDATE reservations SET status = 'cancelled', updated_at = now()
+                           WHERE seat_id = ANY($1::bigint[]) AND status = 'active' AND date BETWEEN $2 AND $3
+                             AND EXTRACT(ISODOW FROM date)::int = $4""",
+                        cancel_ids_w, plan["period_start"], plan["period_end"], _WEEKDAY_ISODOW[w],
+                    )
                 await conn.execute(
                     """UPDATE project_quarter_plans
-                       SET allocated_seats = $1, allocated_seats_overrides = NULL, status = $4,
-                           decided_by = $2, updated_at = now()
-                       WHERE id = $3""",
-                    json.dumps(item.seat_ids), user.id, item.plan_id, next_status,
+                       SET allocated_seats = $1, allocated_seats_overrides = $2, status = $5,
+                           decided_by = $3, updated_at = now()
+                       WHERE id = $4""",
+                    json.dumps(new_allocated_seats), json.dumps(new_overrides) if new_overrides else None,
+                    user.id, item.plan_id, next_status,
                 )
                 # 座席の島の割当が「決まった」（仮のままではない）項目のみSlack通知の対象に集める
                 # （2026-09-16新設。仮の座席割り当ての間はまだ通知しない、A-44と同じ考え方）
                 if next_status == "seats_allocated":
                     seat_label = _format_seat_range([seat_no_by_id[sid] for sid in item.seat_ids if sid in seat_no_by_id])
-                    notified_lines.append(f"・「{plan['project_name']}」: {seat_label}")
+                    label = f"{_WEEKDAY_JA[item.weekday]}のみ: {seat_label}" if item.weekday else seat_label
+                    notified_lines.append(f"・「{plan['project_name']}」: {label}")
     if notified_lines and await is_notification_enabled(SLACK_NOTIFY_SEAT_BLOCK_KEY):
         header = await render_slack_message(SLACK_MESSAGE_SEAT_BLOCK_HEADER_KEY, DEFAULT_MESSAGE_SEAT_BLOCK_HEADER)
         await send_slack_notification(header + "\n" + "\n".join(notified_lines))

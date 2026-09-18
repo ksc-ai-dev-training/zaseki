@@ -497,6 +497,33 @@ def effective_seat_ids(allocated_seats_json, overrides_json, weekday: str) -> li
     return json.loads(allocated_seats_json) if allocated_seats_json else []
 
 
+def seats_by_weekday(
+    allocated_seats_json, overrides_json, weekdays_finalized: list[str] | None
+) -> tuple[dict[str, list[int]] | None, bool]:
+    """基本の島（allocated_seats）と曜日ごとの例外（allocated_seats_overrides）から、確定曜日
+    ごとの実効座席id一覧をまとめる（2026-09-18新設）。戻り値は(曜日→座席id一覧のdict、
+    has_seat_override)。allocated_seats_jsonが未設定またはweekdays_finalizedが空/Noneなら
+    (None, False)。has_seat_overrideは確定曜日どうしの実効座席を互いに比較して1組でも異なれば
+    true（基本の島と比較するのではない。2026-09-17修正、project_seats.list_quarter_plans
+    〔A-38〕参照。全確定曜日を基本の島とは異なる同じ内容へ上書きした場合、基本の島自体は古いまま
+    残っていても確定曜日どうしは完全に同じ座席のため、これをfalseにする必要がある）。
+    A-38（project_seats.list_quarter_plans）・A-13/A-14（project_pm.list_my_projects・
+    get_quarter_plan_detail）が同じロジックを重複して持っていたのをこの共通関数へ統合した
+    （PM/PL側〔A-13・A-14〕が曜日ごとの例外を無視して常に基本の島だけを見ており、曜日によって
+    座席が異なるプロジェクトではPM/PLに誤った座席が表示される不具合の修正に合わせて統合した）。
+    座席番号への整形（_format_seat_range）は呼び出し元がそれぞれ行う（呼び出し元ごとに
+    project_seats._format_seat_rangeをimportしており、ここからimportすると循環importになるため）。"""
+    if not allocated_seats_json or not weekdays_finalized:
+        return None, False
+    result: dict[str, list[int]] = {}
+    distinct_seat_sets = set()
+    for w in weekdays_finalized:
+        seat_ids = effective_seat_ids(allocated_seats_json, overrides_json, w)
+        result[w] = seat_ids
+        distinct_seat_sets.add(frozenset(seat_ids))
+    return result, len(distinct_seat_sets) > 1
+
+
 async def project_blocked_seats(target_date: Date) -> dict[int, str]:
     """指定日時点でプロジェクト座席として専有されている座席（seat_id→プロジェクト名）。
 
@@ -512,12 +539,21 @@ async def project_blocked_seats(target_date: Date) -> dict[int, str]:
     不具合があった）。2026-09-16修正: 曜日ごとに座席の島が異なりうるようになった
     （allocated_seats_overrides）ため、対象日の曜日についてeffective_seat_ids()で実効座席を
     解決するようにした。これにより、曜日によって島を変えた場合もフロアマップ表示・予約時の
-    重複チェック（reservations.py・proxy.py）が正しい座席を専有扱いにする。"""
+    重複チェック（reservations.py・proxy.py）が正しい座席を専有扱いにする。
+
+    2026-09-18修正（QA調査で発見）: status='seats_allocated'（本確定済み）のみを対象とし、
+    status='seats_tentative'（仮の座席割り当て中）を専有扱いに含めていなかったため、仮割当中の
+    座席を一般社員が通常のフリー座席予約として確保できてしまい、後で管理部がその曜日を本確定
+    （A-43）すると、社員の予約は取り消されないまま座席の表示だけがプロジェクト座席へ静かに
+    上書きされる＝実質的な二重予約になる不具合があった（A-44・A-80・A-81のプロジェクト間の
+    重複判定は元々status IN ('seats_allocated', 'seats_tentative')で仮割当も専有扱いにしており、
+    本関数だけこの基準からずれていた）。仮割当の間も一般社員の新規予約からは専有扱いにすることで、
+    二重予約の芽を発生させない（仮割当自体は引き続き自由にやり直せる方針〔S-09〕に変更はない）。"""
     rows = await get_pool().fetch(
         """SELECT pqp.allocated_seats, pqp.allocated_seats_overrides, pqp.weekdays_finalized, p.name
            FROM project_quarter_plans pqp
            JOIN projects p ON p.id = pqp.project_id
-           WHERE pqp.status = 'seats_allocated' AND $1 BETWEEN pqp.period_start AND pqp.period_end""",
+           WHERE pqp.status IN ('seats_allocated', 'seats_tentative') AND $1 BETWEEN pqp.period_start AND pqp.period_end""",
         target_date,
     )
     target_weekday = _WEEKDAY_CODES[target_date.weekday()]

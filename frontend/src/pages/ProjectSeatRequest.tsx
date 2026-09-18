@@ -978,6 +978,21 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
     onChanged()
   }
 
+  // メンバー個別の座席確保（A-18・A-64）は基本の島だけを対象としており、曜日ごとに座席が異なる
+  // プロジェクト（has_seat_override）には未対応（2026-09-18追加。QA調査で発見した、ある曜日は
+  // 既に別プロジェクトへ明け渡し済みの座席へ誤って確保してしまう恐れがある不具合の対策）。
+  // 対応するまではバックエンドも400で拒否するため、ここで先にわかりやすく止める
+  if (plan.member_seat_assign_blocked_by_override) {
+    return (
+      <div className="rounded border border-amber-200 bg-amber-50">
+        <div className="border-b border-amber-200 px-4 py-3 font-semibold text-amber-800">メンバーへの座席確保</div>
+        <p className="p-4 text-sm text-amber-800">
+          このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください。
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded border border-slate-200 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 font-semibold">

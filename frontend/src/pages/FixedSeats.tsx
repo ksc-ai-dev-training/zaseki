@@ -13,6 +13,17 @@ const SEAT_STATUS_BADGE_CLASS: Record<SeatType, string> = {
   project: 'bg-amber-50 text-amber-700',
 }
 
+function todayStr(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+function formatDateJa(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-')
+  return `${y}年${Number(m)}月${Number(d)}日`
+}
+
 // S-05 固定座席の指定。実際の座席選択はここでは行わず、S-02のフロアマップへ
 // 「固定座席指定モード」で遷移して行う（4.4節）
 export default function FixedSeats() {
@@ -129,10 +140,23 @@ export default function FixedSeats() {
                 </tr>
               </thead>
               <tbody>
-                {assignments.map((a) => (
-                  <tr key={a.seat_id} className="border-b border-slate-100">
+                {assignments.map((a) => {
+                  // 開始日（valid_from）がまだ来ていない予約設定（A-20参照）は、対象者の従来の
+                  // 固定座席は既に解除済みだが、この座席自体はvalid_fromまでまだ通常のフリー座席の
+                  // ままになっている。従来は一覧上「今日から既に固定」であるかのように見分けが
+                  // つかず、実際には誰でも予約できる状態だと気づけなかった（2026-09-18修正）
+                  const isFuture = a.valid_from > todayStr()
+                  return (
+                  <tr key={a.seat_id} className={`border-b border-slate-100 ${isFuture ? 'bg-amber-50/60' : ''}`}>
                     <td className="py-2 pr-3">{a.user_name}</td>
-                    <td className="py-2 pr-3">{a.seat_no}</td>
+                    <td className="py-2 pr-3">
+                      {a.seat_no}
+                      {isFuture && (
+                        <div className="mt-0.5 text-[11px] text-amber-700">
+                          {formatDateJa(a.valid_from)}から有効（現在はまだフリー座席として予約可能です）
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">{a.area}</td>
                     <td className="py-2 pr-3 text-xs text-slate-500">{a.valid_until ?? '無期限'}</td>
                     <td className="py-2">
@@ -154,7 +178,8 @@ export default function FixedSeats() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
                 {!assignmentsLoading && assignments.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-4 text-center text-slate-400">

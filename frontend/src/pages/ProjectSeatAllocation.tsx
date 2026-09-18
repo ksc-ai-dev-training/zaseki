@@ -5,7 +5,7 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
-import type { PreviousPlanDetail, QuarterPlanItem, QuarterPlanStatus, Weekday, WeekdayAiSuggestion } from '../types'
+import type { PreviousPlanDetail, QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
   const d = new Date()
@@ -81,26 +81,6 @@ function MonthDurationPicker({ onApply }: { onApply: (start: string, end: string
   )
 }
 
-const STATUS_LABEL: Record<QuarterPlanStatus, (p: QuarterPlanItem) => string> = {
-  seats_confirmed: () => 'アンケート未送信',
-  survey_open: (p) => `アンケート回答受付中（${p.has_response ? '回答済み' : '未回答'}）`,
-  // 仮の座席割り当て（2026-09-16追加。「曜日を確定するのではなくそこから座席割り当ての仮作成を
-  // できるようにしてほしい」との要望を受けた）。本当に曜日を確定するまでは曜日・座席island双方を
-  // 自由にやり直せる状態のため、他のstatusと違い「まだ仮である」ことが伝わる文言にする。
-  // 2026-09-17短縮: 「仮の座席割り当て中（...）」は座席数が多いプロジェクトだと長くなるとの
-  // 指摘を受け、「仮（...）」に短縮した
-  seats_tentative: (p) => `仮${p.allocated_seat_label ? `（${p.allocated_seat_label}）` : '（座席未選択）'}`,
-  weekdays_finalized: () => '曜日確定済み（座席の島の割当待ち）',
-  seats_allocated: (p) => `座席割当済み（${p.allocated_seat_label}）`,
-}
-const STATUS_BADGE_CLASS: Record<QuarterPlanStatus, string> = {
-  seats_confirmed: 'bg-slate-100 text-slate-500',
-  survey_open: 'bg-amber-50 text-amber-700',
-  seats_tentative: 'bg-indigo-50 text-indigo-700',
-  weekdays_finalized: 'bg-blue-50 text-blue-700',
-  seats_allocated: 'bg-green-50 text-green-700',
-}
-
 // メンバー全員が固定座席を保有する、またはずっと在宅勤務でプロジェクト座席が不要（FR-03-10）な
 // プロジェクトはrequired_seats=0となり、プロジェクト座席自体が不要（2026-08-28追加。「固定席の人のみの
 // プロジェクトはプロジェクト席を用意する必要がない」との要望を受けた。2026-09-01訂正、在宅のため不要な
@@ -125,15 +105,6 @@ const noSeatNeeded = (p: QuarterPlanItem) => {
 // 失敗する（対象メンバーが実在しない）ケースだけはボタン自体を出さないようにする
 const seatBlockDoomed = (p: QuarterPlanItem) =>
   (p.status === 'weekdays_finalized' || p.status === 'seats_tentative') && !noSeatNeeded(p) && p.non_fixed_member_count === 0
-const statusLabel = (p: QuarterPlanItem) => {
-  if (!noSeatNeeded(p)) return STATUS_LABEL[p.status](p)
-  return p.status === 'seats_confirmed' ? '座席不要（全員固定座席／在宅）' : '座席不要（必要座席数0）'
-}
-const statusBadgeClass = (p: QuarterPlanItem) => {
-  if (noSeatNeeded(p)) return 'bg-slate-100 text-slate-400'
-  if (p.status === 'survey_open' && p.has_response) return 'bg-emerald-50 text-emerald-700'
-  return STATUS_BADGE_CLASS[p.status]
-}
 
 // S-09 プロジェクト座席（エリア担当）。座席の島の割当（A-44）はS-02のフロアマップへ
 // 「座席の島の割当モード」で遷移して行う（4.7節）。2026-09-03、「四半期」という概念自体を撤廃し、
@@ -203,6 +174,61 @@ export default function ProjectSeatAllocation() {
   // 「座席割り当て」一覧では選んだ曜日に出社しないプロジェクトの行を非表示にする、という表示のみの
   // 絞り込み（データ・チェック状態自体は変更しない）。1つの選択を両方の表示に共通して使う
   const [weekdayFilter, setWeekdayFilter] = useState<Weekday | 'all'>('all')
+
+  // 曜日以外の絞り込み（2026-09-17新設）。「絞り込み機能を充実させたい」との要望を受け、状態・
+  // エリア・プロジェクト名の3種類を追加した。曜日絞り込みと同じく表示のみの絞り込みで、
+  // 曜日調整表（行）・確定した出社曜日・座席割り当て一覧のいずれにも共通して効く。
+  // 状態は既存のQuarterPlanStatusをそのまま使うと「アンケート回答受付中」の中の未回答／回答済みを
+  // 区別できない（管理部が最も見たいのは「未回答のものだけ」であることが多いため）ため、
+  // survey_openだけhas_responseで2つに分割した専用のキー集合を使う
+  type StatusFilterKey =
+    | 'all' | 'seats_confirmed' | 'survey_open_unanswered' | 'survey_open_answered'
+    | 'seats_tentative' | 'weekdays_finalized' | 'seats_allocated'
+  const STATUS_FILTER_OPTIONS: { key: StatusFilterKey; label: string }[] = [
+    { key: 'all', label: 'すべて' },
+    { key: 'seats_confirmed', label: 'アンケート未送信' },
+    { key: 'survey_open_unanswered', label: 'アンケート未回答' },
+    { key: 'survey_open_answered', label: 'アンケート回答済み' },
+    { key: 'seats_tentative', label: '仮の座席割り当て中' },
+    { key: 'weekdays_finalized', label: '曜日確定済み' },
+    { key: 'seats_allocated', label: '座席割当済み' },
+  ]
+  const matchesStatusFilter = (p: QuarterPlanItem, key: StatusFilterKey): boolean => {
+    switch (key) {
+      case 'all': return true
+      case 'survey_open_unanswered': return p.status === 'survey_open' && !p.has_response
+      case 'survey_open_answered': return p.status === 'survey_open' && p.has_response
+      default: return p.status === key
+    }
+  }
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all')
+
+  // previous_areaがnull（座席の島の割当実績がない新規プロジェクト）は、S-09の他の箇所と同じく
+  // 「EAST・WEST」寄りに数えず独立した「新規」として選べるようにする（NORTH／EAST・WESTどちらに
+  // 分類されるか未定なプロジェクトを、絞り込みでも紛れ込ませないため）
+  type AreaFilterKey = 'all' | 'NORTH' | 'EAST_WEST' | 'NEW'
+  const matchesAreaFilter = (p: QuarterPlanItem, key: AreaFilterKey): boolean => {
+    switch (key) {
+      case 'all': return true
+      case 'NEW': return p.previous_area === null
+      case 'EAST_WEST': return p.previous_area === 'EAST' || p.previous_area === 'WEST'
+      case 'NORTH': return p.previous_area === 'NORTH'
+    }
+  }
+  const [areaFilter, setAreaFilter] = useState<AreaFilterKey>('all')
+
+  const [nameFilter, setNameFilter] = useState('')
+
+  const filteredPlans = useMemo(
+    () =>
+      visiblePlans.filter(
+        (p) =>
+          matchesStatusFilter(p, statusFilter) &&
+          matchesAreaFilter(p, areaFilter) &&
+          (nameFilter.trim() === '' || p.project_name.toLowerCase().includes(nameFilter.trim().toLowerCase()))
+      ),
+    [visiblePlans, statusFilter, areaFilter, nameFilter]
+  )
   // 座席割り当て一覧の絞り込みに使う「そのプロジェクトの出社曜日」。確定済みならweekdays_finalized、
   // 未確定（アンケート回答済みだが曜日調整前）なら第一希望を暫定的に使う（WeekdayMatrixの初期
   // チェック状態と同じ考え方）。どちらもなければ絞り込みの対象外（常に表示する。アンケート未回答
@@ -217,13 +243,13 @@ export default function ProjectSeatAllocation() {
   const seatListPlans = useMemo(() => {
     const base =
       weekdayFilter === 'all'
-        ? visiblePlans
-        : visiblePlans.filter((p) => {
+        ? filteredPlans
+        : filteredPlans.filter((p) => {
             const days = planWeekdaysForFilter(p)
             return days === null || days.includes(weekdayFilter)
           })
     return [...base].sort((a, b) => Number(isUnanswered(b)) - Number(isUnanswered(a)))
-  }, [visiblePlans, weekdayFilter])
+  }, [filteredPlans, weekdayFilter])
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -592,20 +618,75 @@ export default function ProjectSeatAllocation() {
           ))}
         </div>
 
+        {/* 曜日以外の絞り込み（状態・エリア・プロジェクト名、2026-09-17新設）。「絞り込み機能を
+            充実させたい」との要望を受けた。曜日での絞り込みと同じく、曜日調整表（行）・確定した
+            出社曜日・座席割り当て一覧のいずれにも共通して効く表示のみの絞り込み */}
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-slate-500">状態:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilterKey)}
+              className="h-7 rounded border border-slate-300 px-1.5 text-xs"
+            >
+              {STATUS_FILTER_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">エリア:</span>
+            {([
+              { key: 'all', label: 'すべて' },
+              { key: 'NORTH', label: 'NORTH' },
+              { key: 'EAST_WEST', label: 'EAST・WEST' },
+              { key: 'NEW', label: '新規' },
+            ] as const).map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setAreaFilter(o.key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${areaFilter === o.key ? 'bg-blue-800 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-slate-500">プロジェクト名:</span>
+            <input
+              type="text"
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              placeholder="キーワードで絞り込み"
+              className="h-7 w-44 rounded border border-slate-300 px-2 text-xs"
+            />
+          </label>
+          {(statusFilter !== 'all' || areaFilter !== 'all' || nameFilter.trim() !== '') && (
+            <button
+              type="button"
+              onClick={() => { setStatusFilter('all'); setAreaFilter('all'); setNameFilter('') }}
+              className="text-xs text-slate-400 underline hover:text-slate-600"
+            >
+              絞り込みをクリア
+            </button>
+          )}
+        </div>
+
         {/* 曜日調整表: 出社曜日の調整（未確定分）と、確定済み出社曜日の一覧。次のサイクルの座席割り当てを
             行う際に前回の曜日調整表を参考にしたいとの要望を受け、座席割り当てより上に表示するよう
             順序を入れ替えた（2026-09-15修正。以前は座席割り当て→曜日調整表の順だった） */}
         <section className="space-y-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">曜日調整表</h2>
           <WeekdayMatrix
-            plans={visiblePlans.filter((p) => p.status === 'survey_open' || p.status === 'seats_tentative')}
+            plans={filteredPlans.filter((p) => p.status === 'survey_open' || p.status === 'seats_tentative')}
             areaSeatCapacity={areaSeatCapacity}
             onCreateTentative={createTentativeAndAssign}
             weekdayFilter={weekdayFilter}
           />
 
           <ConfirmedWeekdaysTable
-            plans={visiblePlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
+            plans={filteredPlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
             onChanged={refreshAll}
           />
         </section>
@@ -644,7 +725,6 @@ export default function ProjectSeatAllocation() {
                   <th className="px-4 py-2">席決め担当</th>
                   <th className="px-4 py-2">対象期間</th>
                   <th className="px-4 py-2">必要座席数</th>
-                  <th className="px-4 py-2">状態</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
@@ -653,15 +733,11 @@ export default function ProjectSeatAllocation() {
                   <tr key={p.id} className="border-b border-slate-100">
                     <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
                       {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
-                    </td>
-                    <td className="px-4 py-2">{p.seat_assigner_names}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500">{p.period_start} 〜 {p.period_end}</td>
-                    <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded px-2 py-0.5 text-xs ${statusBadgeClass(p)}`}>{statusLabel(p)}</span>
                       {/* 曜日によって座席の島が異なる場合の目印（2026-09-16新設。「PJは曜日によって
                           座席が変わる前提で進めてください」との上司フィードバックを受けた）。
-                          内訳は曜日で絞り込んで確認する想定のため、ここではtitleで簡易表示のみ */}
+                          内訳は曜日で絞り込んで確認する想定のため、ここではtitleで簡易表示のみ。
+                          2026-09-17修正: 「状態の表示自体をなくしましょう」との要望を受け状態の
+                          バッジ列を削除したため、同じ列にあった🔀もプロジェクト名の隣へ移した */}
                       {p.has_seat_override && p.allocated_seats_by_weekday && (
                         <span
                           className="ml-1 cursor-help"
@@ -673,6 +749,9 @@ export default function ProjectSeatAllocation() {
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-2">{p.seat_assigner_names}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500">{p.period_start} 〜 {p.period_end}</td>
+                    <td className="px-4 py-2 font-semibold">{p.required_seats}名</td>
                     <td className="px-4 py-2">
                       <div className="flex justify-end gap-2">
                         {p.status === 'survey_open' && !noSeatNeeded(p) && (

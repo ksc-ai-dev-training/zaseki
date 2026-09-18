@@ -486,16 +486,16 @@ function NotificationsTab() {
 
   const setField = (key: string, v: string) => { setValues((prev) => ({ ...prev, [key]: v })); setSaved(false) }
 
+  // 2026-09-18修正: 従来は項目ごとに独立したPUTをPromise.allで並列実行しており、「全部成功か
+  // 全部失敗か」になっていなかった（例: Webhook URLの形式エラーが1件あっても、他の項目だけ先に
+  // 保存されてしまい、どの項目が保存されなかったのか分からない不具合があった）。A-85（一括保存、
+  // バックエンド側でトランザクションにより全項目をまとめて検証・保存）を1回呼ぶだけにした
   const save = async () => {
     setSaving(true)
     setError(null)
     setSaved(false)
     try {
-      await Promise.all(
-        Object.entries(values).map(([key, value]) =>
-          apiFetch(`/api/app-settings/${key}`, { method: 'PUT', body: JSON.stringify({ value }) })
-        )
-      )
+      await apiFetch('/api/app-settings', { method: 'PUT', body: JSON.stringify({ settings: values }) })
       setSaved(true)
       await refresh()
     } catch (e) {

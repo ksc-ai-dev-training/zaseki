@@ -8,6 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { usePeriodAvailability } from '../hooks/usePeriodAvailability'
 import { useAreas } from '../hooks/useAreas'
 import { useMyProjects } from '../hooks/useMyProjects'
+import { useMe } from '../hooks/useMe'
 import Modal from '../components/Modal'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
@@ -177,6 +178,7 @@ const LEGEND: { status: SeatStatus; label: string }[] = [
 // （2026-09-07修正。「画面遷移はされずにS-02で予約される」ようにしてほしいとの要望を受けた）
 function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeatAssignFor) => void }) {
   const { items: myProjects } = useMyProjects()
+  const { me } = useMe()
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<number | ''>('')
   const [plan, setPlan] = useState<ProjectPlanDetail | null>(null)
@@ -184,15 +186,20 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
   const [selectedMembers, setSelectedMembers] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  // 実際の権限判定（バックエンドのcan_manage、project_pm.py参照）はcan_assign_seats or
-  // proxy_user_id==自分のいずれかで、project_title（PM/PL）自体は権限を持たない。以前は
-  // project_title==='PM'/'PL'もOR条件に含めていたため、権限のないPM/PLにもボタンが表示され、
+  // 実際の権限判定（バックエンドのcan_manage、project_pm.py参照）はrole='admin' or
+  // proxy_user_id==自分 or can_assign_seatsのいずれかで、project_title（PM/PL）自体は権限を持たない。
+  // 以前はproject_title==='PM'/'PL'もOR条件に含めていたため、権限のないPM/PLにもボタンが表示され、
   // 対象メンバー選択・座席クリックまで操作した最後にAPIの403で初めて拒否される不具合があった
   // （2026-09-09修正。同日中に千田さんの案でcan_manageの基準がproxy_user_idからcreated_byへ
   // 変わったことに伴い、ここもis_seat_proxy→is_project_creatorに追従したが、2026-09-14に
   // 「作成者はただの作成者で権限はない。席決め担当になった人がアンケートなどに回答できる」との
   // 指摘を受け、is_project_creator→is_seat_assigner〔proxy_user_id基準〕に戻した）。
-  const eligibleProjects = myProjects.filter((p) => (p.can_assign_seats || p.is_seat_assigner) && p.plans.length > 0)
+  // role==='admin'のOR条件が抜けていたため、can_assign_seats・proxy_user_idいずれの対象でもない
+  // （が、そのプロジェクトのメンバーではある）管理部ユーザーにはボタンが出ず、バックエンドでは
+  // 許可されている操作にUI上たどり着けなくなっていた（2026-09-18修正）
+  const eligibleProjects = myProjects.filter(
+    (p) => (p.can_assign_seats || p.is_seat_assigner || me?.role === 'admin') && p.plans.length > 0
+  )
   // 対象プロジェクトを1つも持たない利用者にはボタン自体を表示しない（2026-09-07修正。
   // 「対象外の人にはボタン自体を表示しないように」との要望を受けた。以前はボタンが
   // 常に表示され、押した後のモーダル内のプルダウンで初めて対象外と分かる作りだった）
@@ -322,6 +329,7 @@ function FreeSeatProxyBookingButton({ onStart }: { onStart: (payload: MemberSeat
 export default function Availability() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { me } = useMe()
   // S-05から「この人に固定座席を指定する」で遷移した場合、location.stateに対象者が積まれる
   const assignFixedSeatFor = (location.state as { assignFixedSeatFor?: AssignFixedSeatFor } | null)?.assignFixedSeatFor
   // S-07から「座席表に配置する」で遷移した場合の座席配置モード
@@ -625,38 +633,43 @@ export default function Availability() {
     setActiveBulkPlanId(null)
     navigate('/project-seats-area', { replace: true })
   }
-  // 曜日を絞り込み、その1日だけの例外編集としてプロジェクトごとにA-44（単一編集、weekday指定）を
-  // 呼ぶ。「金曜日の座席を決めると木曜日にもその席が反映されるのをやめてほしい」との要望を受けた
+  // 曜日を絞り込み、その1日だけの例外編集としてA-80（一括割当、weekdayをプロジェクトごとに指定）を
+  // 1回呼ぶ。「金曜日の座席を決めると木曜日にもその席が反映されるのをやめてほしい」との要望を受けた
   // （2026-09-17変更）。以前は絞り込みなし（'all'）の場合だけA-80（一括新規作成、全確定曜日に
   // 共通の1つの島）を使っていたが、「座席割り当てにおける全てという項目を削除してほしい」との
   // 要望を受け、'all'の選択肢自体を廃止し、曜日ごとの例外編集方式に一本化した。
-  // 「◯曜日の分だけまとめて登録をしたのに全く保存されていない」バグ対応: A-44のweekday指定は
+  // 「◯曜日の分だけまとめて登録をしたのに全く保存されていない」バグ対応: weekday指定は
   // 「基本の島（allocated_seats）に対する例外」という仕組みのため、そのプロジェクトが一度も
   // 基本の島を持ったことがない（allocatedSeatIdsが空）場合にweekday指定で呼ぶと、基本の島が
   // 空のまま曜日の例外だけが保存され、A-38のallocated_seats_by_weekdayは「基本の島がある場合
   // のみ計算する」実装のため、結果的にどの画面からも見えない孤立したデータになっていた。基本の
   // 島を一度も持っていないプロジェクトは、曜日を絞り込んでいてもweekdayを指定せずに呼び、その
   // 座席を全確定曜日共通の基本の島として新規作成する（既に基本の島を持つプロジェクトは、これまで
-  // どおりその曜日だけの例外にする）
+  // どおりその曜日だけの例外にする）。
+  // 2026-09-18修正（QA調査で発見）: 上記のプロジェクトごとの判定〔weekdayの有無〕自体は正しいが、
+  // 以前はプロジェクトごとに個別のA-44（単一編集）をループでawaitしていたため、複数プロジェクトを
+  // まとめて保存する際、途中の1件が409（重複）で失敗すると、それより前のプロジェクトは登録済みの
+  // まま、後のプロジェクトは未処理のまま止まってしまい、「全部成功か全部失敗か」ではなくなっていた
+  // （A-80は元々1つのDBトランザクションで全件atomicに処理する一括専用APIだったが、曜日別の例外
+  // 編集にweekdayを渡せなかったため使われなくなっていた）。A-80にweekdayを追加してA-44と同じ
+  // ロジックへ揃え、1回のリクエストで全件をまとめて送るよう修正した
   const confirmSeatBlockBulk = async () => {
     const scope = bulkWeekdayFilter
     const assignments = (seatBlockBulkFor?.plans ?? [])
       .map((p) => ({
-        planId: p.planId,
-        seatIds: [...(bulkSelections[bulkKey(scope, p.planId)] ?? [])],
-        hasBaseIsland: (p.allocatedSeatIds ?? []).length > 0,
+        plan_id: p.planId,
+        seat_ids: [...(bulkSelections[bulkKey(scope, p.planId)] ?? [])],
+        weekday: (p.allocatedSeatIds ?? []).length > 0 ? scope : undefined,
       }))
-      .filter(({ seatIds }) => seatIds.length > 0)
+      .filter((a) => a.seat_ids.length > 0)
     if (assignments.length === 0) return
     setSubmitting(true)
     setActionError(null)
     try {
-      for (const { planId, seatIds, hasBaseIsland } of assignments) {
-        await apiFetch(`/api/project-quarter-plans/${planId}/seat-block`, {
-          method: 'PUT',
-          body: JSON.stringify(hasBaseIsland ? { seat_ids: seatIds, weekday: scope } : { seat_ids: seatIds }),
-        })
-      }
+      await apiFetch('/api/project-quarter-plans/seat-block-bulk', {
+        method: 'POST',
+        body: JSON.stringify({ assignments }),
+      })
       // 「登録したらプロジェクト座席（エリア担当）の画面に戻るのではなく、座席の島の一括割当の
       // 画面のままでいてほしい」との要望を受け、画面遷移せずこの場に留まるようにした（2026-09-17
       // 変更）。ただしその場に留まる以上、直前に保存した内容（allocatedSeatIds等）を画面が
@@ -875,9 +888,16 @@ export default function Availability() {
   // その場合はチェックボックス自体を選べないようにする（2026-09-07追加。「繰り返し予約は
   // そもそも予約範囲可能範囲でしか選べないようにしてほしい」との要望を受けた。終了日は既に
   // period.full_endで上限を設けていたが、開始日側は制限しておらず、範囲外の日を起点にして
-  // 繰り返し予約を試みると、送信後に全日「除外」される結果になっていた）
+  // 繰り返し予約を試みると、送信後に全日「除外」される結果になっていた）。
+  // role==='admin'は対象から除外する（2026-09-18修正。バックエンドのA-10は単発予約のA-09と
+  // 同様、admin向けにRULE-05〔予約可能期間〕自体を最初からスキップしており、実際に単発予約
+  // （このチェックボックスを付けない通常の「予約する」）は期間外の日でもクライアント側の制限
+  // なしにそのまま予約できていた。この一律の開始日チェックだけがrole判定を持たず、同じ画面・
+  // 同じ日付でadminが単発予約はできるのに繰り返し予約だけできないという非対称な行き止まりに
+  // なっていた）
   const recurringStartOutOfRange = Boolean(
-    reserveTarget && period && (reserveTarget.date < period.full_start || reserveTarget.date > period.full_end)
+    me?.role !== 'admin'
+    && reserveTarget && period && (reserveTarget.date < period.full_start || reserveTarget.date > period.full_end)
   )
 
   const confirmReserve = async () => {
@@ -911,7 +931,10 @@ export default function Availability() {
           setActionError('終了日は開始日以降の日付を指定してください')
           return
         }
-        if (period?.full_end && recurringEndDate > period.full_end) {
+        // role==='admin'を除外する理由はrecurringStartOutOfRangeと同じ（2026-09-18修正）。
+        // admin向けにはバックエンドのA-10がRULE-05自体を最初からスキップしており、終了日にも
+        // 上限は存在しない
+        if (me?.role !== 'admin' && period?.full_end && recurringEndDate > period.full_end) {
           setActionError(`終了日は予約可能期間の末日（${formatDateJa(period.full_end)}）までにしてください`)
           return
         }
@@ -947,7 +970,7 @@ export default function Availability() {
     } catch (e) {
       const message = e instanceof ApiError ? e.message : '予約に失敗しました'
       setActionError(message)
-      if (!proxyBookingFor && !recurring && message === DUPLICATE_SEAT_MESSAGE) {
+      if (!recurring && message === DUPLICATE_SEAT_MESSAGE) {
         setDuplicateSeatError(true)
       }
     } finally {
@@ -978,6 +1001,33 @@ export default function Availability() {
       setReserveTarget(null)
       setDuplicateSeatError(false)
       setMultiSeatNotice(data.multi_seat_warning)
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '予約に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 代理予約モードで「同じ日に複数の座席は予約できません」に当たった場合の解決手段
+  // （2026-09-18追加。バックエンドのA-47は元々replace_existingに対応済みだったが、S-11の代理予約
+  // モードからは一度も送信されておらず、対象者が既に別のフリー座席を予約していると管理部が
+  // 手詰まりになっていた。A-47はkeep_both非対応〔対象者本人の明示的操作ではないため、代理での
+  // 「両方保有」はここでは提供しない〕のため、選べるのは「変更する」のみ）
+  const confirmProxyReserveReplace = async () => {
+    if (!reserveTarget || !proxyBookingFor) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      await apiFetch('/api/reservations/proxy', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: proxyBookingFor.userId, seat_id: reserveTarget.seatId, date: reserveTarget.date,
+          replace_existing: true,
+        }),
+      })
+      setReserveTarget(null)
+      setDuplicateSeatError(false)
+      navigate('/proxy-booking', { replace: true })
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '予約に失敗しました')
     } finally {
@@ -2153,16 +2203,11 @@ export default function Availability() {
             ) : (
               <>
                 <button type="button" onClick={() => setReserveTarget(null)} className="rounded border border-slate-300 px-4 py-1.5 text-sm">キャンセル</button>
-                {!proxyBookingFor && !recurring && existingSameDayReservation && (
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                    className="rounded border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    複数座席 予約
-                  </button>
-                )}
+                {/* 重複解決の「両方予約する」ボタンは、上の事前通知バナー（anySameDayReservation
+                    ベース）に既に同じ操作のボタンがあり、existingSameDayReservationが真になる条件
+                    （＝プロジェクト座席以外の同日予約がある）は常にanySameDayReservationも真になる
+                    ため、フッターにもここで同じボタンを重複表示していた（QA報告の修正、2026-09-18）。
+                    削除してバナー側のボタン1つに統一する */}
                 <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                   {recurring
                     ? 'この内容で登録する'
@@ -2215,6 +2260,48 @@ export default function Availability() {
                 <div className="flex justify-between"><dt className="text-slate-500">エリア</dt><dd>{reserveTarget.area}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">{recurring ? '開始日' : '日付'}</dt><dd>{formatDateJa(reserveTarget.date)}</dd></div>
               </dl>
+              {/* 同じ日の重複予約を事前に通知する（2026-09-17新設。「フリー予約するときかぶっている
+                  とき事前にメッセを通知してほしい」との要望を受けた）。従来はこの案内文が
+                  duplicateSeatError（実際に「予約する」を押してバックエンドの重複チェックに一度
+                  拒否された後）でしか出ておらず、非project座席どうしの場合は下のフッターの
+                  ボタン文言が「予約する」→「変更する」に静かに変わるだけで、押す前に気づきにくかった。
+                  anySameDayReservation・existingSameDayReservationはどちらも既に読み込み済みの
+                  upcoming.itemsから計算済みのため、送信前でも同じ情報を先出しできる */}
+              {!proxyBookingFor && !recurring && anySameDayReservation && (
+                <div
+                  className={`mt-3 rounded border px-3 py-2 text-sm ${
+                    anySameDayReservation.seat_type === 'project'
+                      ? 'border-red-200 bg-red-50 text-red-800'
+                      : 'border-amber-200 bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  <p>
+                    {anySameDayReservation.seat_type === 'project'
+                      ? `この日は既に、PM・PLが割り当てたプロジェクトの確保済み座席（${anySameDayReservation.seat_no}）があります。このまま「予約する」を押すと重複エラーになります。取り消してこの座席に変更するか、他の座席として追加でもう1つ予約してください。`
+                      : `この日は既に別の座席（${anySameDayReservation.seat_no}）を予約しています。「変更する」を押すとその予約を取り消してこの座席に変更されます。既存の予約を残したい場合は「両方予約する」を選んでください。`}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {anySameDayReservation.seat_type === 'project' && (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => confirmReserveResolveDuplicate('replace')}
+                        className="rounded bg-red-700 px-3 py-1 text-xs text-white hover:bg-red-800 disabled:opacity-50"
+                      >
+                        プロジェクト座席を取り消して変更する
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                      className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      両方予約する（既存の予約は残す）
+                    </button>
+                  </div>
+                </div>
+              )}
               {!proxyBookingFor && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <label className="flex items-center gap-1.5 text-sm">
@@ -2275,7 +2362,7 @@ export default function Availability() {
                         <input
                           type="date"
                           min={reserveTarget.date}
-                          max={period?.full_end}
+                          max={me?.role === 'admin' ? undefined : period?.full_end}
                           value={recurringEndDate}
                           onChange={(e) => setRecurringEndDate(e.target.value)}
                           className="h-9 w-44 rounded border border-slate-300 px-3"
@@ -2288,42 +2375,36 @@ export default function Availability() {
               {actionError && (
                 <div className="mt-3 space-y-2">
                   <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
-                  {duplicateSeatError && (
-                    <div
-                      className={`rounded border px-3 py-2 text-sm ${
-                        anySameDayReservation?.seat_type === 'project'
-                          ? 'border-red-200 bg-red-50 text-red-800'
-                          : 'border-amber-200 bg-amber-50 text-amber-800'
-                      }`}
-                    >
+                  {/* 上の事前通知（anySameDayReservationベース）が既に同じ案内を出しているため、
+                      ここは「送信するまで気づけなかった」場合（別タブでの操作等でクライアント側の
+                      キャッシュが古く、事前通知が出せなかったケース）だけのフォールバックにする
+                      （2026-09-17修正、重複表示を避けるため） */}
+                  {duplicateSeatError && (proxyBookingFor || !anySameDayReservation) && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                       <p>
-                        {anySameDayReservation?.seat_type === 'project'
-                          ? `現在の予約（${anySameDayReservation.seat_no}）は、PM・PLが割り当てたプロジェクトの確保済み座席です。取り消してこの座席に変更しますか？（プロジェクト座席の確保が失われます）他の座席を追加でもう1つ予約することもできます。`
-                          : anySameDayReservation
-                            ? `現在の予約（${anySameDayReservation.seat_no}）を取り消して、この座席に変更しますか？他の座席を追加でもう1つ予約することもできます。`
-                            : 'この日の他の予約を取り消して、この座席に変更しますか？他の座席を追加でもう1つ予約することもできます。'}
+                        {proxyBookingFor
+                          ? `${proxyBookingFor.userName}さんはこの日、既に別のフリー座席を予約しています。取り消してこの座席に変更しますか？`
+                          : 'この日の他の予約を取り消して、この座席に変更しますか？他の座席を追加でもう1つ予約することもできます。'}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button
                           type="button"
                           disabled={submitting}
-                          onClick={() => confirmReserveResolveDuplicate('replace')}
-                          className={`rounded px-3 py-1 text-xs text-white disabled:opacity-50 ${
-                            anySameDayReservation?.seat_type === 'project'
-                              ? 'bg-red-700 hover:bg-red-800'
-                              : 'bg-amber-700 hover:bg-amber-800'
-                          }`}
+                          onClick={() => proxyBookingFor ? confirmProxyReserveReplace() : confirmReserveResolveDuplicate('replace')}
+                          className="rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-800 disabled:opacity-50"
                         >
-                          {anySameDayReservation?.seat_type === 'project' ? 'プロジェクト座席を取り消して変更する' : '変更する'}
+                          変更する
                         </button>
-                        <button
-                          type="button"
-                          disabled={submitting}
-                          onClick={() => confirmReserveResolveDuplicate('keep_both')}
-                          className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          両方予約する（既存の予約は残す）
-                        </button>
+                        {!proxyBookingFor && (
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                            className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            両方予約する（既存の予約は残す）
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

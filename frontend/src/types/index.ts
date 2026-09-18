@@ -96,6 +96,9 @@ export interface FixedSeatAssignment {
   area: 'NORTH' | 'EAST' | 'WEST'
   user_id: number
   user_name: string
+  /** 割当の開始日（YYYY-MM-DD）。本日より後の場合、座席は開始日までまだフリー座席のまま
+   * （2026-09-18追加） */
+  valid_from: string
   /** 任意の有効期限（YYYY-MM-DD）。nullは無期限（2026-08-28追加） */
   valid_until: string | null
 }
@@ -423,6 +426,10 @@ export interface MyProjectPlanSummary {
   status: QuarterPlanStatus
   required_seats: number
   allocated_seat_label: string | null
+  /** 確定曜日どうしで座席の島が異なるかどうか（2026-09-18追加。曜日によって座席が異なる
+   * プロジェクトでは、allocated_seat_labelが単一の範囲ではなく「月: B1〜B3／火: C1〜C3」の
+   * ような曜日ごとの内訳文字列になる） */
+  has_seat_override: boolean
 }
 
 export interface MyProjectItem {
@@ -474,8 +481,19 @@ export interface ProjectPlanDetail {
   required_seats: number
   weekdays_finalized: Weekday[] | null
   allocated_seat_ids: number[] | null
+  /** 確定曜日どうしで座席の島が異なるかどうか（2026-09-18追加。曜日ごとに違う座席になっている
+   * プロジェクトでPM/PLに間違った座席が表示されていた不具合の修正）。trueの間、
+   * allocated_seat_labelは単一の範囲ではなく曜日ごとの内訳文字列になる */
+  has_seat_override: boolean
+  /** 確定曜日ごとの実効座席（2026-09-18追加、S-09のallocated_seats_by_weekdayと同じ形）。
+   * 座席の島が未割当・曜日未確定ならnull */
+  allocated_seats_by_weekday: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
   allocated_seat_label: string | null
   allocated_seats: { id: number; seat_no: string }[] | null
+  /** メンバー個別の座席確保（A-18・A-64、BulkSeatAssign）は基本の島だけを対象としており、
+   * 曜日ごとの例外（has_seat_override）には未対応（2026-09-18追加）。trueの間はこの画面から
+   * 実行するとバックエンドが400で拒否するため、フロント側でも一括確保UIを止める */
+  member_seat_assign_blocked_by_override: boolean
   my_project_title: ProjectTitle
   /** @deprecated 表示用（PM/PLバッジ等）にのみ使う。権限判定にはis_seat_assignerを使うこと */
   is_pmpl: boolean

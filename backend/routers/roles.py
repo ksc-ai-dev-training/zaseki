@@ -177,18 +177,12 @@ class AppSettingUpdate(BaseModel):
     value: str
 
 
-@router.put("/app-settings/{key}")
-async def update_app_setting(key: str, body: AppSettingUpdate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-50: UIから編集可能な設定値の更新。keyはEDITABLE_SETTING_KEYSのいずれかのみ受け付ける
-    （2026-09-02拡張、当初はproject_seat_slack_webhook_urlのみだった）。Webhook URLのみ、入力する
-    場合はhttps://hooks.slack.com/services/で始まるURL形式であることを検証する（4.6節、2026-08-28
-    実装。未入力〔空文字〕は通知を送信しない設定として許可する）。通知のオン/オフスイッチ2種
-    （BOOLEAN_SETTING_KEYS）は'true'/'false'の文字列のみ受け付ける（2026-09-16追加）。それ以外の
-    通知文言3種は自由記述で、文字数上限（500字）以外の形式チェックは行わない（プレースホルダーの
-    誤記があっても送信時に初期文言へフォールバックするため、slack.render_slack_message参照）。"""
+def _validate_setting_value(key: str, raw_value: str) -> str:
+    """A-49/A-50/A-85共通の値検証（2026-09-18、A-85新設に伴いupdate_app_settingから切り出し）。
+    正規化済みの値を返す。不正な場合はHTTPExceptionを送出する。"""
     if key not in EDITABLE_SETTING_KEYS:
         raise HTTPException(404, detail="対象が見つかりません")
-    value = body.value.strip()
+    value = raw_value.strip()
     if key == SLACK_WEBHOOK_SETTING_KEY:
         if value and not value.startswith("https://hooks.slack.com/services/"):
             raise HTTPException(400, detail="Slack通知先URLはhttps://hooks.slack.com/services/で始まる形式で入力してください")
@@ -197,9 +191,46 @@ async def update_app_setting(key: str, body: AppSettingUpdate, _: CurrentUser = 
             raise HTTPException(400, detail="不正な値です")
     elif len(value) > 500:
         raise HTTPException(400, detail="通知文言は500文字以内で入力してください")
+    return value
+
+
+@router.put("/app-settings/{key}")
+async def update_app_setting(key: str, body: AppSettingUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-50: UIから編集可能な設定値の更新（1件のみ）。keyはEDITABLE_SETTING_KEYSのいずれかのみ受け
+    付ける（2026-09-02拡張、当初はproject_seat_slack_webhook_urlのみだった）。値の検証内容は
+    _validate_setting_value参照。S-08通知設定タブの「保存する」は2026-09-18よりA-85（一括保存、
+    全項目をトランザクションでまとめて保存）を使うようになったため、このAPIは主に他クライアント・
+    単体テスト用の単発更新口として残す。"""
+    value = _validate_setting_value(key, body.value)
     await get_pool().execute(
         """INSERT INTO app_settings (key, value) VALUES ($1, $2)
            ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()""",
         key, value,
     )
+    return {"detail": "設定を更新しました"}
+
+
+class AppSettingsBulkUpdate(BaseModel):
+    settings: dict[str, str]
+
+
+@router.put("/app-settings")
+async def update_app_settings_bulk(body: AppSettingsBulkUpdate, _: CurrentUser = Depends(require_roles("admin"))):
+    """A-85: 通知設定タブ（S-08）の一括保存（2026-09-18新設、QA報告の修正）。従来フロントは
+    項目ごとに独立したA-50呼び出しをPromise.allで並列実行しており、「全部成功か全部失敗か」に
+    なっておらず（A-66・A-68・A-80等、他の一括系APIと同じ設計方針から外れていた）、例えば
+    Webhook URLの形式エラーが1件あると、他の項目（通知文言・オン/オフ設定）だけが先に保存されて
+    しまい、管理部にはどの項目が保存されなかったのか分からない不具合があった。全項目をまず検証し、
+    1件でも不正な値があれば何も保存せずに400で拒否する（＝検証はループの外で全項目に対して先に
+    行い、1件も実DBに書き込まない）。全項目が有効な場合のみ、1つのトランザクションでまとめて
+    保存する。"""
+    cleaned: dict[str, str] = {key: _validate_setting_value(key, value) for key, value in body.settings.items()}
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            for key, value in cleaned.items():
+                await conn.execute(
+                    """INSERT INTO app_settings (key, value) VALUES ($1, $2)
+                       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()""",
+                    key, value,
+                )
     return {"detail": "設定を更新しました"}

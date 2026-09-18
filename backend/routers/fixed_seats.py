@@ -17,11 +17,19 @@ async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
     比較になり「F10」が「F2」より前に来てしまうため、Python側で英字プレフィックス＋数値の
     自然順（_seat_sort_key、A-06と同じ考え方）に並べ替える（2026-09-14修正。「番号の順番が
     おかしい。1〜10の順にしたいのに1,2,4,3のようになる」との報告を受けた）。
-    SQLのORDER BYはエリアの表示順（NORTH→EAST→WEST）を保つためだけに残す。"""
+    SQLのORDER BYはエリアの表示順（NORTH→EAST→WEST）を保つためだけに残す。
+
+    valid_from（2026-09-18追加、QA報告の修正）: ended_on IS NULLの行には、まだ開始日
+    （valid_from）が来ていない予約設定（A-20参照。指定と同時に対象者の従来の固定座席は解除される
+    が、新しい座席自体はvalid_fromまでseat_type='fixed'に切り替わらずフリー座席のまま）も含まれる。
+    従来はvalid_fromを返しておらず、この画面上は「今日から既に固定座席」であるかのように見えて
+    しまい、実際にはまだ誰でも予約できるフリー座席だと気づけなかった。行自体は一覧に残したまま
+    （管理部が設定済みの予約を把握できるようにするため除外はしない）、valid_fromを返して
+    フロント側で「◯月◯日から有効」の表示を出せるようにする。"""
     await release_expired_fixed_seats()
     rows = await get_pool().fetch(
         """SELECT fsa.seat_id, s.seat_no, a.name AS area_name, u.id AS user_id, u.last_name, u.first_name,
-                  fsa.valid_until
+                  fsa.valid_from, fsa.valid_until
            FROM fixed_seat_assignments fsa
            JOIN seats s ON s.id = fsa.seat_id
            JOIN areas a ON a.id = s.area_id
@@ -34,6 +42,7 @@ async def list_assignments(_: CurrentUser = Depends(require_roles("admin"))):
             {
                 "seat_id": r["seat_id"], "seat_no": r["seat_no"], "area": r["area_name"],
                 "user_id": r["user_id"], "user_name": f"{r['last_name']} {r['first_name']}",
+                "valid_from": r["valid_from"].isoformat(),
                 "valid_until": r["valid_until"].isoformat() if r["valid_until"] else None,
             }
             for r in rows
