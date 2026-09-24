@@ -1499,13 +1499,60 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
   useEffect(() => {
     const initial: Record<number, Set<Weekday>> = {}
     plans.forEach((p) => {
-      // 「確定した出社曜日」表からの取り消し（A-62）で戻ってきた場合は、直前に確定していた内容を
-      // 初期値にする（毎回choice1_weekdaysへ戻すと、確定時に追加した「例外」日が消えてしまうため）
-      initial[p.id] = new Set(p.weekdays_finalized ?? p.choice1_weekdays ?? [])
+      // weekdays_draft（A-86、2026-09-24新設）を最優先で使う。「曜日調整表のチェックマークを保存
+      // できる機能がほしい、画面を閉じても残るようにしたい」との要望を受けた。weekdays_finalizedが
+      // 確定するタイミング（A-43・A-84）で必ずNULLへ戻される（database.py・project_seats.py参照）
+      // ため、ここに値が残っているのは「まだ確定していない編集中のチェック状態」の場合のみで、
+      // weekdays_finalizedより古くなることはない。以前からの「確定した出社曜日」表からの取り消し
+      // （A-62）で戻ってきた場合に直前の確定内容を初期値にする、というフォールバックの考え方は
+      // そのまま維持する（毎回choice1_weekdaysへ戻すと、確定時に追加した「例外」日が消えてしまう）
+      initial[p.id] = new Set(p.weekdays_draft ?? p.weekdays_finalized ?? p.choice1_weekdays ?? [])
     })
     setChecked(initial)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plans.map((p) => p.id).join(',')])
+
+  // チェック状態の下書き保存（A-86、2026-09-24新設）。「常時保存機能を削除してほしい」との要望で
+  // 撤去した旧・常時保存（scheduleAutoSave、A-84を都度自動呼び出し）は、statusをseats_tentativeへ
+  // 進めてしまい仮の座席割り当ての挙動と衝突していた。今回はA-84・A-43とは完全に無関係な
+  // weekdays_draft列だけを更新するAPIを新設したため、同じ「触るたびに自動保存する」という
+  // 体験を、状態遷移への影響を一切気にせず安全に復活できる。チェックのたびに毎回リクエストは
+  // 送らず、一定時間（800ms）操作が止まってからまとめて送る（デバウンス）。画面遷移・タブを
+  // 閉じるなどでコンポーネントが破棄される際は、保留中の変更をタイマーを待たずその場で送る
+  // （flushOnUnmount）。保存自体は表示用のメモに過ぎないため、失敗しても画面表示（ローカルの
+  // checked）には影響させない（エラーを握りつぶす。次に別のセルを編集すればまた送られる）
+  const pendingDraftRef = useRef<Record<number, Set<Weekday>>>({})
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flushDraft = () => {
+    const entries = Object.entries(pendingDraftRef.current)
+    pendingDraftRef.current = {}
+    if (entries.length === 0) return
+    apiFetch('/api/project-quarter-plans/weekdays-draft', {
+      method: 'PUT',
+      body: JSON.stringify({
+        plans: entries.map(([planId, days]) => ({ plan_id: Number(planId), weekdays: [...days] })),
+      }),
+      keepalive: true,
+    }).catch(() => {})
+  }
+  const scheduleDraftSave = (planId: number, next: Set<Weekday>) => {
+    pendingDraftRef.current[planId] = next
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null
+      flushDraft()
+    }, 800)
+  }
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current)
+        draftTimerRef.current = null
+      }
+      flushDraft()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 前回分の確定曜日・座席割当を常時表示（2026-09-16変更。当初は「前回の確定曜日をコピーする」ボタンで
   // チェック状態へ直接コピーしていたが、「座席の位置と出社曜日を記載されているようにしてほしい」との
@@ -1527,15 +1574,17 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
 
   if (plans.length === 0) return null
 
-  // 2026-09-24修正:「常時保存機能を削除してほしい」との要望を受け、チェックのたびにA-84を自動
-  // 呼び出す常時自動保存（scheduleAutoSave）を廃止した。チェック状態はローカルのcheckedのみで
-  // 保持し、実際の保存は下の「仮の座席割り当てを作成する」ボタン（createTentative）を押した
-  // タイミングでのみ行う（常時保存の導入前の挙動に戻す）
+  // 2026-09-24修正:「常時保存機能を削除してほしい」との要望を受け、チェックのたびにA-84（仮の座席
+  // 割り当て）を自動呼び出す常時自動保存（scheduleAutoSave）を廃止した。status・仮の座席割り当ての
+  // 判定に関わる保存は、引き続き下の「仮の座席割り当てを作成する」ボタン（createTentative）を
+  // 押したタイミングでのみ行う。チェックのたびに呼ぶのはA-86（weekdays_draftだけを更新する、
+  // 上のscheduleDraftSave）のみで、こちらはstatusに一切関与しないため常時呼び出しても安全
   const toggle = (planId: number, day: Weekday) => {
     setChecked((prev) => {
       const next = new Set(prev[planId] ?? [])
       if (next.has(day)) next.delete(day)
       else next.add(day)
+      scheduleDraftSave(planId, next)
       return { ...prev, [planId]: next }
     })
     // 手動で編集したセルはAI提案のバッジを外す（検討資料「プロジェクト座席・曜日調整フロー改善案」
@@ -1643,7 +1692,11 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
       )
       setChecked((prev) => {
         const next = { ...prev }
-        data.suggestions.forEach((s) => { next[s.plan_id] = new Set(s.weekdays) })
+        data.suggestions.forEach((s) => {
+          const days = new Set(s.weekdays)
+          next[s.plan_id] = days
+          scheduleDraftSave(s.plan_id, days)
+        })
         return next
       })
       setAiSuggested((prev) => {

@@ -339,11 +339,13 @@ async def list_quarter_plans(
     同じ内容へ上書きした場合（基本の島自体は古いまま更新されず、例外〔allocated_seats_overrides〕
     だけが全確定曜日ぶん同じ値で追加された場合）、確定曜日どうしは完全に同じ座席なのに「曜日によって
     座席が異なります」と表示されてしまう不具合があった（「確定曜日どうしで座席が同じなのに表示される」
-    との報告を受けた）。基本の島と比べるのではなく、確定曜日どうしの実効座席を比較するよう修正した。"""
+    との報告を受けた）。基本の島と比べるのではなく、確定曜日どうしの実効座席を比較するよう修正した。
+    weekdays_draft（2026-09-24新設、A-86参照）: 出社曜日の調整表（WeekdayMatrix、S-09）のチェック状態を
+    画面を閉じても残すための下書き。weekdays_finalizedとは独立した列で、statusには一切関与しない。"""
     pool = get_pool()
     rows = await pool.fetch(
         """SELECT pqp.id, pqp.project_id, p.name AS project_name, pqp.period_start, pqp.period_end,
-                  pqp.required_seats, pqp.weekdays_finalized, pqp.allocated_seats,
+                  pqp.required_seats, pqp.weekdays_finalized, pqp.weekdays_draft, pqp.allocated_seats,
                   pqp.allocated_seats_overrides, pqp.status, pqp.admin_note,
                   (SELECT pu.last_name || ' ' || pu.first_name FROM users pu WHERE pu.id = p.proxy_user_id)
                       AS seat_assigner_names,
@@ -435,6 +437,7 @@ async def list_quarter_plans(
             "required_seats": r["required_seats"], "status": r["status"],
             "non_fixed_member_count": r["non_fixed_member_count"],
             "weekdays_finalized": weekdays_finalized,
+            "weekdays_draft": json.loads(r["weekdays_draft"]) if r["weekdays_draft"] else None,
             "allocated_seat_ids": allocated_seat_ids, "allocated_seat_label": allocated_label,
             "allocated_seats_by_weekday": allocated_seats_by_weekday, "has_seat_override": has_seat_override,
             "has_response": r["has_response"],
@@ -839,7 +842,9 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
     status='seats_allocated'の計画は、送信された曜日が確定済みの曜日から実際に変化している場合のみ
     'weekdays_finalized'へ差し戻す。フロント（S-09の「確定した出社曜日」表）は表内の全行をまとめて
     一括送信する作りのため、この判定をしないと曜日を編集していない他の座席割当済みプロジェクトまで
-    巻き込んで座席の島の割当が巻き戻ってしまう不具合があった（2026-09-08修正）。"""
+    巻き込んで座席の島の割当が巻き戻ってしまう不具合があった（2026-09-08修正）。
+    weekdays_draft（S-09調整表のチェック状態の下書き、A-86参照）は、weekdays_finalizedが確定した
+    時点で古い内容になるためNULLへ戻す（2026-09-24追加）。"""
     pool = get_pool()
     notified_lines = []
     async with pool.acquire() as conn:
@@ -883,7 +888,8 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                     next_status = "weekdays_finalized"
                 await conn.execute(
                     """UPDATE project_quarter_plans
-                       SET weekdays_finalized = $1, status = $4, decided_by = $2, updated_at = now()
+                       SET weekdays_finalized = $1, status = $4, decided_by = $2, updated_at = now(),
+                           weekdays_draft = NULL
                        WHERE id = $3""",
                     json.dumps(item.weekdays_finalized), user.id, item.plan_id, next_status,
                 )
@@ -911,7 +917,9 @@ async def save_tentative_weekdays(body: WeekdayFinalizeBody, user: CurrentUser =
     経ずにstatus='weekdays_finalized'のプロジェクトを直接座席の島の割当画面へ連れて行けてしまい、
     2つの入口で挙動が異なる（一方は仮、もう一方は曜日次第でいきなり本確定）のは望ましくないとの
     指摘を受けた。goSeatBlockBulk側もこのAPIを先に呼ぶよう修正し、どちらの入口から入っても必ず
-    「仮」を経由するよう統一した。"""
+    「仮」を経由するよう統一した。
+    weekdays_draft（S-09調整表のチェック状態の下書き、A-86参照）は、ここでweekdays_finalizedが
+    確定した時点で古い内容になるためNULLへ戻す（2026-09-24追加）。"""
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -925,11 +933,49 @@ async def save_tentative_weekdays(body: WeekdayFinalizeBody, user: CurrentUser =
                     raise HTTPException(400, detail="この状態では仮の座席割り当てを作成できません")
                 await conn.execute(
                     """UPDATE project_quarter_plans
-                       SET weekdays_finalized = $1, status = 'seats_tentative', updated_at = now()
+                       SET weekdays_finalized = $1, status = 'seats_tentative', updated_at = now(),
+                           weekdays_draft = NULL
                        WHERE id = $2""",
                     json.dumps(item.weekdays_finalized), item.plan_id,
                 )
     return {"detail": "仮の曜日を保存しました"}
+
+
+class WeekdaysDraftItem(BaseModel):
+    plan_id: int
+    weekdays: list[Literal["mon", "tue", "wed", "thu", "fri"]]
+
+
+class WeekdaysDraftBody(BaseModel):
+    plans: list[WeekdaysDraftItem]
+
+
+@router.put("/project-quarter-plans/weekdays-draft")
+async def save_weekdays_draft(body: WeekdaysDraftBody, user: CurrentUser = Depends(require_roles("admin"))):
+    """A-86: 出社曜日の調整表（WeekdayMatrix、S-09）のチェック状態を、画面を閉じても消えないよう
+    保存する下書き（2026-09-24新設。「曜日調整表のチェックマークを保存できる機能がほしい。画面を
+    閉じてもちゃんと残るようにしたい」との要望を受けた）。
+    以前の「常時保存」機能（2026-09-16〜24。チェックのたびにA-84 save_tentative_weekdaysを自動
+    呼び出していた）は、statusをseats_tentativeへ進めてしまうため、仮の座席割り当ての挙動と衝突し
+    ぐちゃぐちゃになり、撤去した（ProjectSeatAllocation.tsx WeekdayMatrixのコメント参照）。今回は
+    その反省を踏まえ、weekdays_draft列というstatusにも他のどの業務ロジックにも一切関与しない
+    「保存するだけの列」を新設し、このAPIはそこだけを更新する。仮の座席割り当ての作成（A-84）・
+    出社曜日の確定（A-43）とは完全に無関係で、この下書きの有無・内容が両者の判定に影響することは
+    一切ない。フロント側はチェックボックスを変更するたびに（AI提案の反映も含め）少し待ってから
+    まとめてこのAPIを呼ぶ（ProjectSeatAllocation.tsx参照）。
+    status IN ('survey_open', 'seats_tentative')以外（既に曜日が確定し、調整表自体に表示されなく
+    なった計画）への保存はWHERE句で静かに無視する（対象外の計画IDが紛れ込んでもエラーにしない。
+    画面の切り替え・確定操作と保存タイミングが前後する可能性があるため）。"""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for item in body.plans:
+                await conn.execute(
+                    """UPDATE project_quarter_plans SET weekdays_draft = $1, updated_at = now()
+                       WHERE id = $2 AND status IN ('survey_open', 'seats_tentative')""",
+                    json.dumps(item.weekdays), item.plan_id,
+                )
+    return {"detail": "下書きを保存しました"}
 
 
 @router.put("/project-quarter-plans/{id}/unfinalize-weekdays")

@@ -311,6 +311,10 @@ export interface QuarterPlanItem {
   non_fixed_member_count: number
   status: QuarterPlanStatus
   weekdays_finalized: Weekday[] | null
+  /** 出社曜日の調整表（WeekdayMatrix、S-09）のチェック状態の下書き（A-86、2026-09-24新設）。
+   * weekdays_finalizedとは独立していて、statusには一切関与しない「画面を閉じても消えないための
+   * メモ」。WeekdayMatrixの初期チェック状態はこれを最優先で使う */
+  weekdays_draft: Weekday[] | null
   /** 基本の島（allocated_seats_overridesがない曜日は常にこれを使う） */
   allocated_seat_ids: number[] | null
   allocated_seat_label: string | null

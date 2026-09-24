@@ -287,6 +287,17 @@ ALTER TABLE project_quarter_plans ADD CONSTRAINT project_quarter_plans_status_ch
 -- 使う（database.effective_seat_ids()参照）。
 ALTER TABLE project_quarter_plans ADD COLUMN IF NOT EXISTS allocated_seats_overrides JSONB;
 
+-- weekdays_draft（A-86、2026-09-24追加）:「曜日調整表のチェックマークを保存できる機能」の下書き。
+-- 以前の「常時保存」実装（A-84 save_tentative_weekdays を都度自動呼び出し）はstatusを
+-- seats_tentativeへ進めてしまい、仮の座席割り当ての挙動が壊れた（「常時保存機能を削除してほしい」との
+-- 要望で撤去済み）。今回は同じ反省を踏まえ、statusや他のどの業務ロジックにも一切関与しない
+-- 「画面を閉じても消えないメモ」専用の列として独立させる。出社曜日の調整表（WeekdayMatrix、S-09）の
+-- チェック状態が変わるたびにこの列だけを更新し（A-86）、weekdays_finalizedやstatusには触れない。
+-- weekdays_finalizedが実際に書き換わるタイミング（A-43 finalize_weekdays・A-84
+-- save_tentative_weekdays）では、この下書きを古い内容のまま残すと後で誤って復元されうるため
+-- NULLへ戻す（該当箇所参照）。
+ALTER TABLE project_quarter_plans ADD COLUMN IF NOT EXISTS weekdays_draft JSONB;
+
 -- T-11 project_weekday_responses。1計画につき1回答（再送信はUPSERT、共通created_at/updated_atは持たない）
 CREATE TABLE IF NOT EXISTS project_weekday_responses (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
