@@ -12,6 +12,14 @@ interface FloorProps {
   // 座席の島の割当モード（selectedSeatIdsがある時のみ意味を持つ）で、ブロックのラベルをクリック
   // したときにそのブロック内の座席をまとめて選択・解除するコールバック（2026-09-09追加）
   onToggleBlock?: (seatIds: number[], select: boolean) => void
+  // 今編集中のプロジェクト（曜日）が、編集前から元々割り当てられていた座席id（2026-09-24新設。
+  // 「5から0にするとき、未確定〔プロジェクト座席〕の色の表示で座席が変更できているのかわかりにくい。
+  // 一つの席を変更したら空きの席の色になるようにしたい」との要望を受けた。selectedSeatIdsから
+  // 外す〔チェックを外す〕と、その座席は実際のDB上はまだ自分の割当が残っているため
+  // status='project_pending'のまま表示され、見た目が変わらず「本当に外れたのか」がわかりにくかった。
+  // この座席id集合に含まれる座席は、選択が外れた瞬間から空き座席と同じ見た目・クリック可能な
+  // タイルとして扱う〔SeatTile.tsx参照〕）
+  originalAllocatedSeatIds?: Set<number>
   // 他の曜日にこのプロジェクトが使用中の座席（2026-09-16新設）。「火曜日の座席を選ぶとき、月曜日は
   // どこに座っているのか一目でわかるようにしてほしい」との要望を受けた。SeatTile.tsxで破線
   // マーカーとして表示する
@@ -39,19 +47,21 @@ interface FloorProps {
 // のみクリック可能にし、そのブロック内で選択可能な座席（空き、または既に選択済み）をまとめて
 // 選択／解除する。それ以外の画面では従来どおりただの見出しテキストとして表示する
 // （2026-09-09追加。「座席タイルを1つずつクリックする必要があり工数が多すぎる」との指摘を受けた）
-function SeatBlockLabel({ label, seatNos, seatByNo, selectedSeatIds, onToggleBlock }: {
+function SeatBlockLabel({ label, seatNos, seatByNo, selectedSeatIds, onToggleBlock, originalAllocatedSeatIds }: {
   label: string
   seatNos: string[]
   seatByNo: Record<string, Seat>
   selectedSeatIds?: Set<number>
   onToggleBlock?: (seatIds: number[], select: boolean) => void
+  originalAllocatedSeatIds?: Set<number>
 }) {
   if (!selectedSeatIds || !onToggleBlock) {
     return <div className="seat-block-label text-xs font-semibold text-slate-500 mb-1">{label}</div>
   }
   const selectableIds = seatNos
     .map((no) => seatByNo[no])
-    .filter((s): s is Seat => Boolean(s) && ((s.status === 'free' && s.seat_type === 'free') || selectedSeatIds.has(s.id)))
+    .filter((s): s is Seat =>
+      Boolean(s) && ((s.status === 'free' && s.seat_type === 'free') || selectedSeatIds.has(s.id) || (originalAllocatedSeatIds?.has(s.id) ?? false)))
     .map((s) => s.id)
   if (selectableIds.length === 0) {
     return <div className="seat-block-label text-xs font-semibold text-slate-400 mb-1">{label}</div>
@@ -94,6 +104,7 @@ export function NorthFloor({ seatByNo, ...tileProps }: FloorProps) {
       seatByNo={seatByNo}
       selectedSeatIds={tileProps.selectedSeatIds}
       onToggleBlock={tileProps.onToggleBlock}
+      originalAllocatedSeatIds={tileProps.originalAllocatedSeatIds}
     />
   )
   return (
@@ -149,6 +160,7 @@ function SeatBlock({ label, seats, gridArea, seatByNo, ...tileProps }: {
         seatByNo={seatByNo}
         selectedSeatIds={tileProps.selectedSeatIds}
         onToggleBlock={tileProps.onToggleBlock}
+        originalAllocatedSeatIds={tileProps.originalAllocatedSeatIds}
       />
       <div className="seat-grid cols-2">
         {seats.map((no) => {

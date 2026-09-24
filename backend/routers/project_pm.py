@@ -282,8 +282,12 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
         # 対象としており、曜日ごとの例外（allocated_seats_overrides）には未対応（2026-09-18追加）。
         # has_seat_overrideの間にこの機能を使うと、ある曜日は既に別プロジェクトへ明け渡し済みの
         # 座席へ誤ってメンバーの周期予約を作ってしまう恐れがあるため、対応するまでフロント側で
-        # 一括確保UI自体を止める目印。true＝ブロック中
-        "member_seat_assign_blocked_by_override": has_seat_override,
+        # 一括確保UI自体を止める目印。true＝ブロック中。2026-09-18再修正: 基本の島を一度も持たずに
+        # 曜日ごとの例外だけで座席を確保できるようになったため（confirmSeatBlockBulk参照）、
+        # allocated_seat_idsが空（＝A-18が対象にできる基本の島自体が無い）の場合もブロック対象に
+        # 追加した（has_seat_overrideだけだと、確定曜日どうしがたまたま同じ座席でも基本の島が
+        # 無ければ選択肢ゼロの空の一覧になってしまうため）
+        "member_seat_assign_blocked_by_override": has_seat_override or not allocated_seat_ids,
         "my_project_title": my_member["project_title"], "is_pmpl": is_pmpl,
         "is_project_creator": is_project_creator,
         "is_seat_assigner": is_seat_assigner,
@@ -555,12 +559,17 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     # 既に別プロジェクトへ明け渡し済みの座席へ誤ってメンバーを確保してしまう恐れがある
     # （QA調査で発見。project_seats.pyのA-44・A-80は(座席id, 曜日)単位で重複判定するが、本APIは
     # 曜日を区別せず1つの座席idだけでgenerate_recurring_reservationsを呼ぶため、この判定の外側になる）。
-    # 対応するまでは明確なエラーで止め、エリア担当（S-09）側で個別に調整してもらう
+    # 対応するまでは明確なエラーで止め、エリア担当（S-09）側で個別に調整してもらう。
+    # 2026-09-18再修正: 「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を受け、
+    # 基本の島を一度も持たずに曜日ごとの例外だけで座席を確保できるようになった。この場合、確定曜日
+    # どうしがたまたま同じ座席になっていてもhas_seat_overrideはfalseのままだが、下のallocated_seat_ids
+    # は基本の島（plan["allocated_seats"]）そのものから求めるため空になり、座席が1つも選べない
+    # ままエラーメッセージも出ない不具合になる。基本の島自体が無い場合もあわせて拒否する
     _, has_seat_override = seats_by_weekday(
         plan["allocated_seats"], plan["allocated_seats_overrides"],
         json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
     )
-    if has_seat_override:
+    if has_seat_override or not plan["allocated_seats"]:
         raise HTTPException(
             400,
             detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください",
@@ -663,12 +672,13 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
-    # A-18と同じ理由（2026-09-18追加）で、曜日によって座席の島が異なるプロジェクトへの振り替えは拒否する
+    # A-18と同じ理由（2026-09-18追加、2026-09-18再修正で基本の島が無い場合も対象に追加）で、
+    # 曜日によって座席の島が異なる、または基本の島を一度も持たないプロジェクトへの振り替えは拒否する
     _, has_seat_override = seats_by_weekday(
         plan["allocated_seats"], plan["allocated_seats_overrides"],
         json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
     )
-    if has_seat_override:
+    if has_seat_override or not plan["allocated_seats"]:
         raise HTTPException(
             400,
             detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください",
@@ -947,12 +957,13 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーの座席を変更できません")
-    # A-18と同じ理由（2026-09-18追加）で、曜日によって座席の島が異なるプロジェクトの座席変更は拒否する
+    # A-18と同じ理由（2026-09-18追加、2026-09-18再修正で基本の島が無い場合も対象に追加）で、
+    # 曜日によって座席の島が異なる、または基本の島を一度も持たないプロジェクトの座席変更は拒否する
     _, has_seat_override = seats_by_weekday(
         plan["allocated_seats"], plan["allocated_seats_overrides"],
         json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
     )
-    if has_seat_override:
+    if has_seat_override or not plan["allocated_seats"]:
         raise HTTPException(
             400,
             detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーの座席変更はまだこの画面から行えません。エリア担当にご相談ください",

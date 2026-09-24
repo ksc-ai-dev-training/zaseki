@@ -396,11 +396,6 @@ async def list_quarter_plans(
 
     items = []
     for r in rows:
-        allocated_seat_ids = json.loads(r["allocated_seats"]) if r["allocated_seats"] else None
-        allocated_label = (
-            _format_seat_range([seat_no_by_id[sid] for sid in allocated_seat_ids if sid in seat_no_by_id])
-            if allocated_seat_ids else None
-        )
         weekdays_finalized = json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else None
         # 曜日ごとの実効座席（2026-09-16新設。「PJは曜日によって座席が変わる前提で進めてください」との
         # 上司フィードバックを受けた）。allocated_seats自体が未設定（座席の島が未割当）ならNone。
@@ -416,6 +411,22 @@ async def list_quarter_plans(
                 for w, seat_ids in raw_by_weekday.items()
             }
             if raw_by_weekday is not None else None
+        )
+        # allocated_seat_ids・allocated_label（単一値の表示用）: 通常はallocated_seats（基本の島）から
+        # 求めるが、基本の島を一度も持たずに曜日ごとの例外だけで割り当てたプロジェクト（2026-09-18
+        # 追加。「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を受けた）が
+        # 確定曜日どうしたまたま同じ座席になった場合（has_seat_override=False）は、基本の島の代わりに
+        # その共通の実効座席を使う。曜日どうしで実際に異なる場合（has_seat_override=True）は、単一の
+        # 値では表現できないため引き続きNoneのままとし、呼び出し元はallocated_seats_by_weekdayを使う
+        if r["allocated_seats"]:
+            allocated_seat_ids = json.loads(r["allocated_seats"])
+        elif raw_by_weekday is not None and not has_seat_override:
+            allocated_seat_ids = next(iter(raw_by_weekday.values()), None) or None
+        else:
+            allocated_seat_ids = None
+        allocated_label = (
+            _format_seat_range([seat_no_by_id[sid] for sid in allocated_seat_ids if sid in seat_no_by_id])
+            if allocated_seat_ids else None
         )
         items.append({
             "id": r["id"], "project_id": r["project_id"], "project_name": r["project_name"],
@@ -835,7 +846,8 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
         async with conn.transaction():
             for item in body.plans:
                 plan = await conn.fetchrow(
-                    """SELECT pqp.id, pqp.status, pqp.weekdays_finalized, pqp.allocated_seats, p.name AS project_name
+                    """SELECT pqp.id, pqp.status, pqp.weekdays_finalized, pqp.allocated_seats,
+                              pqp.allocated_seats_overrides, p.name AS project_name
                        FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
                        WHERE pqp.id = $1""",
                     item.plan_id,
@@ -853,8 +865,19 @@ async def finalize_weekdays(body: WeekdayFinalizeBody, user: CurrentUser = Depen
                 # weekdays_finalizedへ進む（2026-09-16追加、「曜日を確定するのではなくそこから座席割り
                 # 当ての仮作成をできるようにしてほしい」との要望を受けた仮の座席割り当て機能の一部）。
                 # それ以外の起点（survey_open・weekdays_finalized・曜日変更後のseats_allocated）は
-                # 従来どおり常にweekdays_finalizedへ進み、座席の島の割当（A-44）からのやり直しを求める
-                if plan["status"] == "seats_tentative" and plan["allocated_seats"]:
+                # 従来どおり常にweekdays_finalizedへ進み、座席の島の割当（A-44）からのやり直しを求める。
+                # 2026-09-18修正:「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を
+                # 受け、基本の島（allocated_seats）を経由せず曜日ごとの例外だけで座席を確保できるように
+                # なったため、判定もplan["allocated_seats"]の有無ではなく、これから確定する全曜日
+                # （item.weekdays_finalized）の実効座席がA-44・A-80と同じ完了判定ですべて埋まっているか
+                # で行う（A-44のall_weekdays_assigned参照。基本の島だけを見ていると、曜日ごとの例外だけで
+                # 既に全曜日ぶん割当済みのプロジェクトがいつまでもweekdays_finalizedへ差し戻され続けて
+                # しまう）
+                all_weekdays_assigned = bool(item.weekdays_finalized) and all(
+                    effective_seat_ids(plan["allocated_seats"], plan["allocated_seats_overrides"], w)
+                    for w in item.weekdays_finalized
+                )
+                if plan["status"] == "seats_tentative" and all_weekdays_assigned:
                     next_status = "seats_allocated"
                 else:
                     next_status = "weekdays_finalized"
@@ -878,10 +901,17 @@ async def save_tentative_weekdays(body: WeekdayFinalizeBody, user: CurrentUser =
     そのプロジェクトの現在のチェック状態を「仮」の曜日としてstatus='seats_tentative'で保存する
     （2026-09-16新設。「曜日を確定するのではなくそこから座席割り当ての仮作成をできるようにして
     ほしい」との要望を受けた）。A-43（finalize-weekdays）と違い正式な確定ではないためSlack通知は
-    しない。status IN ('survey_open', 'seats_tentative')からのみ呼べる。既にseats_tentativeの
-    計画に対しても、仮の曜日を選び直すために再度呼べるようにする（本当に確定するまでは曜日・座席
-    ともに自由にやり直せる、という方針のため）。この時点ではallocated_seatsには触れない（座席の
-    選択自体は続けてA-44・A-80を呼ぶフロントエンドの一括割当画面〔S-02〕が行う）。"""
+    しない。既にseats_tentativeの計画に対しても、仮の曜日を選び直すために再度呼べるようにする
+    （本当に確定するまでは曜日・座席ともに自由にやり直せる、という方針のため）。この時点では
+    allocated_seatsには触れない（座席の選択自体は続けてA-44・A-80を呼ぶフロントエンドの一括割当
+    画面〔S-02〕が行う）。
+    2026-09-18拡張: status IN ('survey_open', 'seats_tentative')に加え'weekdays_finalized'も対象に
+    追加した。「座席の島の割当が必要なプロジェクト」一覧（ProjectSeatAllocation.tsx goSeatBlockBulk、
+    A-80を直接呼ぶ別の入口）が、曜日調整表の「仮の座席割り当てを作成する」（本APIを経由する入口）を
+    経ずにstatus='weekdays_finalized'のプロジェクトを直接座席の島の割当画面へ連れて行けてしまい、
+    2つの入口で挙動が異なる（一方は仮、もう一方は曜日次第でいきなり本確定）のは望ましくないとの
+    指摘を受けた。goSeatBlockBulk側もこのAPIを先に呼ぶよう修正し、どちらの入口から入っても必ず
+    「仮」を経由するよう統一した。"""
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -891,7 +921,7 @@ async def save_tentative_weekdays(body: WeekdayFinalizeBody, user: CurrentUser =
                 )
                 if plan is None:
                     raise HTTPException(404, detail="対象が見つかりません")
-                if plan["status"] not in ("survey_open", "seats_tentative"):
+                if plan["status"] not in ("survey_open", "weekdays_finalized", "seats_tentative"):
                     raise HTTPException(400, detail="この状態では仮の座席割り当てを作成できません")
                 await conn.execute(
                     """UPDATE project_quarter_plans
@@ -981,10 +1011,21 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
     body.weekdayを省略すると従来どおり基本の島を一括更新し、既存の例外は全てクリアする（「同じに
     しているのはあくまで善意」で、基本は一括・例外は1日だけという運用のため）。他プロジェクトとの
     重複判定・取り消す予約の範囲は、いずれも実際に変更する曜日（対象曜日）ごとに、
-    database.effective_seat_ids()で解決した実効座席を見て判定する（曜日をまたいだ粗い判定はしない）。
-    メンバー個別の座席確保（A-18等）は引き続き基本の島（allocated_seats）のみを対象とし、曜日ごとの
-    例外は対象外（今回のスコープ外、実運用で必要になれば別途対応）。"""
-    if not body.seat_ids:
+    database.effective_seat_ids()で解決した実効座席を見て判定する（曜日をまたいだ粗い判定はしない。
+    2026-09-18に一度、曜日を問わない座席id単位の判定へ変更したが、「それぞれの曜日は空き席でそこから
+    プロジェクト席を埋めていくイメージ。曜日希望が違うのでブッキングではない」との訂正を受け、同日中に
+    (座席id, 曜日)単位の判定へ戻した）。メンバー個別の座席確保（A-18等）は引き続き基本の島
+    （allocated_seats）のみを対象とし、曜日ごとの例外は対象外（今回のスコープ外、実運用で必要になれば
+    別途対応）。
+    2026-09-24修正: body.weekday指定時（曜日ごとの例外編集）に限り、body.seat_ids=[]（座席を1つも
+    選ばない）を許可する。この場合その曜日のallocated_seats_overridesへ明示的な空配列を保存し、
+    「一度割り当てた座席を選び直して0にする＝その曜日だけ取り消す」を表現できるようにする（「座席の
+    島の一括割当で選択を0にしても保存も取り消しもできない」との報告を受けた。空配列を常に
+    「未入力」とみなして拒否すると、いったん座席が入った曜日を0に戻す手段が無くなる）。
+    body.weekday未指定（基本の島の一括更新）は従来どおり1件以上の選択を必須のままとする（基本の島
+    自体を空にする操作は今回のスコープ外）。
+    """
+    if not body.seat_ids and body.weekday is None:
         raise HTTPException(400, detail="座席を1つ以上選択してください")
     pool = get_pool()
     plan = await pool.fetchrow(
@@ -1035,11 +1076,12 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
              AND pqp.period_start <= $2 AND pqp.period_end >= $3""",
         id, plan["period_end"], plan["period_start"],
     )
-    # (座席id, 曜日) → 重複先のプロジェクト名。2026-09-16修正: 曜日ごとに座席の島が異なりうるように
-    # なったため、「確定曜日が1日でも重なれば相手の島全体をブロック」という従来の粗い判定をやめ、
-    # 実際に重なる対象曜日ごとに、その曜日の実効座席（database.effective_seat_ids()）だけを見て
-    # 判定するようにした（2026-09-02追加の「曜日が重ならなければ座席を共有できる」という方針の
-    # 精度を、曜日ごとの島の違いにも対応させたもの）。
+    # (座席id, 曜日) → 重複先のプロジェクト名。2026-09-18に一度「曜日が重ならなくても座席は被らない
+    # ようにしてほしい」との要望で座席id単位（曜日を問わない）判定に変更したが、「それぞれの曜日は
+    # 空き席でそこからプロジェクト席を埋めていくイメージ。曜日希望が違うのでブッキングではない。曜日が
+    # 確定した上で座席割り当てをしているので」との訂正を受け、同日中に2026-09-02からの「確定曜日が
+    # 重ならなければ座席を共有できる」方針へ戻した。実際に重なる対象曜日ごとに、その曜日の実効座席
+    # （database.effective_seat_ids()）だけを見て判定する（曜日をまたいだ判定はしない）。
     conflict_owner: dict[tuple[int, str], str] = {}
     for r in other_plans:
         other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
@@ -1053,10 +1095,6 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
             for sid, w in conflicts
         )
         raise HTTPException(409, detail=f"既に他プロジェクトへ割り当てられている座席が含まれています: {detail}")
-
-    # 仮の座席割り当て（seats_tentative、2026-09-16追加）の間は、座席を選び直しても本当に確定する
-    # （A-43）まではstatusをseats_tentativeのまま維持する（自由にやり直せる、という方針のため）
-    next_status = "seats_tentative" if plan["status"] == "seats_tentative" else "seats_allocated"
 
     current_base = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
     current_overrides = json.loads(plan["allocated_seats_overrides"]) if plan["allocated_seats_overrides"] else {}
@@ -1074,6 +1112,58 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         else:
             overrides_copy[body.weekday] = body.seat_ids
         new_overrides = overrides_copy or None
+
+    # 仮の座席割り当て（seats_tentative、2026-09-16追加）の間は、座席を選び直しても本当に確定する
+    # （A-43）まではstatusをseats_tentativeのまま維持する（自由にやり直せる、という方針のため）。
+    # 2026-09-18再修正:「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を受け、
+    # 基本の島を経由せず曜日ごとの例外だけを積み上げていく割当を許可した（confirmSeatBlockBulk参照）。
+    # これに伴い、まだ一部の確定曜日にしか座席が無い状態でstatusをseats_allocatedへ進めてしまうと、
+    # 「割当済み」に見えるのに実際には出社できない曜日が残るという不具合が起きうる。全確定曜日
+    # （my_weekdays）の実効座席がこの更新後にすべて埋まっている場合のみstatusを先へ進め、
+    # 埋まっていない曜日が残る間はweekdays_finalizedのまま留める（一覧からは引き続き「座席の島を
+    # 割り当てる」ボタンで残りの曜日を割り当てられる）。この判定は座席を追加する一方の操作
+    # （既存の例外は空のseat_idsで消せない、上のoverrides_copy参照）でのみ発生するため後戻りしない。
+    new_overrides_json = json.dumps(new_overrides) if new_overrides else None
+    # new_allocated_seatsが空（[]）の場合は、基本の島を一度も持たないままJSON文字列"[]"として
+    # 保存してしまうと、r["allocated_seats"]がPythonの空文字列や0とは異なり非空文字列として
+    # 常にtruthyになり、「基本の島を持っているかどうか」を判定している全箇所（A-38の
+    # allocated_seat_ids、A-13/A-14、member_seat_assign_blocked_by_override等）が誤動作する
+    # （2026-09-18発見。曜日ごとの例外だけを積み上げる割当を許可したことで初めて到達するように
+    # なった経路。以前はweekday指定時には必ず基本の島が既に存在していたため顕在化しなかった）。
+    # NULLのまま保存する
+    new_allocated_seats_json = json.dumps(new_allocated_seats) if new_allocated_seats else None
+    all_weekdays_assigned = all(
+        effective_seat_ids(new_allocated_seats_json, new_overrides_json, w) for w in my_weekdays
+    )
+    # 2026-09-18さらに修正:「仮の座席割り当てを作成するがあるのに、月曜日の分だけまとめて保存する
+    # （曜日を指定した部分編集）をすると出社日が確定してプロジェクト席が作成できてしまう。作成する
+    # のではなく仮なら編集可能にしてほしい」との指摘を受けた。曜日を指定した部分編集（body.weekday
+    # あり）は、そもそも複数回に分けて少しずつ埋めていく性質の操作のため、たとえ今回の更新で
+    # 全確定曜日が埋まったとしても、起点がまだ「仮」を経ていない（weekdays_finalizedのままの）
+    # 計画についてはseats_allocatedへ直接進めず、いったんseats_tentativeに留める（本当に確定するには
+    # 明示的にA-43〔この内容で確定する〕を経由させる）。既にseats_tentative・seats_allocatedの計画
+    # （＝一度は仮または本確定を経ている計画）を部分編集する場合は、従来どおりその状態を維持する
+    # （既にseats_allocatedな計画への軽微な曜日別修正のたびに仮へ差し戻されるのは不自然なため）。
+    # weekday未指定（基本の島の一括更新）は、この操作自体が単発の明確な確定操作のため対象外のまま
+    # とする。
+    # 2026-09-24修正:「〇曜日の分だけまとめて保存するを押した後、確定した出社曜日に表示されるのを
+    # やめてほしい。仮で座席割り当てをしているのに確定される意味がない」との指摘を受けた。
+    # 上記の判定は「全確定曜日が埋まっているか」を他の何より先に見ていたため、既にseats_tentative
+    # （仮）だった計画が、複数回に分けて曜日ごとに座席を埋めていく途中（一部の曜日がまだ空）で
+    # weekdays_finalizedへ後退してしまっていた（weekdays_finalizedは「確定した出社曜日」一覧にも
+    # 表示されるため、仮で作業中のはずが確定扱いに見えてしまっていた）。既にseats_tentative・
+    # seats_allocatedの計画は、全確定曜日が埋まっているかどうかに関わらずその状態を維持するよう、
+    # 判定の先頭でこの2つを先に確定させる
+    if plan["status"] == "seats_tentative":
+        next_status = "seats_tentative"
+    elif plan["status"] == "seats_allocated":
+        next_status = "seats_allocated"
+    elif not all_weekdays_assigned:
+        next_status = "weekdays_finalized"
+    elif body.weekday is not None:
+        next_status = "seats_tentative"
+    else:
+        next_status = "seats_allocated"
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -1095,7 +1185,7 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
                 """UPDATE project_quarter_plans
                    SET allocated_seats = $1, allocated_seats_overrides = $2, status = $5, decided_by = $3, updated_at = now()
                    WHERE id = $4""",
-                json.dumps(new_allocated_seats), json.dumps(new_overrides) if new_overrides else None,
+                new_allocated_seats_json, new_overrides_json,
                 user.id, id, next_status,
             )
     was_edit = plan["status"] in ("seats_allocated", "seats_tentative")
@@ -1164,7 +1254,9 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
         async with conn.transaction():
             claimed_by_isodow: dict[int, dict[int, str]] = {}
             for item in body.assignments:
-                if not item.seat_ids:
+                # 2026-09-24修正: item.weekday指定時（曜日ごとの例外編集）はseat_ids=[]を許可する
+                # （A-44と同じ理由、その関数docstring参照）
+                if not item.seat_ids and item.weekday is None:
                     raise HTTPException(400, detail="座席を1つ以上選択してください")
                 plan = await conn.fetchrow(
                     """SELECT pqp.id, pqp.project_id, pqp.status, pqp.period_start, pqp.period_end,
@@ -1218,7 +1310,9 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                 # (座席id, 曜日) → 重複先のプロジェクト名（2026-09-10追加。「どのプロジェクトがかぶって
                 # いるのかわかるようにできる？」との要望を受け、A-44と同様にエラーメッセージへ座席番号・
                 # 重複先のプロジェクト名を含めるようにした。2026-09-18修正: 対象曜日をtarget_weekdays
-                # （weekday指定時はその1日だけ）に絞るようA-44と揃えた）
+                # （weekday指定時はその1日だけ）に絞るようA-44と揃えた。同日中に一度、曜日を問わない
+                # 座席id単位の判定へ変更したが、「曜日希望が違うのでブッキングではない」との訂正を受け
+                # (座席id, 曜日)単位の判定へ戻した）
                 conflict_owner: dict[tuple[int, str], str] = {}
                 for r in other_plans:
                     other_weekdays = set(json.loads(r["weekdays_finalized"])) if r["weekdays_finalized"] else set()
@@ -1248,10 +1342,6 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                     for sid in item.seat_ids:
                         claimants.setdefault(sid, plan["project_name"])
 
-                # 仮の座席割り当て（seats_tentative、2026-09-16追加）の間は、座席を選び直しても本当に
-                # 確定する（A-43）まではstatusをseats_tentativeのまま維持する
-                next_status = "seats_tentative" if plan["status"] == "seats_tentative" else "seats_allocated"
-
                 current_base = json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else []
                 current_overrides = json.loads(plan["allocated_seats_overrides"]) if plan["allocated_seats_overrides"] else {}
                 if item.weekday is None:
@@ -1268,6 +1358,37 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                     else:
                         overrides_copy[item.weekday] = item.seat_ids
                     new_overrides = overrides_copy or None
+
+                # 仮の座席割り当て（seats_tentative、2026-09-16追加）の間は、座席を選び直しても本当に
+                # 確定する（A-43）まではstatusをseats_tentativeのまま維持する。2026-09-18再修正:
+                # 一括割当の時点で曜日ごとに別々の座席を選べるようにしたことに伴い、A-44と同じ完了判定
+                # （my_weekdays全曜日ぶんの実効座席が埋まっているか）で統一する（詳細はA-44参照）
+                new_overrides_json = json.dumps(new_overrides) if new_overrides else None
+                # new_allocated_seatsが空の場合はNULLのまま保存する（A-44と同じ理由、"[]"という
+                # 非空文字列で保存すると基本の島の有無判定が全て誤動作する。詳細はA-44参照）
+                new_allocated_seats_json = json.dumps(new_allocated_seats) if new_allocated_seats else None
+                all_weekdays_assigned = all(
+                    effective_seat_ids(new_allocated_seats_json, new_overrides_json, w) for w in my_weekdays
+                )
+                # 2026-09-18さらに修正: A-44と同じ理由（「仮の座席割り当てを作成するがあるのに、曜日を
+                # 指定した部分保存をすると出社日が確定してプロジェクト席が作成できてしまう。仮なら編集
+                # 可能にしてほしい」との指摘）で、まだ「仮」を経ていない（weekdays_finalizedのままの）
+                # 計画への曜日指定の部分編集は、全確定曜日が埋まってもseats_allocatedへ直接進めず、
+                # いったんseats_tentativeに留める（詳細はA-44参照）。
+                # 2026-09-24修正: A-44と同じ理由（「〇曜日の分だけまとめて保存するを押した後、確定した
+                # 出社曜日に表示されるのをやめてほしい」との指摘）で、既にseats_tentative・
+                # seats_allocatedの計画は、全確定曜日が埋まっているかどうかに関わらずその状態を
+                # 維持するよう、判定の先頭でこの2つを先に確定させる（詳細はA-44参照）
+                if plan["status"] == "seats_tentative":
+                    next_status = "seats_tentative"
+                elif plan["status"] == "seats_allocated":
+                    next_status = "seats_allocated"
+                elif not all_weekdays_assigned:
+                    next_status = "weekdays_finalized"
+                elif item.weekday is not None:
+                    next_status = "seats_tentative"
+                else:
+                    next_status = "seats_allocated"
 
                 # 取り消す予約は対象曜日ごとに絞る（A-44と同じ、2026-09-18追加。例外的に1曜日だけ
                 # 座席を変えても、他の曜日の予約には一切触れない）
@@ -1287,7 +1408,7 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                        SET allocated_seats = $1, allocated_seats_overrides = $2, status = $5,
                            decided_by = $3, updated_at = now()
                        WHERE id = $4""",
-                    json.dumps(new_allocated_seats), json.dumps(new_overrides) if new_overrides else None,
+                    new_allocated_seats_json, new_overrides_json,
                     user.id, item.plan_id, next_status,
                 )
                 # 座席の島の割当が「決まった」（仮のままではない）項目のみSlack通知の対象に集める
@@ -1329,7 +1450,9 @@ async def check_seat_block(body: SeatBlockCheck, user: CurrentUser = Depends(req
     メッセージにも同じ詳細を追加した）。2026-09-16拡張: A-44と同じ`weekday`（省略可）を各assignmentに
     追加した。単一曜日の例外編集（S-02で1曜日だけ座席を上書きする場合）の事前確認では、その曜日だけを
     渡す。重複判定もA-44・A-80と同じ(座席id, 曜日)単位に統一し、他プロジェクトが曜日ごとに異なる
-    島を持つ場合も正しく判定できるようにした。"""
+    島を持つ場合も正しく判定できるようにした（2026-09-18に一度、曜日を問わない座席id単位の判定へ
+    変更したが、「曜日希望が違うのでブッキングではない」との訂正を受け同日中に(座席id, 曜日)単位へ
+    戻した）。"""
     conflicts: list[str] = []
     if not body.assignments:
         return {"conflicts": conflicts}

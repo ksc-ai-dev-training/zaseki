@@ -512,8 +512,14 @@ def seats_by_weekday(
     （PM/PL側〔A-13・A-14〕が曜日ごとの例外を無視して常に基本の島だけを見ており、曜日によって
     座席が異なるプロジェクトではPM/PLに誤った座席が表示される不具合の修正に合わせて統合した）。
     座席番号への整形（_format_seat_range）は呼び出し元がそれぞれ行う（呼び出し元ごとに
-    project_seats._format_seat_rangeをimportしており、ここからimportすると循環importになるため）。"""
-    if not allocated_seats_json or not weekdays_finalized:
+    project_seats._format_seat_rangeをimportしており、ここからimportすると循環importになるため）。
+    2026-09-18再修正:「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい（基本の島を経由
+    したくない）」との要望を受け、allocated_seats_json（基本の島）が未設定でもoverrides_jsonだけで
+    計算できるようにした。従来はallocated_seats_jsonが無ければ問答無用で(None, False)を返しており、
+    基本の島を一度も持たないプロジェクトの曜日別の例外が全画面から見えない「孤立データ」になる
+    不具合があった（confirmSeatBlockBulk参照）。基本の島・例外のいずれも無い（本当に何も
+    割り当てられていない）場合のみ引き続き(None, False)を返す。"""
+    if not weekdays_finalized or (not allocated_seats_json and not overrides_json):
         return None, False
     result: dict[str, list[int]] = {}
     distinct_seat_sets = set()

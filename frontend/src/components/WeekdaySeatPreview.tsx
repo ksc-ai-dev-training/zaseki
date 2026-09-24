@@ -101,7 +101,7 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
               <div className={`px-3 py-1.5 text-center text-base font-bold text-white ${w.headerClass}`}>
                 {w.label}曜日
               </div>
-              <div className="p-1.5" style={{ zoom: 0.75 }}>
+              <div className="p-1.5" style={{ zoom: 0.6 }}>
                 <div className="floor-overview inline-flex">
                   {hasNorth && (
                     <div className="north-column">

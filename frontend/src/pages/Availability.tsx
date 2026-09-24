@@ -368,7 +368,15 @@ export default function Availability() {
           seatBlockFor.weekday && seatBlockFor.weekday !== 'all' ? [seatBlockFor.weekday] : seatBlockFor.weekdaysFinalized ?? []
         )
       : seatBlockBulkFor?.plans[0]
-        ? firstMatchingWeekdayOnOrAfter(seatBlockBulkFor.plans[0].periodStart, seatBlockBulkFor.plans[0].weekdaysFinalized ?? [])
+        ? // 一括モードの初期表示日は、下のbulkWeekdayFilterの初期値（先頭の確定曜日）と必ず同じ
+          // 曜日になるよう揃える（2026-09-18修正。「絞り込みタブは『月』なのにフロアマップは
+          // 『金』が表示される」不具合の一環。以前はここだけweekdaysFinalized全体〔複数曜日〕から
+          // 最も近い日を探しており、先頭の曜日〔bulkWeekdayFilterが初期選択する曜日〕より他の
+          // 確定曜日の方が近い日付だと、初期表示の時点で食い違っていた）
+          firstMatchingWeekdayOnOrAfter(
+            seatBlockBulkFor.plans[0].periodStart,
+            [seatBlockBulkFor.plans[0].weekdaysFinalized?.[0] ?? 'mon']
+          )
         : memberSeatAssignFor
           ? firstMatchingWeekdayOnOrAfter(memberSeatAssignFor.periodStart, memberSeatAssignFor.weekdaysFinalized ?? [])
           : todayStr()
@@ -515,16 +523,45 @@ export default function Availability() {
       setSeatBlockSelection(updater)
     }
   }
-  // 一括割当モードで、右の一覧からプロジェクトを切り替える。その計画の対象四半期の開始日以降で
-  // 確定した出社曜日に最初に該当する日にフロアマップの表示日を合わせる（単一モードの初期表示日と
-  // 同じ考え方、firstMatchingWeekdayOnOrAfter参照）
+  // 一括割当モードで、右の一覧からプロジェクトを切り替える。フロアマップの表示日は、今選んでいる
+  // 絞り込み曜日（bulkWeekdayFilter）に対応する直近の日付に合わせる（2026-09-18修正。以前はその
+  // プロジェクトのweekdaysFinalized全体〔複数曜日〕から最初に該当する日を探していたため、
+  // 「月」を選んでいる状態で確定曜日が月・金のプロジェクトへ切り替えると、月より先に来る金曜日の
+  // 方が選ばれてしまい、絞り込みタブの表示「月」と実際に表示される曜日「金」が食い違う不具合が
+  // あった。単一モードの初期表示日〔date初期化、weekday未指定時のみ全曜日から探す〕とは異なり、
+  // 一括モードでは常にbulkWeekdayFilterという単一の絞り込みがあるため、それだけを使う）
   const pickBulkProject = (planId: number) => {
     setActionError(null)
     setActiveBulkPlanId(planId)
     const plan = seatBlockBulkFor?.plans.find((p) => p.planId === planId)
-    if (plan) setDate(firstMatchingWeekdayOnOrAfter(plan.periodStart, plan.weekdaysFinalized ?? []))
+    if (plan) setDate(firstMatchingWeekdayOnOrAfter(plan.periodStart, [bulkWeekdayFilter]))
   }
   const activeBulkPlan = seatBlockBulkFor?.plans.find((p) => p.planId === activeBulkPlanId)
+
+  // 座席の島の割当モード（単一・一括共通）で、元々割り当てられていたが今のところ選択が外れている
+  // （＝このセッション内で手放した）座席id（2026-09-24新設。「一つの席を変更したら空きの席の色に
+  // なるようにしたい」との要望を受けた。SeatTile.tsx参照）。
+  // 2026-09-24再修正:「あるプロジェクトをクリックしたところちゃんと空き席になったが、他のプロジェクトを
+  // 押したところ、席が埋まっている判定になっていた」との指摘を受けた。当初はactiveBulkPlan（今選んで
+  // いるプロジェクト）だけを基準にしていたため、Aプロジェクトで座席を手放した直後にBプロジェクトへ
+  // 切り替えると、Bから見ればその座席は「Aの元々の島」ではない（Aの座席かどうかの判定がプロジェクトを
+  // 切り替えるたびに変わってしまう）ため、判定から漏れてstatus='project_pending'の色に戻って
+  // 見えていた。一括モードでは対象の全プロジェクト（この曜日を確定曜日に持つもの）を横断して、
+  // それぞれの「元々の島」から「現在の選択」を引いた差分（＝手放した座席）を全て集め、どのプロジェクトを
+  // 見ていても一貫して空き扱いにする
+  const originalAllocatedSeatIds = new Set<number>()
+  if (seatBlockBulkFor) {
+    for (const p of seatBlockBulkFor.plans) {
+      if (!(p.weekdaysFinalized ?? []).includes(bulkWeekdayFilter)) continue
+      const original = p.allocatedSeatsByWeekday?.[bulkWeekdayFilter]?.seat_ids ?? p.allocatedSeatIds ?? []
+      const current = bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)]
+      original.forEach((id) => { if (!current?.has(id)) originalAllocatedSeatIds.add(id) })
+    }
+  } else if (seatBlockFor) {
+    (seatBlockFor.allocatedSeatIds ?? []).forEach((id) => {
+      if (!seatBlockSelection.has(id)) originalAllocatedSeatIds.add(id)
+    })
+  }
 
   const openReserve = (seatId: number, seatNo: string, area: string, targetDate: string) => {
     setActionError(null)
@@ -638,30 +675,33 @@ export default function Availability() {
   // （2026-09-17変更）。以前は絞り込みなし（'all'）の場合だけA-80（一括新規作成、全確定曜日に
   // 共通の1つの島）を使っていたが、「座席割り当てにおける全てという項目を削除してほしい」との
   // 要望を受け、'all'の選択肢自体を廃止し、曜日ごとの例外編集方式に一本化した。
-  // 「◯曜日の分だけまとめて登録をしたのに全く保存されていない」バグ対応: weekday指定は
-  // 「基本の島（allocated_seats）に対する例外」という仕組みのため、そのプロジェクトが一度も
-  // 基本の島を持ったことがない（allocatedSeatIdsが空）場合にweekday指定で呼ぶと、基本の島が
-  // 空のまま曜日の例外だけが保存され、A-38のallocated_seats_by_weekdayは「基本の島がある場合
-  // のみ計算する」実装のため、結果的にどの画面からも見えない孤立したデータになっていた。基本の
-  // 島を一度も持っていないプロジェクトは、曜日を絞り込んでいてもweekdayを指定せずに呼び、その
-  // 座席を全確定曜日共通の基本の島として新規作成する（既に基本の島を持つプロジェクトは、これまで
-  // どおりその曜日だけの例外にする）。
-  // 2026-09-18修正（QA調査で発見）: 上記のプロジェクトごとの判定〔weekdayの有無〕自体は正しいが、
-  // 以前はプロジェクトごとに個別のA-44（単一編集）をループでawaitしていたため、複数プロジェクトを
-  // まとめて保存する際、途中の1件が409（重複）で失敗すると、それより前のプロジェクトは登録済みの
-  // まま、後のプロジェクトは未処理のまま止まってしまい、「全部成功か全部失敗か」ではなくなっていた
-  // （A-80は元々1つのDBトランザクションで全件atomicに処理する一括専用APIだったが、曜日別の例外
-  // 編集にweekdayを渡せなかったため使われなくなっていた）。A-80にweekdayを追加してA-44と同じ
-  // ロジックへ揃え、1回のリクエストで全件をまとめて送るよう修正した
+  // 2026-09-18再修正:「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい（基本の島を経由
+  // したくない）」との要望を受けた。以前は基本の島を一度も持っていない（allocatedSeatIdsが空の）
+  // プロジェクトだけ、weekday指定を無視して常に基本の島として一括作成していた（曜日ごとの例外は
+  // 「基本の島に対する例外」という仕組みのため、基本の島が無いまま例外だけ保存すると当時の
+  // database.seats_by_weekday()がその例外を計算せず、結果的にどの画面からも見えない孤立した
+  // データになっていたため）。今回database.seats_by_weekday()を「基本の島が無くても例外だけで
+  // 計算できる」よう修正した（database.py参照）ため、この回避策は不要になり、常にweekdayを渡して
+  // 曜日ごとの例外として保存する。これにより、基本の島を一度も作らずに曜日ごとに別々の座席を
+  // 選んでいっても、それぞれの曜日の割当が独立して保存され、他の曜日を巻き込まなくなる
+  // （project_seats.assign_seat_block_bulkのall_weekdays_assigned判定が、全確定曜日ぶん揃うまで
+  // statusをweekdays_finalizedのまま留めるため、揃うまでこの画面に残り続けて残りの曜日を割り当てられる）
   const confirmSeatBlockBulk = async () => {
     const scope = bulkWeekdayFilter
+    // 2026-09-24修正:「座席の島の一括割当で選択を0にしても保存できない」不具合の再発防止。以前は
+    // seat_ids.length > 0で絞り込んでおり、座席を選び直して0件（この曜日は割り当てなしにしたい）に
+    // しても送信対象から除外され、保存も取り消しもできなかった（バックエンド側もweekday指定時は
+    // seat_ids=[]を受け付けるよう修正済み、assign_seat_block_bulk参照）。座席数ではなく、この曜日を
+    // 実際に確定曜日として持つプロジェクトだけに絞り込む（他の3箇所〔プロジェクト一覧・遅延初期化〕
+    // と同じ条件に統一）。こうすることで、まだ触っていない0件のプロジェクトを誤って巻き込むことも、
+    // 明示的に0件へ変更したプロジェクトを取りこぼすこともない
     const assignments = (seatBlockBulkFor?.plans ?? [])
+      .filter((p) => (p.weekdaysFinalized ?? []).includes(scope))
       .map((p) => ({
         plan_id: p.planId,
         seat_ids: [...(bulkSelections[bulkKey(scope, p.planId)] ?? [])],
-        weekday: (p.allocatedSeatIds ?? []).length > 0 ? scope : undefined,
+        weekday: scope,
       }))
-      .filter((a) => a.seat_ids.length > 0)
     if (assignments.length === 0) return
     setSubmitting(true)
     setActionError(null)
@@ -690,7 +730,17 @@ export default function Availability() {
           allocatedSeatsByWeekday: f.allocated_seats_by_weekday,
         }]
       })
-      setBulkSelections({})
+      // 2026-09-24修正:「1曜日分を保存すると、他の曜日タブで作業中の未保存の選択も消えてしまう」
+      // 不具合を修正した。以前はsetBulkSelections({})で全曜日ぶんの選択状態をまるごとリセットして
+      // いたため、例えば火曜日の座席をまだ保存せず選んでいる途中に月曜日の分を保存すると、火曜日側の
+      // 未保存の選択が消えてサーバー上の古い状態に戻ってしまっていた。今回保存した（scope）ぶんの
+      // キーだけを消す（他の曜日スコープのキーはそのまま残す）。消したキーは次の描画時に、上の
+      // 遅延初期化useEffectが最新のupdatedPlansから改めて復元する
+      setBulkSelections((prev) => {
+        const next = { ...prev }
+        assignments.forEach((a) => { delete next[bulkKey(scope, a.plan_id)] })
+        return next
+      })
       navigate('.', { replace: true, state: { seatBlockBulkFor: { plans: updatedPlans } } })
       await refreshAvailability()
     } catch (e) {
@@ -708,10 +758,9 @@ export default function Availability() {
         .map((p) => ({
           plan_id: p.planId,
           seat_ids: [...(bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)] ?? [])],
-          // 基本の島を一度も持っていないプロジェクトは、確定申告時（confirmSeatBlockBulk）と同じく
-          // 全確定曜日ぶんの新規作成として扱われるため、事前確認もweekdayを指定せず全確定曜日を
-          // 対象に行う（2026-09-17修正、confirmSeatBlockBulk参照）
-          weekday: (p.allocatedSeatIds ?? []).length > 0 ? bulkWeekdayFilter : undefined,
+          // 事前確認も実際の保存（confirmSeatBlockBulk）と同じ曜日の例外編集として行う
+          // （2026-09-18修正、confirmSeatBlockBulk参照）
+          weekday: bulkWeekdayFilter,
         }))
         .filter((a) => a.seat_ids.length > 0)
     : seatBlockFor && seatBlockSelection.size > 0
@@ -1275,6 +1324,7 @@ export default function Availability() {
     onAssignFixedSeat: (seat: Seat) => openAssignFixedSeat(seat, seatArea[seat.seat_no]),
     selectedSeatIds: (seatBlockFor || seatBlockBulkFor) ? currentBlockSelection : undefined,
     onToggleBlock: (seatBlockFor || seatBlockBulkFor) ? onToggleSeatBlock : undefined,
+    originalAllocatedSeatIds: (seatBlockFor || seatBlockBulkFor) && originalAllocatedSeatIds.size > 0 ? originalAllocatedSeatIds : undefined,
     // 他の曜日にこのプロジェクトが使用中の座席（2026-09-16新設）。「火曜日の座席を選ぶとき、月曜日は
     // どこに座っているのか一目でわかるようにしてほしい」との要望を受けた。フロアマップ上でこの座席id
     // 集合に含まれる座席へ破線マーカーを重ねる（SeatTile.tsx参照）
@@ -1340,6 +1390,7 @@ export default function Availability() {
           fixedSeatAssignMode={floorProps.fixedSeatAssignMode}
           onAssignFixedSeat={floorProps.onAssignFixedSeat}
           selectedSeatIds={floorProps.selectedSeatIds}
+          originalAllocatedSeatIds={floorProps.originalAllocatedSeatIds}
           otherWeekdaySeatIds={floorProps.otherWeekdaySeatIds}
           claimedByOtherPlanLabel={floorProps.claimedByOtherPlanLabel}
           memberAssignMode={floorProps.memberAssignMode}
@@ -2043,7 +2094,10 @@ export default function Availability() {
               onClick={confirmSeatBlock}
               className="rounded bg-blue-800 px-3 py-2 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
             >
-              {seatBlockFor.allocatedSeatIds ? 'この内容で更新する' : 'この内容で割り当てる'}
+              {/* 2026-09-18修正: 曜日を絞り込んで例外編集中、その曜日にまだ何も割り当てて
+                  いない場合はallocatedSeatIdsが空配列（truthy）になり「更新する」と表示されて
+                  いた。空配列は「割り当て済みのものがない」ことを意味するため、要素数で判定する */}
+              {seatBlockFor.allocatedSeatIds && seatBlockFor.allocatedSeatIds.length > 0 ? 'この内容で更新する' : 'この内容で割り当てる'}
             </button>
             <button
               type="button"
@@ -2174,7 +2228,11 @@ export default function Availability() {
               type="button"
               disabled={
                 submitting ||
-                (seatBlockBulkFor?.plans ?? []).every((p) => (bulkSelections[bulkKey(bulkWeekdayFilter, p.planId)]?.size ?? 0) === 0)
+                // 2026-09-24修正: 選択数（0件かどうか）ではなく、この曜日を確定曜日として持つ
+                // プロジェクトが1件でもあるかどうかで判定する（confirmSeatBlockBulkの送信対象と
+                // 同じ基準に統一）。座席数で判定すると、意図的に0件へ変更した内容を保存できなく
+                // なってしまう
+                (seatBlockBulkFor?.plans ?? []).every((p) => !(p.weekdaysFinalized ?? []).includes(bulkWeekdayFilter))
               }
               onClick={confirmSeatBlockBulk}
               className="rounded bg-blue-800 px-3 py-2 text-sm text-white hover:bg-blue-900 disabled:opacity-50"

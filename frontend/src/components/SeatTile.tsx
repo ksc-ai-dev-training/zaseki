@@ -21,6 +21,13 @@ interface SeatTileProps {
   /** S-09「座席の島の割当モード」で選択済みの座席id一覧（見た目のハイライトのみに使う。
    * クリック自体は通常の空き座席クリックと同じonReserve経由で、Availability.tsx側で分岐する） */
   selectedSeatIds?: Set<number>
+  /** 今編集中のプロジェクト（曜日）が編集前から元々割り当てられていた座席id（2026-09-24新設。
+   * 「5から0にするとき、未確定〔プロジェクト座席〕の色の表示で座席が変更できているのかわかりにくい。
+   * 一つの席を変更したら空きの席の色になるようにしたい」との要望を受けた）。selectedSeatIdsから
+   * 外れた直後はDB上まだ自分の割当が残っているためstatus='project_pending'のまま返ってきて見た目が
+   * 変わらなかったが、この集合に含まれる座席はselectedSeatIdsに無くても空き座席と同じ見た目・
+   * クリック可能なタイルとして扱う（クリックすれば選び直せる） */
+  originalAllocatedSeatIds?: Set<number>
   /** 他の曜日にこのプロジェクトが使用中の座席id一覧（2026-09-16新設）。「火曜日の座席を選ぶとき、
    * 月曜日はどこに座っているのか一目でわかるようにしてほしい」との要望を受けた。selectedSeatIdsとは
    * 独立に、破線マーカーとして重ねて表示する（見た目のみ、クリック挙動には影響しない） */
@@ -86,7 +93,7 @@ function otherWeekdayClass(seat: Seat, otherWeekdaySeatIds?: Set<number>): strin
 
 // 座席1マス（S-02フロアマップ）。空き→予約モーダル、自分の予約→取消モーダルを開く
 export default function SeatTile({
-  seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds,
+  seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, originalAllocatedSeatIds,
   otherWeekdaySeatIds, claimedByOtherPlanLabel, memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
   positionEditMode, onSeatDragPointerDown, onSeatDragPointerMove, onSeatDragPointerUp,
   previewColorBySeatId, previewLabelBySeatId,
@@ -209,7 +216,15 @@ export default function SeatTile({
     )
   }
 
-  if ((seat.status === 'free' && seat.seat_type === 'free') || selectedSeatIds?.has(seat.id)) {
+  if (
+    (seat.status === 'free' && seat.seat_type === 'free') ||
+    selectedSeatIds?.has(seat.id) ||
+    // 2026-09-24追加:「一つの席を変更したら空きの席の色になるようにしたい」との要望。選択を外した
+    // 直後はDB上まだ自分の割当が残っているためstatus='project_pending'のまま返ってくるが、元々
+    // 自分（このプロジェクト・曜日）の座席だった分は、選択が外れていても空き座席と同じ見た目・
+    // クリック可能な状態にする（選び直しもできる）
+    originalAllocatedSeatIds?.has(seat.id)
+  ) {
     // 座席の島の割当・編集モードでは、既に選択済みの座席は実際の予約状況に関わらずトグル
     // できるようにする（編集時、自分のプロジェクトの既存の個人予約がある座席も選択解除
     // できる必要があるため。2026-08-28追加）

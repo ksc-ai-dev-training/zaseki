@@ -433,6 +433,25 @@ export default function ProjectSeatAllocation() {
     }
   }
 
+  // 割り当て済み（status='seats_allocated'）のプロジェクトを取り消す（2026-09-18新設。「座席割り当て」
+  // 一覧から割り当て済みプロジェクトを取り消す方法がない、との指摘を受けた。「確定した出社曜日」表にも
+  // 同じA-62〔unfinalize-weekdays〕を使う取り消し機能があるが、複数選択前提のモーダル経由で手数が
+  // 多いため、この一覧からは対象1件を選んだ状態で直接・即座に取り消せるようにする）。status='survey_open'
+  // まで戻る（出社曜日・座席の選択はどちらもやり直せるよう、weekdays_finalized・allocated_seatsは
+  // クリアせず残る。A-62のdocstring参照）
+  const cancelAllocation = async (p: QuarterPlanItem) => {
+    if (!window.confirm(`「${p.project_name}」の座席割り当てを取り消し、アンケート回答受付中の状態に戻します。よろしいですか？`)) return
+    setActionError(null)
+    setActionMessage(null)
+    try {
+      await apiFetch(`/api/project-quarter-plans/${p.id}/unfinalize-weekdays`, { method: 'PUT' })
+      setActionMessage(`${p.project_name} の割り当てを取り消しました`)
+      await refreshAll()
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '取り消しに失敗しました')
+    }
+  }
+
   // weekday指定時は、その1日だけを例外として編集する（2026-09-16新設。「PJは曜日によって座席が
   // 変わる前提で進めてください」との上司フィードバックを受けた）。allocatedSeatIdsはその曜日の
   // 実効座席（基本の島か、既に例外があればその座席）を渡し、otherWeekdaySeatsで他の確定曜日の
@@ -478,45 +497,78 @@ export default function ProjectSeatAllocation() {
   // 「重複しています」と誤警告される不具合につながっていた（2026-09-17修正。「ODTの座席を選んだら
   // 本来出社日ではないIKI_ビリングONEと重複していると出た。IKI_ビリングONEはその席を選んでいない」
   // との報告を受けた）。ボタンを押した瞬間に必ずサーバーから最新の一覧を取り直してから
-  // スナップショットを作るようにし、古いデータを持ち込む可能性を減らす
+  // スナップショットを作るようにし、古いデータを持ち込む可能性を減らす。
+  // 2026-09-18修正:「座席の島の割当が必要なプロジェクト」一覧は、曜日調整表の「仮の座席割り当てを
+  // 作成する」（A-84を経由する）を経ずに直接この画面へ来られる別の入口になっており、status=
+  // 'weekdays_finalized'のプロジェクトが曜日次第でいきなり本確定（seats_allocated）まで進んでしまう
+  // ことがあった。「仮で決めるものと同じようにしてほしい」との指摘を受け、createTentativeAndAssignと
+  // 同様にA-84（tentative-weekdays）を先に呼び、必ず「仮」を経由してからこの画面へ渡すよう統一した
+  // （対象曜日は各プロジェクトの現在のweekdays_finalizedをそのまま使う。チェックボックスでの選び直しは
+  // 発生しないため、曜日調整表側のように選択状態を渡す必要はない）
   const goSeatBlockBulk = async () => {
-    const fresh = await refreshAll()
-    const freshPlans = (fresh?.items ?? plans).filter(
-      (p) => periodTab === 'all' || `${p.period_start}__${p.period_end}` === periodTab
-    )
-    const eligible = freshPlans.filter(bulkEligible)
-    navigate('/', {
-      state: {
-        seatBlockBulkFor: {
-          plans: eligible.map((p) => ({
-            planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
-            periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
-            allocatedSeatIds: p.allocated_seat_ids ?? undefined,
-            allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
-          })),
+    setActionError(null)
+    try {
+      const fresh = await refreshAll()
+      const freshPlans = (fresh?.items ?? plans).filter(
+        (p) => periodTab === 'all' || `${p.period_start}__${p.period_end}` === periodTab
+      )
+      const eligible = freshPlans.filter(bulkEligible)
+      if (eligible.length === 0) return
+      await apiFetch('/api/project-quarter-plans/tentative-weekdays', {
+        method: 'PUT',
+        body: JSON.stringify({
+          plans: eligible.map((p) => ({ plan_id: p.id, weekdays_finalized: p.weekdays_finalized ?? [] })),
+        }),
+      })
+      const afterTentative = await refreshAll()
+      const eligibleIds = new Set(eligible.map((p) => p.id))
+      const toAssign = (afterTentative?.items ?? []).filter(
+        (p) => eligibleIds.has(p.id) && p.status === 'seats_tentative'
+      )
+      navigate('/', {
+        state: {
+          seatBlockBulkFor: {
+            plans: toAssign.map((p) => ({
+              planId: p.id, projectName: p.project_name, requiredSeats: p.required_seats,
+              periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
+              allocatedSeatIds: p.allocated_seat_ids ?? undefined,
+              allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
+            })),
+          },
         },
-      },
-    })
+      })
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '仮の座席割り当ての作成に失敗しました')
+    }
   }
 
   // 仮の座席割り当て（A-84、2026-09-16新設）。「曜日を確定するのではなくそこから座席割り当ての
   // 仮作成をできるようにしてほしい」との要望を受けた。WeekdayMatrixの「仮の座席割り当てを作成する」
-  // から呼ばれ、渡された各プロジェクトの現在のチェック状態をA-84で仮の曜日として保存したうえで、
-  // 一括割当画面へ引き継ぐ。以前は既に座席を持つプロジェクトを除外していたが、上記
-  // bulkBlockEligiblePlansと同じ理由で対象に含めるよう変更した（2026-09-17拡張。既存の座席は
-  // allocatedSeatIds経由で初期選択状態として復元されるため、除外する必要がなくなった）
+  // から呼ばれ、その調整表に表示中の全プロジェクトの現在のチェック状態をA-84で仮の曜日として
+  // 保存したうえで、一括割当画面へ引き継ぐ（「座席の島の割当をまとめて行う」と同じ、表示中の対象を
+  // まとめて処理する考え方に統一。取り消し済み〔A-62でweekdays_finalizedを消さない非破壊設計〕の
+  // プロジェクトを再度割り当てる際も、チェックを変えずにこのボタンだけで反映されるようにするため）。
+  // 以前は既に座席を持つプロジェクトを除外していたが、上記bulkBlockEligiblePlansと同じ理由で対象に
+  // 含めるよう変更した（2026-09-17拡張。既存の座席はallocatedSeatIds経由で初期選択状態として
+  // 復元されるため、除外する必要がなくなった）。遷移先の座席の島の割当画面へ引き継ぐ対象
+  // （toAssign）はitemsに絞らず、現在の対象期間で既にstatus='seats_tentative'になっている全
+  // プロジェクトを対象にする（以前に仮にしたプロジェクトも一緒に座席を割り当てたいという通常の
+  // 使い方を壊さないため）
   const createTentativeAndAssign = async (items: { planId: number; weekdaysFinalized: Weekday[] }[]) => {
-    await apiFetch('/api/project-quarter-plans/tentative-weekdays', {
-      method: 'PUT',
-      body: JSON.stringify({
-        plans: items.map((i) => ({ plan_id: i.planId, weekdays_finalized: i.weekdaysFinalized })),
-      }),
-    })
+    if (items.length > 0) {
+      await apiFetch('/api/project-quarter-plans/tentative-weekdays', {
+        method: 'PUT',
+        body: JSON.stringify({
+          plans: items.map((i) => ({ plan_id: i.planId, weekdays_finalized: i.weekdaysFinalized })),
+        }),
+      })
+    }
     const fresh = await refreshAll()
-    const freshPlans = fresh?.items ?? []
-    const targetIds = new Set(items.map((i) => i.planId))
+    const freshPlans = (fresh?.items ?? []).filter(
+      (p) => periodTab === 'all' || `${p.period_start}__${p.period_end}` === periodTab
+    )
     const toAssign = freshPlans.filter(
-      (p) => targetIds.has(p.id) && p.status === 'seats_tentative' && !noSeatNeeded(p) && !seatBlockDoomed(p)
+      (p) => p.status === 'seats_tentative' && !noSeatNeeded(p) && !seatBlockDoomed(p)
     )
     if (toAssign.length === 0) return
     navigate('/', {
@@ -766,7 +818,20 @@ export default function ProjectSeatAllocation() {
                               座席の島を割り当てる
                             </span>
                           ) : (
-                            <button type="button" onClick={() => goSeatBlock(p)} className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900">座席の島を割り当てる</button>
+                            // 曜日で絞り込み中は、その曜日だけを先に割り当てられるようにする（2026-09-18修正。
+                            // 「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を受けた）。
+                            // 従来はここだけ絞り込みを無視して常にweekday未指定（基本の島を全確定曜日へ一括
+                            // 作成）で呼んでいたため、一括割当画面で先に一部の曜日だけ登録していても、ここから
+                            // 「全て」表示のままこのボタンを押すとその例外ごと基本の島で上書きされてしまう
+                            // （曜日を絞り込んでいればその曜日だけの例外として保存され、既存の他の曜日の
+                            // 割当は保持される）
+                            <button
+                              type="button"
+                              onClick={() => goSeatBlock(p, weekdayFilter === 'all' ? undefined : weekdayFilter)}
+                              className="rounded bg-blue-800 px-3 py-1 text-xs text-white hover:bg-blue-900"
+                            >
+                              {weekdayFilter === 'all' ? '座席の島を割り当てる' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を割り当てる`}
+                            </button>
                           )
                         )}
                         {p.status !== 'seats_allocated' && (
@@ -799,6 +864,23 @@ export default function ProjectSeatAllocation() {
                               {weekdayFilter === 'all' ? '座席を編集' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を編集`}
                             </button>
                           )
+                        )}
+                        {/* 割り当て済み・仮割り当て中プロジェクトの取り消し（2026-09-18新設。「割り当て済みの
+                            プロジェクトを取り消しする機能がない」との指摘を受けた。「確定した出社曜日」表にも
+                            同じA-62を使う取り消し機能はあるが、対象がweekdays_finalized・seats_allocatedのみ
+                            （seats_tentativeは対象外）かつ複数選択前提のモーダル経由になるため、この一覧からは
+                            対象1件を直接・即座に取り消せるようにする。2026-09-18再拡張: 当初はseats_allocated
+                            のみだったが、「そもそも確定済みのプロジェクトを取り消す方法はないんですか」との
+                            指摘（仮割当どうしが同じ座席・曜日で重複したまま取り消す手段がなかった）を受け、
+                            seats_tentative（仮）も対象に追加した。バックエンド（A-62）は元々both対応済み */}
+                        {(p.status === 'seats_allocated' || p.status === 'seats_tentative') && (
+                          <button
+                            type="button"
+                            onClick={() => cancelAllocation(p)}
+                            className="rounded border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50"
+                          >
+                            取り消す
+                          </button>
                         )}
                       </div>
                     </td>
@@ -1414,6 +1496,17 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
   // 従来は返ってきたsuggestionsだけを反映するため、AIが一部のプロジェクトの提案を返し忘れても
   // 気づけず、利用者が「グループ全体にAI提案が適用された」と誤認しうる不具合があった）
   const [aiPartialWarningByGroup, setAiPartialWarningByGroup] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const initial: Record<number, Set<Weekday>> = {}
+    plans.forEach((p) => {
+      // 「確定した出社曜日」表からの取り消し（A-62）で戻ってきた場合は、直前に確定していた内容を
+      // 初期値にする（毎回choice1_weekdaysへ戻すと、確定時に追加した「例外」日が消えてしまうため）
+      initial[p.id] = new Set(p.weekdays_finalized ?? p.choice1_weekdays ?? [])
+    })
+    setChecked(initial)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans.map((p) => p.id).join(',')])
+
   // 前回分の確定曜日・座席割当を常時表示（2026-09-16変更。当初は「前回の確定曜日をコピーする」ボタンで
   // チェック状態へ直接コピーしていたが、「座席の位置と出社曜日を記載されているようにしてほしい」との
   // 要望を受けて参照専用の表示に変更し、続けて「常時表示しててほしいのと座席番号のみでいいよ」との
@@ -1431,19 +1524,13 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plans.map((p) => p.id).join(',')])
-  useEffect(() => {
-    const initial: Record<number, Set<Weekday>> = {}
-    plans.forEach((p) => {
-      // 「確定した出社曜日」表からの取り消し（A-62）で戻ってきた場合は、直前に確定していた内容を
-      // 初期値にする（毎回choice1_weekdaysへ戻すと、確定時に追加した「例外」日が消えてしまうため）
-      initial[p.id] = new Set(p.weekdays_finalized ?? p.choice1_weekdays ?? [])
-    })
-    setChecked(initial)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans.map((p) => p.id).join(',')])
 
   if (plans.length === 0) return null
 
+  // 2026-09-24修正:「常時保存機能を削除してほしい」との要望を受け、チェックのたびにA-84を自動
+  // 呼び出す常時自動保存（scheduleAutoSave）を廃止した。チェック状態はローカルのcheckedのみで
+  // 保持し、実際の保存は下の「仮の座席割り当てを作成する」ボタン（createTentative）を押した
+  // タイミングでのみ行う（常時保存の導入前の挙動に戻す）
   const toggle = (planId: number, day: Weekday) => {
     setChecked((prev) => {
       const next = new Set(prev[planId] ?? [])
@@ -1585,6 +1672,10 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
     }
   }
 
+  // 「仮の座席割り当てを作成する」は、この調整表に表示中の全プロジェクト（status IN
+  // survey_open/seats_tentative、既に「曜日調整が必要な対象」として絞り込み済み）を、現在の
+  // チェック状態のまま仮登録する（「座席の島の割当をまとめて行う」と同じ、表示中の対象を
+  // まとめて処理する考え方）
   const createTentative = async () => {
     setSubmitting(true)
     setError(null)
@@ -1691,7 +1782,12 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                             座席）の絵文字アイコンに置き換えた。前回分・仮の座席の情報自体は変更なく
                             引き続き常に取得済みで、隠しているのは表示のみ（titleツールチップで
                             カーソルを合わせると詳細が見える） */}
-                        {(p.has_previous_plan || p.status === 'seats_tentative') && (
+                        {/* status='weekdays_finalized'でも、曜日で絞り込みながら一部の曜日だけ先に
+                            割り当てた直後はallocated_seats_by_weekdayが埋まる（2026-09-18修正、上の
+                            「座席の島を割り当てる」ボタンの曜日絞り込み対応参照）。「全て」表示に
+                            戻ったときにこの進捗が見えないと、既に割り当てた曜日を忘れて重複作業したり
+                            誤って上書きしてしまうため、seats_tentativeと同じバッジで表示する */}
+                        {(p.has_previous_plan || p.status === 'seats_tentative' || (p.status === 'weekdays_finalized' && p.allocated_seats_by_weekday)) && (
                           <div className="mt-0.5 flex items-center gap-1.5 text-xs">
                             {p.has_previous_plan && (
                               <span
@@ -1711,15 +1807,15 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                                 🕐
                               </span>
                             )}
-                            {p.status === 'seats_tentative' && (
+                            {(p.status === 'seats_tentative' || p.status === 'weekdays_finalized') && p.allocated_seats_by_weekday && (
                               <span
                                 className="cursor-help"
                                 title={
-                                  p.has_seat_override && p.allocated_seats_by_weekday
-                                    ? `仮の座席（曜日によって異なる）: ${Object.entries(p.allocated_seats_by_weekday)
-                                        .map(([w, v]) => `${WEEKDAYS.find((wd) => wd.key === w)?.label}: ${v.seat_label}`)
+                                  p.has_seat_override
+                                    ? `${p.status === 'seats_tentative' ? '仮の座席' : '割当状況'}（曜日によって異なる）: ${Object.entries(p.allocated_seats_by_weekday)
+                                        .map(([w, v]) => `${WEEKDAYS.find((wd) => wd.key === w)?.label}: ${v.seat_label || '未割当'}`)
                                         .join('／')}`
-                                    : `仮の座席: ${p.allocated_seat_label ?? '未選択（下の「座席割り当て」欄から選んでください）'}`
+                                    : `${p.status === 'seats_tentative' ? '仮の座席' : '割当状況'}: ${p.allocated_seat_label ?? '未選択（下の「座席割り当て」欄から選んでください）'}`
                                 }
                               >
                                 🪑

@@ -19,27 +19,8 @@ export default function ConfirmWeekdays() {
   const { items: plans, isLoading, refresh } = useQuarterPlans()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // 対象プロジェクトを個別に取り消す（2026-09-17新設。「特定のプロジェクトの割り当てをキャンセルする
-  // 方法がない」との指摘を受けた）。A-62（unfinalize-weekdays）をseats_tentativeにも使えるよう
-  // 拡張し、そのプロジェクトだけをsurvey_openに戻す（曜日・座席の選択はやり直せるよう残る）。
-  // このページの対象一覧（tentativePlans）から即座に外れる
-  const [cancelingId, setCancelingId] = useState<number | null>(null)
-  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const tentativePlans = plans.filter((p) => p.status === 'seats_tentative')
-
-  const cancelOne = async (id: number) => {
-    setCancelingId(id)
-    setCancelError(null)
-    try {
-      await apiFetch(`/api/project-quarter-plans/${id}/unfinalize-weekdays`, { method: 'PUT' })
-      await refresh()
-    } catch (e) {
-      setCancelError(e instanceof ApiError ? e.message : '取り消しに失敗しました')
-    } finally {
-      setCancelingId(null)
-    }
-  }
 
   const confirmFinal = async () => {
     setSubmitting(true)
@@ -60,10 +41,32 @@ export default function ConfirmWeekdays() {
     }
   }
 
+  // 2026-09-18修正: w-[97vw]はサイドバー幅を考慮せずビューポート全体に対する割合で計算するため、
+  // サイドバーと合わせるとビューポート幅を超えてしまい、見出し行の「戻る」ボタン等が画面外に
+  // はみ出す不具合があった（「この内容で確定する」ボタンを見出し位置に配置した際に発覚）。
+  // 親レイアウト（Layout.tsx）がsm:flex-1でサイドバー分を差し引いた残り幅を渡してくれているため、
+  // w-fullに変更してそれをそのまま使う（max-w-[2400px]で広い画面での上限は維持）
   return (
-    <div className="mx-auto w-[97vw] max-w-[2400px] space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">この内容で本当に曜日を確定しますか</h1>
+    <div className="mx-auto w-full max-w-[2400px] space-y-4 p-6">
+      {/* 見出しテキスト（「この内容で本当に曜日を確定しますか」）を削除し、その位置に「この内容で
+          確定する」ボタンを配置した（2026-09-18修正。「フロアマップが曜日4つぶん縦に並ぶため、
+          下までスクロールしないとボタンが見つからない」との指摘を受け、いったん見出し横に追加した
+          ところ、「見出しは削除してその位置にボタンを配置してほしい」との訂正を受けた）。下部の
+          ボタン（内容を確認しながら押す一連の流れ用）はそのまま残す。position:stickyで
+          スクロール中も常に見える行に置く */}
+      <div className="sticky top-0 z-10 -mx-6 flex items-center justify-between gap-2 bg-slate-100 px-6 py-2">
+        {tentativePlans.length > 0 ? (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={confirmFinal}
+            className="rounded bg-green-700 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+          >
+            この内容で確定する
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={() => navigate('/project-seats-area')}
@@ -72,6 +75,7 @@ export default function ConfirmWeekdays() {
           戻る
         </button>
       </div>
+      {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
@@ -93,25 +97,6 @@ export default function ConfirmWeekdays() {
               下にあるプロジェクトの紹介は削除していいよ」との要望を受けて削除した（2026-09-17修正。
               曜日×座席の対応はこのプレビュー自体で確認できるため） */}
           <WeekdaySeatPreview plans={tentativePlans} />
-          {/* プロジェクトごとに個別に取り消せるチップ一覧（2026-09-17新設） */}
-          <div className="flex flex-wrap gap-2 border-t border-slate-400 pt-3">
-            {tentativePlans.map((p) => (
-              <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-slate-50 py-1 pl-3 pr-1.5 text-xs text-slate-700">
-                {p.project_name}
-                <button
-                  type="button"
-                  disabled={cancelingId === p.id}
-                  onClick={() => cancelOne(p.id)}
-                  title="このプロジェクトの仮の座席割り当てを取り消す（アンケート回答後の状態に戻ります）"
-                  className="rounded-full px-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          {cancelError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{cancelError}</p>}
-          {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <div className="flex justify-end gap-2 border-t border-slate-400 pt-3">
             <button
               type="button"
