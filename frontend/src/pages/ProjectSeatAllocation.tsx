@@ -5,7 +5,6 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
-import WeekdaySeatPreview from '../components/WeekdaySeatPreview'
 import type { QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
@@ -256,20 +255,6 @@ export default function ProjectSeatAllocation() {
           })
     return [...base].sort((a, b) => Number(isUnanswered(b)) - Number(isUnanswered(a)))
   }, [filteredPlans, weekdayFilter])
-
-  // 曜日別の座席配置の確認（2026-09-25新設）。「この内容で本当に曜日を確定する」の確認画面
-  // （ConfirmWeekdays.tsx、WeekdaySeatPreview）はseats_tentativeの行しか対象にしないため、
-  // 確定・割り当てが完了した後は同じ曜日×座席の一覧をどこからも見返せなかった。「割り当てた後に
-  // でもいつでも確認できるようにしてほしい」との要望を受け、座席割り当て一覧の絞り込み条件
-  // （期間タブ・曜日・状態・エリア・プロジェクト名）をそのまま流用し、実際に座席の島を持つ行
-  // （allocated_seats_by_weekdayがある＝座席割当済みまたは仮の座席割り当て中）を対象に表示する。
-  // 新しいAPIは不要（既存のallocated_seats_by_weekdayを使う）。当初はボタンで開閉する方式だったが、
-  // 「開閉式じゃない方法で、曜日調整表と確定した出社曜日の間に見れるようにしてほしい」との訂正を
-  // 受け、常時表示に変更しWeekdayMatrixとConfirmedWeekdaysTableの間に配置した（2026-09-25再修正）
-  const weekdaySeatPreviewPlans = useMemo(
-    () => seatListPlans.filter((p) => p.allocated_seats_by_weekday),
-    [seatListPlans]
-  )
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -768,8 +753,6 @@ export default function ProjectSeatAllocation() {
             weekdayFilter={weekdayFilter}
             showNoteText={showNoteText}
           />
-
-          {weekdaySeatPreviewPlans.length > 0 && <WeekdaySeatPreview plans={weekdaySeatPreviewPlans} />}
 
           <ConfirmedWeekdaysTable
             plans={filteredPlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
