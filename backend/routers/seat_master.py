@@ -217,7 +217,15 @@ async def delete_seat(id: int, _: CurrentUser = Depends(require_roles("admin")))
     含まれる座席は、reservations・fixed_seat_assignmentsのようなFK制約が効かないためこれらの
     チェックをすり抜けて削除でき、削除後もallocated_seatsに存在しない座席IDが残ったままになる
     （プロジェクトの必要座席数と実際に確保できる座席数が静かにずれる）不具合があったため、
-    このチェックも追加した（2026-09-09追加）。"""
+    このチェックも追加した（2026-09-09追加）。
+
+    allocated_seats_overrides（曜日ごとの例外の座席、2026-09-16追加）も同じくFK制約のない
+    JSONB（<code>{"tue": [id, ...]}</code>）で、基本の島（allocated_seats）とは別に座席IDを
+    保持するにもかかわらず、この関数は新設時に更新されておらずチェック対象から漏れていた
+    （QA調査で発見。2026-09-25修正。ある曜日だけ基本の島と異なる座席を割り当てているプロジェクトの
+    例外先の座席が、他の条件をすべて満たさない〔予約・固定座席の履歴が一切ない新規座席等〕場合に
+    限り削除をすり抜けられる、という状態だった）。allocated_seatsと同様、各曜日の配列いずれかに
+    対象seat_idが含まれていれば削除を拒否する。"""
     pool = get_pool()
     existing = await pool.fetchrow("SELECT id FROM seats WHERE id = $1", id)
     if existing is None:
@@ -240,5 +248,12 @@ async def delete_seat(id: int, _: CurrentUser = Depends(require_roles("admin")))
     )
     if has_project_allocation:
         raise HTTPException(409, detail="この座席はプロジェクト座席の島の割当に含まれているため削除できません。廃止をご利用ください")
+    has_project_override_allocation = await pool.fetchval(
+        """SELECT 1 FROM project_quarter_plans pqp, jsonb_each(pqp.allocated_seats_overrides) AS kv(weekday, seat_ids)
+           WHERE kv.seat_ids @> $1::jsonb""",
+        json.dumps([id]),
+    )
+    if has_project_override_allocation:
+        raise HTTPException(409, detail="この座席はプロジェクト座席の島の割当（曜日ごとの例外）に含まれているため削除できません。廃止をご利用ください")
     await pool.execute("DELETE FROM seats WHERE id = $1", id)
     return {"detail": "座席を削除しました"}

@@ -2885,7 +2885,7 @@ export default function Availability() {
               )}
               <dl className="flex-1 space-y-1.5 text-sm">
                 <div className="flex justify-between"><dt className="text-slate-500">氏名</dt><dd className="font-semibold">{profileData.last_name} {profileData.first_name}</dd></div>
-                <div className="flex justify-between"><dt className="text-slate-500">所属</dt><dd>{profileData.role === 'admin' ? '管理部' : '一般'}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">所属</dt><dd>{profileData.projects.length > 0 ? profileData.projects.join('、') : '未所属'}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">誕生日</dt><dd>{profileData.birth_month && profileData.birth_day ? `${profileData.birth_month}月${profileData.birth_day}日` : '未設定'}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">趣味</dt><dd>{profileData.hobby || '未設定'}</dd></div>
               </dl>

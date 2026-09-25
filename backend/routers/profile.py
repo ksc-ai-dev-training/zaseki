@@ -98,22 +98,31 @@ async def update_my_profile(body: ProfileUpdate, user: CurrentUser = Depends(req
 @public_router.get("/{user_id}/profile")
 async def get_user_profile(user_id: int, _user: CurrentUser = Depends(require_auth)):
     """A-87: 他利用者のプロフィールを閲覧する（読み取り専用）。「座席表で名前が入っている座席を
-    押したときプロフィールが出てくるようにしたい」との要望を受けた（S-02）。氏名・所属・
+    押したときプロフィールが出てくるようにしたい」との要望を受けた（S-02）。氏名・参加プロジェクト・
     マイプロフィール（S-12）で本人が任意で登録したアイコン・生年月日・趣味を返す。メールアドレス・
     在籍状況等の管理情報は含めない（社内向けの軽い自己紹介目的のため）。退職済み（employment_status=
     'retired'）・削除済みの利用者は404にする（座席表には表示され得ないため実運用上は起こらないが、
-    念のため直接IDを指定された場合に備える）。"""
+    念のため直接IDを指定された場合に備える）。
+    参加プロジェクト（2026-09-25変更）: 当初「所属」欄にrole（一般/管理部）を表示していたが、
+    「どのプロジェクトに参加しているか記入してほしい」との要望を受け、project_membersに登録されて
+    いる（削除されていない）プロジェクト名の一覧に差し替えた（A-13と同じテーブル構成）。"""
     row = await get_pool().fetchrow(
-        """SELECT last_name, first_name, role, avatar_image, birth_month, birth_day, hobby
+        """SELECT last_name, first_name, avatar_image, birth_month, birth_day, hobby
            FROM users WHERE id = $1 AND deleted_at IS NULL AND employment_status != 'retired'""",
         user_id,
     )
     if row is None:
         raise HTTPException(404, detail="利用者が見つかりません")
+    project_rows = await get_pool().fetch(
+        """SELECT p.name FROM project_members pm
+           JOIN projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
+           WHERE pm.user_id = $1 ORDER BY p.name""",
+        user_id,
+    )
     return {
         "last_name": row["last_name"],
         "first_name": row["first_name"],
-        "role": row["role"],
+        "projects": [r["name"] for r in project_rows],
         "avatar_image": row["avatar_image"],
         "birth_month": row["birth_month"],
         "birth_day": row["birth_day"],

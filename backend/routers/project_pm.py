@@ -115,16 +115,23 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     can_assign_seats or is_seat_assignerで判定する（project_title条件は使わない）。
     <strong>2026-09-14追加:</strong> A-55（プロジェクト削除）を物理削除から論理削除（projects.deleted_at）
     に変更したことに伴い、削除済みプロジェクトが自分の一覧に残り続けないよう、常にdeleted_at IS NULLで
-    絞り込む。"""
+    絞り込む。
+    <strong>2026-09-25追加:</strong> is_seat_assigner・can_assign_seats・admin以外のメンバー（自分が
+    project_title上はPM/PLでも、実際のPJ席決担当ではない場合を含む）から見ると、アンケート回答欄も
+    メンバー管理も表示されず「前回分を見る」だけの空の画面に見え、なぜ操作できないのか・誰が担当なのか
+    説明がなかった（QA調査で判明）。案内表示用に実際のPJ席決担当の氏名<code>seat_assigner_name</code>
+    （proxy_user_id未設定なら<code>null</code>）を返すようにした。"""
     rows = await get_pool().fetch(
         """SELECT pm.project_id, p.name AS project_name, pm.project_title, pm.can_assign_seats,
                   (p.created_by = $1) AS is_project_creator,
                   (p.proxy_user_id = $1) AS is_seat_assigner,
+                  proxy.last_name AS proxy_last_name, proxy.first_name AS proxy_first_name,
                   plan.id AS plan_id, plan.period_start, plan.period_end, plan.status,
                   plan.required_seats, plan.allocated_seats, plan.allocated_seats_overrides,
                   plan.weekdays_finalized
            FROM project_members pm
            JOIN projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
+           LEFT JOIN users proxy ON proxy.id = p.proxy_user_id
            LEFT JOIN project_quarter_plans plan ON plan.project_id = pm.project_id
            WHERE pm.user_id = $1
            ORDER BY p.name, plan.period_start""",
@@ -147,6 +154,7 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
             "project_title": r["project_title"], "can_assign_seats": r["can_assign_seats"],
             "is_project_creator": r["is_project_creator"],
             "is_seat_assigner": r["is_seat_assigner"],
+            "seat_assigner_name": f"{r['proxy_last_name']} {r['proxy_first_name']}" if r["proxy_last_name"] else None,
             "plans": [],
         })
         if r["plan_id"] is None:

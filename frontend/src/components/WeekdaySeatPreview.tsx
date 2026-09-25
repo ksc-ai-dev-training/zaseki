@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSeatMaster } from '../hooks/useSeatMaster'
+import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { NorthFloor, EastFloor, WestFloor } from './FloorAreas'
 import SeatTile from './SeatTile'
 import type { QuarterPlanItem, Seat, Weekday } from '../types'
@@ -31,6 +32,12 @@ const WEEKDAYS: { key: Weekday; label: string; headerClass: string }[] = [
 // セクションを分けず、「曜日」だけを軸に横へ並べる
 export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[] }) {
   const { items: seatMaster } = useSeatMaster('all', 'active', '')
+  // 固定座席も一緒に表示する（2026-09-25追加。「そもそも曜日別の座席配置なのですが、固定座席も
+  // 配置されるようにしてほしい」との要望を受けた）。固定座席は曜日を問わず常に同じ座席のため、
+  // 全ての曜日列に同じ内容を重ねる。A-19はrole='admin'限定のため、エリア責任者（role='general'）が
+  // 見ている場合はitemsが空のまま返り、既存のWeekdayMatrix（曜日調整表、固定座席保有者の人数
+  // カウントに同じフックを使う）と同様に固定座席の重ね表示なしで静かに縮退する
+  const { items: fixedAssignments } = useFixedSeatAssignments()
 
   const seatAreaById = useMemo(() => new Map(seatMaster.map((s) => [s.id, s.area])), [seatMaster])
 
@@ -65,10 +72,11 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
     plans.some((p) => p.allocated_seats_by_weekday && w.key in p.allocated_seats_by_weekday)
   )
 
-  const areasInvolved = (['NORTH', 'EAST', 'WEST'] as const).filter((area) =>
-    plans.some((p) =>
-      Object.values(p.allocated_seats_by_weekday ?? {}).some((v) => v.seat_ids.some((id) => seatAreaById.get(id) === area))
-    )
+  const areasInvolved = (['NORTH', 'EAST', 'WEST'] as const).filter(
+    (area) =>
+      plans.some((p) =>
+        Object.values(p.allocated_seats_by_weekday ?? {}).some((v) => v.seat_ids.some((id) => seatAreaById.get(id) === area))
+      ) || fixedAssignments.some((f) => f.area === area)
   )
   const hasNorth = areasInvolved.includes('NORTH')
   const hasEast = areasInvolved.includes('EAST')
@@ -80,19 +88,24 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
     <div className="space-y-4 rounded border border-slate-400 bg-slate-50 p-3">
       <div className="grid max-h-[88vh] grid-cols-[repeat(2,max-content)] gap-3 overflow-auto pb-1">
         {weekdaysInvolved.map((w) => {
-          // previewColorBySeatIdの値自体は使わず（SeatTile.tsx側は名前表示に変えたため）、
-          // キーの存在＝「割り当てあり」の合図としてのみ使う。NORTH/EAST/WESTのどのFloorへ渡しても、
-          // 各コンポーネントは自分が知っている座席番号だけを描画するため、エリアで絞り込む必要はない
-          const previewColorBySeatId: Record<number, string> = {}
+          // NORTH/EAST/WESTのどのFloorへ渡しても、各コンポーネントは自分が知っている座席番号だけを
+          // 描画するため、エリアで絞り込む必要はない。固定座席は曜日を問わず常に同じ座席のため先に
+          // 全曜日共通で埋め、プロジェクトの座席の島を後から重ねる（実運用では固定座席〔seat_type=
+          // 'fixed'〕がプロジェクトの座席の島と重複することはないが、念のためプロジェクト側を優先する）
+          const previewKindBySeatId: Record<number, 'project' | 'fixed'> = {}
           const previewLabelBySeatId: Record<number, string> = {}
+          fixedAssignments.forEach((f) => {
+            previewKindBySeatId[f.seat_id] = 'fixed'
+            previewLabelBySeatId[f.seat_id] = f.user_name
+          })
           plans.forEach((p) => {
             const ids = p.allocated_seats_by_weekday?.[w.key]?.seat_ids ?? []
             ids.forEach((id) => {
-              previewColorBySeatId[id] = '1'
+              previewKindBySeatId[id] = 'project'
               previewLabelBySeatId[id] = p.project_name
             })
           })
-          const tileProps = { onReserve: () => {}, onCancel: () => {}, previewColorBySeatId, previewLabelBySeatId }
+          const tileProps = { onReserve: () => {}, onCancel: () => {}, previewKindBySeatId, previewLabelBySeatId }
           return (
             <div key={w.key} className="shrink-0 overflow-hidden rounded border border-slate-400 bg-white">
               {/* 曜日ラベル（2026-09-17拡大）: 「曜日の表示がわかりにくい」との指摘を受け、小さい

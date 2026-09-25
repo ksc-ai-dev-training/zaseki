@@ -41,7 +41,7 @@ interface FloorProps {
   onSeatDragPointerMove?: (e: ReactPointerEvent<HTMLButtonElement>) => void
   onSeatDragPointerUp?: (e: ReactPointerEvent<HTMLButtonElement>) => void
   // 曜日確定の確認モーダル用の読み取り専用プレビュー（2026-09-17新設、SeatTile.tsx参照）
-  previewColorBySeatId?: Record<number, string>
+  previewKindBySeatId?: Record<number, 'project' | 'fixed'>
   previewLabelBySeatId?: Record<number, string>
 }
 

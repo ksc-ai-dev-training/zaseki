@@ -38,7 +38,7 @@ export interface MyProfile {
 export interface PublicProfile {
   last_name: string
   first_name: string
-  role: Role
+  projects: string[]
   avatar_image: string | null
   birth_month: number | null
   birth_day: number | null
@@ -496,6 +496,9 @@ export interface MyProjectItem {
    * 〔created_by基準〕へ切り替えていたが、「席決め担当になった人がアンケートなどに回答できる」
    * との指摘を受け、proxy_user_id基準に戻した） */
   is_seat_assigner: boolean
+  /** 実際のPJ席決担当の氏名（2026-09-25追加）。is_seat_assigner・can_assign_seats・adminのいずれでも
+   * ない場合、アンケート回答欄等が表示されない理由の案内に使う。proxy_user_id未設定ならnull */
+  seat_assigner_name: string | null
   // 対象四半期を自由に選択できるよう、存在する計画を全件（period_start昇順）返す
   // （2026-08-31訂正。従来はplan: MyProjectPlanSummary | null で直近1件のみだった）
   plans: MyProjectPlanSummary[]

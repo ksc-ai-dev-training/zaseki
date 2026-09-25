@@ -57,8 +57,10 @@ interface SeatTileProps {
   /** 曜日確定の確認モーダルで、曜日ごとの座席の島を実際のフロア図に重ねて表示するプレビュー
    * モード（2026-09-17新設。「曜日とPJ座席を確定させる際の確認画面として、座席のエリア図と
    * 併記してほしい」との要望を受けた）。存在すること自体がプレビューモードの合図（クリック・
-   * 実際の予約状況は無視し、指定した座席だけをプロジェクトの色で塗った読み取り専用タイルにする） */
-  previewColorBySeatId?: Record<number, string>
+   * 実際の予約状況は無視し、指定した座席だけを読み取り専用タイルにする）。値はプロジェクト座席
+   * （'project'、濃紺）と固定座席（'fixed'、固定座席と同じ紫、2026-09-25追加。「そもそも曜日別の
+   * 座席配置なのですが、固定座席も配置されるようにしてほしい」との要望を受けた）を色分けする */
+  previewKindBySeatId?: Record<number, 'project' | 'fixed'>
   previewLabelBySeatId?: Record<number, string>
 }
 
@@ -101,25 +103,31 @@ export default function SeatTile({
   seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, originalAllocatedSeatIds,
   otherWeekdaySeatIds, claimedByOtherPlanLabel, memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
   positionEditMode, onSeatDragPointerDown, onSeatDragPointerMove, onSeatDragPointerUp,
-  previewColorBySeatId, previewLabelBySeatId, onViewProfile,
+  previewKindBySeatId, previewLabelBySeatId, onViewProfile,
 }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
   }
 
-  if (previewColorBySeatId) {
+  if (previewKindBySeatId) {
     // 色だけでは似た色同士が見分けにくい（プロジェクト数が多いと配色が循環して衝突もする）との
     // 指摘を受け、色分けではなくプロジェクト名をそのままタイルに表示する方式に変更した
-    // （2026-09-17修正）。背景色は「割り当てあり／なし」を示す一律の1色に簡略化する
+    // （2026-09-17修正）。固定座席（'fixed'）は通常のフロアマップと同じ紫（.status-fixed）、
+    // プロジェクト座席（'project'）は濃紺で区別する（2026-09-25追加）
+    const kind = previewKindBySeatId[seat.id]
     const label = previewLabelBySeatId?.[seat.id]
+    const colors =
+      kind === 'fixed'
+        ? { background: '#ede9fe', borderColor: '#a78bfa', color: '#5b21b6' }
+        : kind === 'project'
+          ? { background: '#1e3a8a', borderColor: '#1e3a8a', color: '#ffffff' }
+          : { background: '#f8fafc', borderColor: '#e2e8f0', color: '#94a3b8' }
     return (
       <div
         className="seat-tile overflow-hidden"
         style={{
           ...style,
-          background: label ? '#1e3a8a' : '#f8fafc',
-          borderColor: label ? '#1e3a8a' : '#e2e8f0',
-          color: label ? '#ffffff' : '#94a3b8',
+          ...colors,
           fontWeight: label ? 600 : 400,
           fontSize: label ? '9px' : undefined,
           lineHeight: 1.2,

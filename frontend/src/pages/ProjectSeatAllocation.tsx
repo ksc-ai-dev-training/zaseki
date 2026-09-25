@@ -5,6 +5,7 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
+import WeekdaySeatPreview from '../components/WeekdaySeatPreview'
 import type { QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
@@ -212,6 +213,18 @@ export default function ProjectSeatAllocation() {
 
   const [nameFilter, setNameFilter] = useState('')
 
+  // 備考の内容の表示・非表示（2026-09-25新設）。「絞り込み機能がありますがここにプロジェクト側の
+  // 備考ありの文を表示・非表示できるようにしてほしいです」との要望を受けた。ここでの「備考」は
+  // PM/PLがアンケート回答時に入力する読み取り専用のnote（T-11）を指し、曜日調整表・確定した
+  // 出社曜日・座席割り当ての3つの一覧すべてでプロジェクト名の隣に表示する対象
+  // （エリア責任者・管理部自身が調整表に入力する備考欄〔admin_note〕とは別物で、そちらは対象外）。
+  // 当初はバッジ自体の表示・非表示にしていたが、「バッジを消すのではなく備考に書いてある文章を
+  // 表示・非表示するようにしたい。表示するときは文をそのままだして、非表示は備考ありバッジにする
+  // 形」との訂正を受け、オンのときはnoteの全文をそのまま表示、オフのときは従来どおり「備考あり」
+  // バッジ（title属性のホバーで全文表示）にする方式に変更した。他の絞り込みと同じく表示のみの
+  // 切り替えで、データ自体には影響しない
+  const [showNoteText, setShowNoteText] = useState(false)
+
   const filteredPlans = useMemo(
     () =>
       visiblePlans.filter(
@@ -243,6 +256,20 @@ export default function ProjectSeatAllocation() {
           })
     return [...base].sort((a, b) => Number(isUnanswered(b)) - Number(isUnanswered(a)))
   }, [filteredPlans, weekdayFilter])
+
+  // 曜日別の座席配置の確認（2026-09-25新設）。「この内容で本当に曜日を確定する」の確認画面
+  // （ConfirmWeekdays.tsx、WeekdaySeatPreview）はseats_tentativeの行しか対象にしないため、
+  // 確定・割り当てが完了した後は同じ曜日×座席の一覧をどこからも見返せなかった。「割り当てた後に
+  // でもいつでも確認できるようにしてほしい」との要望を受け、座席割り当て一覧の絞り込み条件
+  // （期間タブ・曜日・状態・エリア・プロジェクト名）をそのまま流用し、実際に座席の島を持つ行
+  // （allocated_seats_by_weekdayがある＝座席割当済みまたは仮の座席割り当て中）を対象に表示する。
+  // 新しいAPIは不要（既存のallocated_seats_by_weekdayを使う）。当初はボタンで開閉する方式だったが、
+  // 「開閉式じゃない方法で、曜日調整表と確定した出社曜日の間に見れるようにしてほしい」との訂正を
+  // 受け、常時表示に変更しWeekdayMatrixとConfirmedWeekdaysTableの間に配置した（2026-09-25再修正）
+  const weekdaySeatPreviewPlans = useMemo(
+    () => seatListPlans.filter((p) => p.allocated_seats_by_weekday),
+    [seatListPlans]
+  )
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -709,6 +736,15 @@ export default function ProjectSeatAllocation() {
               className="h-7 w-44 rounded border border-slate-500 px-2 text-xs"
             />
           </label>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={showNoteText}
+              onChange={(e) => setShowNoteText(e.target.checked)}
+              className="h-3.5 w-3.5"
+            />
+            <span className="font-semibold text-slate-500">備考の内容を表示</span>
+          </label>
           {(statusFilter !== 'all' || areaFilter !== 'all' || nameFilter.trim() !== '') && (
             <button
               type="button"
@@ -730,11 +766,15 @@ export default function ProjectSeatAllocation() {
             areaSeatCapacity={areaSeatCapacity}
             onCreateTentative={createTentativeAndAssign}
             weekdayFilter={weekdayFilter}
+            showNoteText={showNoteText}
           />
+
+          {weekdaySeatPreviewPlans.length > 0 && <WeekdaySeatPreview plans={weekdaySeatPreviewPlans} />}
 
           <ConfirmedWeekdaysTable
             plans={filteredPlans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated')}
             onChanged={refreshAll}
+            showNoteText={showNoteText}
           />
         </section>
 
@@ -778,8 +818,15 @@ export default function ProjectSeatAllocation() {
               <tbody>
                 {seatListPlans.map((p) => (
                   <tr key={p.id} className="border-b border-slate-400">
-                    <td className="px-4 py-2 font-semibold" title={p.note ?? undefined}>
-                      {p.project_name}{p.note && <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>}
+                    <td className="px-4 py-2 font-semibold" title={!showNoteText ? p.note ?? undefined : undefined}>
+                      {p.project_name}
+                      {p.note && (
+                        showNoteText ? (
+                          <span className="ml-1 text-xs font-normal text-amber-600">（{p.note}）</span>
+                        ) : (
+                          <span className="ml-1 text-amber-500" title={p.note}>備考あり</span>
+                        )
+                      )}
                       {/* 曜日によって座席の島が異なる場合の目印（2026-09-16新設。「PJは曜日によって
                           座席が変わる前提で進めてください」との上司フィードバックを受けた）。
                           内訳は曜日で絞り込んで確認する想定のため、ここではtitleで簡易表示のみ。
@@ -1190,7 +1237,7 @@ function AdminNoteField({ planId, initialValue }: { planId: number; initialValue
   )
 }
 
-function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]; onChanged: () => void }) {
+function ConfirmedWeekdaysTable({ plans, onChanged, showNoteText }: { plans: QuarterPlanItem[]; onChanged: () => void; showNoteText: boolean }) {
   const editablePlans = useMemo(
     () => plans.filter((p) => p.status === 'weekdays_finalized' || p.status === 'seats_allocated'),
     [plans]
@@ -1306,9 +1353,13 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
                   <td className="py-1 pr-3 font-semibold align-top">
                     {p.project_name}
                     {p.note && (
-                      <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
-                        備考あり
-                      </span>
+                      showNoteText ? (
+                        <span className="ml-1 text-xs font-normal text-amber-600">（{p.note}）</span>
+                      ) : (
+                        <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
+                          備考あり
+                        </span>
+                      )
                     )}
                     {p.status === 'seats_allocated' && (
                       <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title="変更すると座席の再割当が必要になります">
@@ -1463,7 +1514,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged }: { plans: QuarterPlanItem[]
   )
 }
 
-function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilter }: {
+function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilter, showNoteText }: {
   plans: QuarterPlanItem[]
   areaSeatCapacity: { NORTH: number; EAST_WEST: number }
   // 仮の座席割り当てを作成する（A-84、2026-09-16新設）。呼び出し元（親）がAPI呼び出し・座席割当
@@ -1472,6 +1523,7 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
   // 曜日での絞り込み（2026-09-16新設）。'all'以外なら、選んだ曜日の列以外を非表示にする
   // （チェック状態・確定操作の対象自体は変更しない、表示のみの絞り込み）
   weekdayFilter: Weekday | 'all'
+  showNoteText: boolean
 }) {
   const navigate = useNavigate()
   const visibleWeekdays = weekdayFilter === 'all' ? WEEKDAYS : WEEKDAYS.filter((w) => w.key === weekdayFilter)
@@ -1778,9 +1830,13 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                       <td className="py-1 pr-3 font-semibold align-top">
                         {p.project_name}
                         {p.note && (
-                          <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
-                            備考あり
-                          </span>
+                          showNoteText ? (
+                            <span className="ml-1 text-xs font-normal text-amber-600">（{p.note}）</span>
+                          ) : (
+                            <span className="ml-1 cursor-help rounded bg-amber-50 px-1 text-xs font-normal text-amber-600" title={p.note}>
+                              備考あり
+                            </span>
+                          )
                         )}
                         {aiReasoning[p.id] && (
                           <span

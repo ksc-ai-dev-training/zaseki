@@ -163,7 +163,13 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* justify-content: center だとブロックラベルの位置が座席数に応じて変わる。
+     座席配置編集モード（positionEditMode）で座席をドラッグして配置図の外へ出すと、
+     .seat-grid.cols-2（grid-template-rowsを持たず内容量で高さが決まる）の高さが
+     縮み、中央寄せのせいでラベルの位置も一緒にずれて見えていた（2026-09-25修正。
+     「席を移動させると本来のブロックの位置が変わって中央に記入されている」との
+     指摘を受けた）。ラベルを常に上端に固定するためflex-startにする */
+  justify-content: flex-start;
   gap: 6px;
   padding: 10px;
   border: 1px solid #b6bcc7;

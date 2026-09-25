@@ -417,7 +417,10 @@ function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChange
           対象四半期の計画はまだ開始されていません。
         </p>
       ) : plan ? (
-        <PlanPanel key={plan.id} planId={plan.id} summaryStatus={plan.status} />
+        <PlanPanel
+          key={plan.id} planId={plan.id} summaryStatus={plan.status}
+          seatAssignerName={item.seat_assigner_name} hasProjectTitle={item.project_title !== null}
+        />
       ) : (
         <p className="rounded border border-slate-400 bg-white px-4 py-3 text-sm text-slate-400">
           この四半期の計画はありません。
@@ -447,7 +450,16 @@ function ProjectSection({ item, selectedQuarter, projectDetail, onProjectsChange
   )
 }
 
-function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: QuarterPlanStatus }) {
+function PlanPanel({ planId, summaryStatus, seatAssignerName, hasProjectTitle }: {
+  planId: number
+  summaryStatus: QuarterPlanStatus
+  // 実際のPJ席決担当の氏名（2026-09-25追加）。自分がPM/PL（project_title）でもPJ席決担当
+  // （proxy_user_id）でなければアンケート回答・メンバー管理は行えず、その理由と担当者を案内する
+  seatAssignerName: string | null
+  // 自分がPM/PL/SLのいずれか（project_titleが設定されている）かどうか。一般メンバー
+  // （project_titleなし）はそもそも管理系操作を期待されていないため、案内の対象外にする
+  hasProjectTitle: boolean
+}) {
   const { plan, refresh } = useProjectPlanDetail(planId)
   const [showPrevious, setShowPrevious] = useState(false)
   const [previous, setPrevious] = useState<PreviousPlanDetail | null>(null)
@@ -549,6 +561,18 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
             </table>
           </div>
         </div>
+      )}
+
+      {/* PJ席決担当（proxy_user_id）でないPM/PL・メンバーには、アンケート回答欄・メンバー管理が
+          一切表示されず理由も分からない空の画面に見えていた（2026-09-25、QA調査で判明）。
+          project_title（PM/PL）はあくまで表示用の役職で、実際の操作権限はproxy_user_id基準の
+          ため、両者がずれているプロジェクトで起こる。誰が実際の担当か・なぜ操作できないかを案内する */}
+      {!plan.is_seat_assigner && hasProjectTitle && (
+        <p className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          {seatAssignerName
+            ? `出社曜日アンケートの回答・メンバー管理は、PJ席決担当（${seatAssignerName}さん）が行います。`
+            : 'このプロジェクトはPJ席決担当が未設定のため、出社曜日アンケートの回答・メンバー管理を行えません。管理部にご相談ください。'}
+        </p>
       )}
 
       {plan.is_seat_assigner && plan.status === 'survey_open' && (
