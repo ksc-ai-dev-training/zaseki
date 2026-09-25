@@ -16,6 +16,7 @@ const OUTPUT_SIZE = 240
 const MIN_ZOOM = 1
 const MAX_ZOOM = 3
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
+const MAX_HOBBY_LENGTH = 200
 
 function dataUrlByteLength(dataUrl: string): number {
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
@@ -42,6 +43,9 @@ export default function MyProfile() {
   const [avatarImage, setAvatarImage] = useState<string | null>(null)
   const [birthMonth, setBirthMonth] = useState<number | null>(null)
   const [birthDay, setBirthDay] = useState<number | null>(null)
+  // 趣味（任意、200文字以内。2026-09-25追加。「座席表で名前が入っている座席を押したとき
+  // プロフィールが出てくるようにしたい」との要望を受けたプロフィール閲覧機能とあわせて追加した）
+  const [hobby, setHobby] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -64,6 +68,7 @@ export default function MyProfile() {
     setAvatarImage(profile.avatar_image)
     setBirthMonth(profile.birth_month)
     setBirthDay(profile.birth_day)
+    setHobby(profile.hobby ?? '')
   }, [profile])
 
   const onFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -170,7 +175,10 @@ export default function MyProfile() {
     try {
       await apiFetch('/api/users/me/profile', {
         method: 'PUT',
-        body: JSON.stringify({ avatar_image: avatarImage, birth_month: birthMonth, birth_day: birthDay }),
+        body: JSON.stringify({
+          avatar_image: avatarImage, birth_month: birthMonth, birth_day: birthDay,
+          hobby: hobby.trim() === '' ? null : hobby.trim(),
+        }),
       })
       await Promise.all([mutateProfile(), mutateMe()])
       setSaved(true)
@@ -254,6 +262,19 @@ export default function MyProfile() {
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="mb-2 text-sm font-semibold text-slate-700">趣味（任意）</div>
+              <input
+                type="text"
+                value={hobby}
+                onChange={(e) => { setSaved(false); setHobby(e.target.value.slice(0, MAX_HOBBY_LENGTH)) }}
+                placeholder="例: 読書、キャンプ"
+                maxLength={MAX_HOBBY_LENGTH}
+                className="h-9 w-full rounded border border-slate-500 px-2 text-sm"
+              />
+              <div className="mt-1 text-right text-xs text-slate-400">{hobby.length}/{MAX_HOBBY_LENGTH}</div>
             </div>
 
             {error && <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

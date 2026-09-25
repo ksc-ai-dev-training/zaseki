@@ -1101,7 +1101,7 @@ async def assign_seat_block(id: int, body: SeatBlockAssign, user: CurrentUser = 
         plan["project_id"],
     )
     if non_fixed_member_count == 0:
-        raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席保有者または在宅のため不要のいずれかであり、プロジェクト座席は不要です")
+        raise HTTPException(400, detail="このプロジェクトのメンバーは全員固定座席保有者または不要のいずれかであり、プロジェクト座席は不要です")
 
     seats = await pool.fetch(
         "SELECT id, seat_no, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", body.seat_ids
@@ -1325,7 +1325,7 @@ async def assign_seat_block_bulk(body: SeatBlockBulkAssign, user: CurrentUser = 
                     plan["project_id"],
                 )
                 if non_fixed_member_count == 0:
-                    raise HTTPException(400, detail=f"「{plan['project_name']}」はメンバーが全員固定座席保有者または在宅のため不要であり、プロジェクト座席は不要です")
+                    raise HTTPException(400, detail=f"「{plan['project_name']}」はメンバーが全員固定座席保有者または不要であり、プロジェクト座席は不要です")
 
                 seats = await conn.fetch(
                     "SELECT id, seat_no, status, seat_type FROM seats WHERE id = ANY($1::bigint[])", item.seat_ids

@@ -32,6 +32,8 @@ interface FloorProps {
   memberAssignEligibleIds?: Set<number>
   memberAssignPickedLabels?: Record<number, string>
   onMemberAssignClick?: (seat: Seat) => void
+  // 座席に氏名が表示されている座席をクリックしたときにプロフィールを表示する（A-87、2026-09-25新設）
+  onViewProfile?: (userId: number) => void
   // 座席配置編集モード（S-07「座席表の配置を編集する」から遷移、2026-09-10追加）。ドラッグで
   // 座席の位置を変更できるようにする
   positionEditMode?: boolean

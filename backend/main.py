@@ -31,6 +31,7 @@ app.include_router(roles.router)
 app.include_router(project_seats.router)
 app.include_router(project_pm.router)
 app.include_router(profile.router)
+app.include_router(profile.public_router)
 app.include_router(feedback.router)
 
 

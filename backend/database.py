@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_image       TEXT,
     birth_month        SMALLINT CHECK (birth_month BETWEEN 1 AND 12),
     birth_day          SMALLINT CHECK (birth_day BETWEEN 1 AND 31),
+    -- 趣味（S-12、任意項目、2026-09-25追加）。「座席表で名前が入っている座席を押したときプロフィールが
+    -- 出てくるようにしたい」との要望を受けたプロフィール閲覧機能とあわせて追加した自由記述欄
+    hobby              VARCHAR(200),
     -- システム運用担当（FR-09-3、2026-09-01追加）。「フィードバック一覧は管理部ではなくシステムを
     -- 運用している人に見せたい」との要望を受けた。role='admin'（管理部、業務上の役割）とは独立した
     -- 属性とし、area_manager_role同様、S-08「利用者ロール管理」で管理部が任意の利用者に付与する
@@ -85,6 +88,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_image TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_month SMALLINT CHECK (birth_month BETWEEN 1 AND 12);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_day SMALLINT CHECK (birth_day BETWEEN 1 AND 31);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hobby VARCHAR(200);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system_operator BOOLEAN NOT NULL DEFAULT false;
 
 -- T-02 areas

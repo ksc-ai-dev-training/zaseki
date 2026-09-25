@@ -40,7 +40,7 @@ export default function WeekdaySeatPreview({ plans }: { plans: QuarterPlanItem[]
       map[s.seat_no] = {
         id: s.id, seat_no: s.seat_no, seat_type: s.seat_type, status: 'free',
         display_name: null, title: null, avatar_image: null, is_birthday: false,
-        reservation_id: null, pos_x: s.pos_x, pos_y: s.pos_y, multi_seat_holder: false,
+        reservation_id: null, pos_x: s.pos_x, pos_y: s.pos_y, multi_seat_holder: false, user_id: null,
       }
     })
     return map

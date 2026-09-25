@@ -8,7 +8,7 @@ import { useProjects } from '../hooks/useProjects'
 import ProjectEditModal, { ProjectDeleteConfirmModal, type ProjectForm } from '../components/ProjectEditModal'
 import type {
   MyProjectItem, PreviousPlanDetail, ProjectListItem, ProjectPlanDetail, ProjectPlanMember,
-  QuarterPlanStatus, RetrySeatAssignmentResult, SeatAssignmentResult, Weekday,
+  QuarterPlanStatus, Weekday,
 } from '../types'
 
 const WEEKDAYS: { key: Weekday; label: string }[] = [
@@ -167,6 +167,67 @@ export default function ProjectSeatRequest() {
     }
   }, [quarterTabs, hasAutoSelectedQuarter])
 
+  // 座席表からまとめて確保する（2026-09-24新設）。「一括で全てのプロジェクト席をきめるように
+  // したい、座席の島の一括割当と同じように左に座席表、右にプロジェクト選択画面と曜日、割り当てられた
+  // 島、各プロジェクトの情報が見えるように。プルダウン形式で座席を決めるのを削除してほしい」との
+  // 要望を受けた。座席の島の一括割当（ProjectSeatAllocation.tsxのgoSeatBlockBulk）と同じ考え方で、
+  // 表示中の四半期タブで座席割当済み（status='seats_allocated'）の全プロジェクトの最新詳細（A-14、
+  // members・allocated_seats_by_weekdayを含む）を取り直し、未確保メンバーが1人以上いるプロジェクト
+  // だけをまとめて空き状況・予約（S-02）へ渡す。A-13（/projects/mine、この画面の一覧取得）は
+  // 一覧向けの軽量なサマリーのみでmembersを含まないため、都度A-14で取り直す必要がある
+  const navigate = useNavigate()
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  // メンバーへの座席確保を実行できるのは、A-18と同じ権限（role='admin'またはPJ席決担当
+  // 〔proxy_user_id〕または席決め権限保持者〔can_assign_seats〕）を持つプロジェクトだけ
+  // （2026-09-24追加。QA中に、権限のないプロジェクトが一覧に混じり403で失敗することが判明した。
+  // 単一プロジェクト側〔PlanPanel〕は既にA-14のcan_manage_seat_assignで絞り込んでいるのと同じ考え方を
+  // ここでも適用する。A-13〔/projects/mine〕のis_seat_assigner・can_assign_seatsで判定できるため、
+  // A-14を呼ぶ前の時点で絞り込める）
+  const canManageSeatAssign = (mp: MyProjectItem) => mp.is_seat_assigner || mp.can_assign_seats || me?.role === 'admin'
+  const bulkAllocatedCount = items
+    .filter(canManageSeatAssign)
+    .reduce(
+      (sum, mp) => sum + mp.plans.filter((p) => p.period_start === selectedQuarter && p.status === 'seats_allocated').length,
+      0,
+    )
+  const goBulkSeatMap = async () => {
+    setBulkLoading(true)
+    setBulkError(null)
+    try {
+      const candidates = items
+        .filter(canManageSeatAssign)
+        .flatMap((mp) => mp.plans.filter((p) => p.period_start === selectedQuarter && p.status === 'seats_allocated'))
+      const details = await Promise.all(
+        candidates.map((p) => apiFetch<ProjectPlanDetail>(`/api/project-quarter-plans/${p.id}`))
+      )
+      const plans = details
+        .filter((d) => d.can_manage_seat_assign)
+        .map((d) => ({
+          planId: d.id,
+          projectName: d.project_name,
+          periodStart: d.period_start,
+          weekdaysFinalized: d.weekdays_finalized,
+          requiredSeats: d.required_seats,
+          allocatedSeatIds: (d.allocated_seats ?? []).map((s) => s.id),
+          allocatedSeatsByWeekday: d.allocated_seats_by_weekday,
+          members: d.members
+            .filter((m) => m.assigned_seat_id === null && !m.seat_not_required)
+            .map((m) => ({ userId: m.user_id, name: m.name })),
+        }))
+        .filter((p) => p.members.length > 0)
+      if (plans.length === 0) {
+        setBulkError('座席の確保が必要なメンバーがいるプロジェクトはありません。')
+        return
+      }
+      navigate('/', { state: { memberSeatAssignBulkFor: { plans } } })
+    } catch (e) {
+      setBulkError(e instanceof ApiError ? e.message : '取得に失敗しました')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   return (
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
@@ -218,6 +279,24 @@ export default function ProjectSeatRequest() {
             ))}
           </div>
         )}
+
+        {/* 座席表からまとめて確保する（2026-09-24新設）。座席の島の一括割当（S-09）の
+            「座席の島の割当をまとめて行う」と同じ位置づけで、表示中の四半期の対象件数を示す
+            コールアウトとボタンを一覧の上部に置く（対象が1件もなければ表示しない） */}
+        {bulkAllocatedCount > 0 && (
+          <div className="mb-6 flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+            <span>座席割当済みのプロジェクトが{bulkAllocatedCount}件あります。座席表からまとめてメンバーへの座席を確保できます。</span>
+            <button
+              type="button"
+              disabled={bulkLoading}
+              onClick={goBulkSeatMap}
+              className="shrink-0 rounded bg-blue-800 px-3 py-1.5 text-sm text-white hover:bg-blue-900 disabled:opacity-50"
+            >
+              {bulkLoading ? '確認中...' : '座席表からまとめて確保する'}
+            </button>
+          </div>
+        )}
+        {bulkError && <p className="mb-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{bulkError}</p>}
 
         <div className="space-y-8">
           {items.map((mp, i) => (
@@ -373,6 +452,13 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
   const [showPrevious, setShowPrevious] = useState(false)
   const [previous, setPrevious] = useState<PreviousPlanDetail | null>(null)
   const [previousError, setPreviousError] = useState<string | null>(null)
+  // 「メンバー管理」「メンバーへの座席確保」を1画面に並べて表示すると縦に長くなりすぎるとの
+  // 指摘を受け、ボタンを押したときだけそれぞれの画面が表示されるようにした（2026-09-25追加。
+  // 「切り替えではなくボタンで画面が出てくるようにしてほしい」との訂正を受け、タブのように
+  // 片方を選ぶと自動でもう片方が閉じる方式から、ボタンごとに独立して開閉する方式に変更した）。
+  // 既定はどちらも非表示
+  const [showMembers, setShowMembers] = useState(false)
+  const [showSeats, setShowSeats] = useState(false)
 
   const loadPrevious = async () => {
     setPreviousError(null)
@@ -469,18 +555,42 @@ function PlanPanel({ planId, summaryStatus }: { planId: number; summaryStatus: Q
         <SurveyPanel plan={plan} onSubmitted={refresh} />
       )}
 
-      {plan.is_seat_assigner && (
-        <MemberManagement plan={plan} onChanged={refresh} />
-      )}
-
-      {/* 対象期間が既に終了した計画では非表示にする（2026-09-15追加、「プロジェクトの人を変更する
-          とき過去のプロジェクトにもそれが影響されている」との報告を受けた）。project_membersは
-          期間を持たない単一の現在値のため、終了済みの過去の計画に対して表示し続けると、実際に
-          その期間に在籍していたメンバーとは異なる「現在のメンバー」一覧が出てしまい紛らわしい。
-          バックエンド（A-18・A-72）も同じ期間で書き込みを拒否するようにした */}
-      {plan.can_manage_seat_assign && plan.status === 'seats_allocated' && plan.period_end >= todayIso() && (
-        <BulkSeatAssign plan={plan} onChanged={refresh} />
-      )}
+      {(() => {
+        const canMembers = plan.is_seat_assigner
+        // 対象期間が既に終了した計画では非表示にする（2026-09-15追加、「プロジェクトの人を変更する
+        // とき過去のプロジェクトにもそれが影響されている」との報告を受けた）。project_membersは
+        // 期間を持たない単一の現在値のため、終了済みの過去の計画に対して表示し続けると、実際に
+        // その期間に在籍していたメンバーとは異なる「現在のメンバー」一覧が出てしまい紛らわしい。
+        // バックエンド（A-18・A-72）も同じ期間で書き込みを拒否するようにした
+        const canSeats = plan.can_manage_seat_assign && plan.status === 'seats_allocated' && plan.period_end >= todayIso()
+        if (!canMembers && !canSeats) return null
+        return (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              {canMembers && (
+                <button
+                  type="button"
+                  onClick={() => setShowMembers((v) => !v)}
+                  className={`rounded px-4 py-1.5 text-sm font-semibold ${showMembers ? 'bg-slate-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  メンバー管理
+                </button>
+              )}
+              {canSeats && (
+                <button
+                  type="button"
+                  onClick={() => setShowSeats((v) => !v)}
+                  className={`rounded px-4 py-1.5 text-sm font-semibold ${showSeats ? 'bg-slate-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  メンバーへの座席確保
+                </button>
+              )}
+            </div>
+            {showMembers && canMembers && <MemberManagement plan={plan} onChanged={refresh} />}
+            {showSeats && canSeats && <BulkSeatAssign plan={plan} onChanged={refresh} />}
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -723,78 +833,10 @@ function MemberManagement({ plan, onChanged }: { plan: ProjectPlanDetail; onChan
   )
 }
 
-// 座席の島の割当の除外日振替（BulkSeatAssign専用）。ExcludedDatesRetryと異なり、座席は
-// 座席番号のテキスト入力ではなく、島の範囲内の座席idから選ぶ（PM/PLは既にplan.allocated_seatsを
-// 持っているため、A-22座席一覧なしで選択肢を作れる、2026-09-07追加）
-function SeatIslandExcludedRetry({
-  excludedDates, seatOptions, onRetry, onRetried,
-}: {
-  excludedDates: { date: string; reason: string }[]
-  seatOptions: { id: number; seat_no: string }[]
-  onRetry: (dates: string[], seatId: number) => Promise<RetrySeatAssignmentResult>
-  onRetried: (result: RetrySeatAssignmentResult) => void
-}) {
-  const [seatId, setSeatId] = useState<number | ''>('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  if (excludedDates.length === 0) return null
-
-  const submit = async () => {
-    if (!seatId) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await onRetry(excludedDates.map((d) => d.date), seatId)
-      onRetried(result)
-      setSeatId('')
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '振り替えに失敗しました')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
-      <ul className="mb-1.5 space-y-0.5">
-        {excludedDates.map((d, i) => (
-          <li key={i} className="text-xs text-amber-800">{d.date}: {d.reason}</li>
-        ))}
-      </ul>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <select
-          value={seatId}
-          onChange={(e) => setSeatId(e.target.value ? Number(e.target.value) : '')}
-          className="h-7 rounded border border-slate-500 px-2 text-xs"
-        >
-          <option value="">座席を選択</option>
-          {seatOptions.map((s) => (
-            <option key={s.id} value={s.id}>{s.seat_no}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          disabled={submitting || !seatId}
-          onClick={submit}
-          className="h-7 rounded bg-blue-800 px-2 text-xs text-white hover:bg-blue-900 disabled:opacity-50"
-        >
-          この座席に変更
-        </button>
-        {error && <span className="text-xs text-red-700">{error}</span>}
-      </div>
-    </div>
-  )
-}
-
 function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChanged: () => void }) {
   const navigate = useNavigate()
-  const [picks, setPicks] = useState<Record<number, number | ''>>({})
-  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [results, setResults] = useState<SeatAssignmentResult[] | null>(null)
   const [busyMemberId, setBusyMemberId] = useState<number | null>(null)
-  const [copying, setCopying] = useState(false)
 
   // 確保済みメンバーの座席変更（2026-09-03追加。「メンバーへの座席確保なのですが変更できるように
   // してほしい」との要望を受けた。従来は一度確保すると「割り当てる座席」欄が「—」になり、この画面
@@ -809,47 +851,17 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
 
   // RULE-07廃止（2026-09-09）に伴い、固定座席保有者も確保対象に含める（固定座席との併用可）
   const unassigned = plan.members.filter((m) => m.assigned_seat_id === null && !m.seat_not_required)
-  const assignedSeatIds = new Set(plan.members.map((m) => m.assigned_seat_id).filter((v): v is number => v !== null))
-  const seatOptions = (plan.allocated_seats ?? []).filter((s) => !assignedSeatIds.has(s.id))
+  // 座席変更（changePicks、A-64）の候補。A-64は「全確定曜日に共通の1つの座席」への変更のみ対応する
+  // ため、曜日によって座席が異なるプロジェクトでは、確定曜日すべての実効座席に共通して含まれる
+  // 座席だけを候補にする（2026-09-24追加。含まれない座席を選ぶとバックエンドが400で拒否するため、
+  // 選択肢の時点で絞り込んでおく）
+  const commonSeatIds = plan.has_seat_override
+    ? (plan.weekdays_finalized ?? []).reduce<Set<number> | null>((acc, w) => {
+        const ids = new Set(plan.allocated_seats_by_weekday?.[w]?.seat_ids ?? [])
+        return acc === null ? ids : new Set([...acc].filter((id) => ids.has(id)))
+      }, null)
+    : null
 
-  // 前回の座席をコピー（2026-09-10追加。「前回のPJ席の人がコピーできるようにしてほしい」との
-  // 要望を受けた）。A-15（前回サイクルの参照）で前回のメンバー→座席番号の対応を取得し、まだ未確保の
-  // メンバーについて、前回と同じ座席番号が今回の座席の島（seatOptions）にも含まれていればpicksへ
-  // 反映するだけで、確保自体は行わない（内容を見直してから既存の「この内容で確保する」を押してもらう）。
-  // 座席の島は期ごとに異なりうるため、前回と同じ座席番号が今回はない場合はそのメンバーの分は
-  // 何もしない（手動で選んでもらう）。既に手動で選択済みのpicksは上書きしない
-  const copyPreviousSeats = async () => {
-    setCopying(true)
-    setError(null)
-    try {
-      const data = await apiFetch<PreviousPlanDetail>(`/api/project-quarter-plans/${plan.id}/previous`)
-      const seatIdByNo = new Map(seatOptions.map((s) => [s.seat_no, s.id]))
-      const previousSeatNoByUserId = new Map(
-        data.assignments.filter((a) => a.seat_no !== null).map((a) => [a.user_id, a.seat_no as string])
-      )
-      setPicks((prev) => {
-        const next = { ...prev }
-        // usedSeatIdsはこの呼び出し内で完結させる（setState updaterはStrict Modeで2回
-        // 呼ばれうるため、外側スコープの可変Setを共有すると2回目の呼び出しで既に使用済み
-        // 扱いになり結果が空になる不具合になる。既存の手動選択分〔prev〕も重複対象に含める）
-        const usedSeatIds = new Set(Object.values(next).filter((v): v is number => v !== ''))
-        unassigned.forEach((m) => {
-          if (next[m.user_id]) return
-          const previousSeatNo = previousSeatNoByUserId.get(m.user_id)
-          const seatId = previousSeatNo ? seatIdByNo.get(previousSeatNo) : undefined
-          if (seatId !== undefined && !usedSeatIds.has(seatId)) {
-            next[m.user_id] = seatId
-            usedSeatIds.add(seatId)
-          }
-        })
-        return next
-      })
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '前回分の取得に失敗しました')
-    } finally {
-      setCopying(false)
-    }
-  }
   // 変更先の候補は、必要人数ちょうどで座席の島が埋まっている（空き座席がない）ことが多く、
   // 空き座席だけでは選べる相手がいなかったため、既に他メンバーに割り当て済みの座席も選択肢に含め、
   // 選ぶとその相手と座席を交換する（2026-09-03追加。「変更先を選択を押しても座席が表示されないため
@@ -888,6 +900,7 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
           periodStart: plan.period_start,
           weekdaysFinalized: plan.weekdays_finalized,
           allocatedSeatIds: (plan.allocated_seats ?? []).map((s) => s.id),
+          allocatedSeatsByWeekday: plan.allocated_seats_by_weekday,
           members: unassigned.map((m) => ({ userId: m.user_id, name: m.name })),
         },
       },
@@ -925,69 +938,16 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
     }
   }
 
-  const submit = async () => {
-    const assignments = Object.entries(picks)
-      .filter(([, seatId]) => seatId !== '')
-      .map(([userId, seatId]) => ({ member_user_id: Number(userId), seat_id: seatId as number }))
-    if (assignments.length === 0) {
-      setError('座席を選んだメンバーがいません。少なくとも1名の座席を選んでください。')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    try {
-      const data = await apiFetch<{ results: SeatAssignmentResult[] }>(`/api/project-quarter-plans/${plan.id}/seat-assignments`, {
-        method: 'POST',
-        body: JSON.stringify({ assignments }),
-      })
-      setResults(data.results)
-      setPicks({})
-      onChanged()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '確保に失敗しました')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // 座席の島の割当（A-18）の結果で除外となった日だけを、同じ島の範囲内の別の座席に振り替える
-  // （2026-09-07追加。「席を取って結果で除外が出てきたとき、除外部分だけ別の席に変更できる機能が
-  // 欲しい」との要望を受けた）
-  const retrySeatAssignment = async (memberUserId: number, dates: string[], seatId: number) =>
-    apiFetch<RetrySeatAssignmentResult>(`/api/project-quarter-plans/${plan.id}/seat-assignments/retry`, {
-      method: 'POST',
-      body: JSON.stringify({ member_user_id: memberUserId, seat_id: seatId, dates }),
-    })
-  const applySeatAssignmentRetryResult = (memberUserId: number, retriedDates: string[], result: RetrySeatAssignmentResult) => {
-    setResults((prev) => {
-      if (!prev) return prev
-      const next = prev.map((r) =>
-        r.member_user_id === memberUserId
-          ? { ...r, excluded_dates: (r.excluded_dates ?? []).filter((d) => !retriedDates.includes(d.date)) }
-          : r,
-      )
-      if (result.created_days > 0) {
-        next.push({
-          member_user_id: memberUserId, seat_id: result.seat_id, seat_no: result.seat_no,
-          status: 'assigned', created_days: result.created_days, excluded_days: result.excluded_days,
-          excluded_dates: result.excluded_dates,
-        })
-      }
-      return next
-    })
-    onChanged()
-  }
-
-  // メンバー個別の座席確保（A-18・A-64）は基本の島だけを対象としており、曜日ごとに座席が異なる
-  // プロジェクト（has_seat_override）には未対応（2026-09-18追加。QA調査で発見した、ある曜日は
-  // 既に別プロジェクトへ明け渡し済みの座席へ誤って確保してしまう恐れがある不具合の対策）。
-  // 対応するまではバックエンドも400で拒否するため、ここで先にわかりやすく止める
+  // 座席の島がそもそも割り当てられていない場合のみブロックする（2026-09-24修正。以前は曜日によって
+  // 座席が異なるプロジェクト〔has_seat_override〕もここで一律ブロックしていたが、「曜日ごとに分けて
+  // 座席を選択できるようにしてほしい。その座席に割り当てられたら、そのエリアで席を割り振るように
+  // お願いします」との要望を受けて撤去した。曜日ごとの座席の選び分けは下の表側で行う）
   if (plan.member_seat_assign_blocked_by_override) {
     return (
       <div className="rounded border border-amber-200 bg-amber-50">
         <div className="border-b border-amber-200 px-4 py-3 font-semibold text-amber-800">メンバーへの座席確保</div>
         <p className="p-4 text-sm text-amber-800">
-          このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください。
+          座席の島がまだ割り当てられていないため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください。
         </p>
       </div>
     )
@@ -997,16 +957,6 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
     <div className="rounded border border-slate-400 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-slate-400 px-4 py-3 font-semibold">
         メンバーへの座席確保
-        {plan.has_previous_plan && unassigned.length > 0 && (
-          <button
-            type="button"
-            disabled={copying}
-            onClick={copyPreviousSeats}
-            className="rounded border border-slate-500 px-3 py-1 text-xs font-normal text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {copying ? 'コピー中...' : '前回の座席をコピーする'}
-          </button>
-        )}
       </div>
       <div className="p-4">
         <table className="w-full text-sm">
@@ -1014,8 +964,8 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
             <tr className="border-b border-slate-400 text-left text-slate-500">
               <th className="pb-2 pr-3">氏名</th>
               <th className="pb-2 pr-3">座席の確保状況</th>
-              <th className="pb-2 pr-3">割り当てる座席</th>
-              <th className="pb-2">在宅のため不要</th>
+              <th className="pb-2 pr-3">変更先</th>
+              <th className="pb-2">不要</th>
             </tr>
           </thead>
           <tbody>
@@ -1028,22 +978,20 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                   )}
                 </td>
                 <td className="py-2 pr-3 text-xs text-slate-500">
-                  {m.seat_not_required ? '在宅のため不要' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
+                  {m.seat_not_required ? '不要' : m.assigned_seat_no ? `${m.assigned_seat_no} に確保済み` : '未確保'}
                 </td>
                 <td className="py-2 pr-3">
                   {m.seat_not_required ? (
-                    <span className="text-xs text-slate-400">対象外（在宅のため不要）</span>
+                    <span className="text-xs text-slate-400">対象外（不要）</span>
                   ) : m.assigned_seat_id === null ? (
-                    <select
-                      value={picks[m.user_id] ?? ''}
-                      onChange={(e) => setPicks((prev) => ({ ...prev, [m.user_id]: e.target.value ? Number(e.target.value) : '' }))}
-                      className="h-8 w-32 rounded border border-slate-500 px-2 text-sm"
-                    >
-                      <option value="">座席を選択</option>
-                      {seatOptions.map((s) => (
-                        <option key={s.id} value={s.id}>{s.seat_no}</option>
-                      ))}
-                    </select>
+                    // 2026-09-24修正:「一括で全てのプロジェクト席をきめるようにしたい、座席の島の
+                    // 一括割当と同じように左に座席表、右にプロジェクト選択・曜日・割り当てられた
+                    // 島・各プロジェクトの情報が見えるように。プルダウン形式で座席を決めるのを
+                    // 削除してほしい」との要望を受け、未確保メンバーへのプルダウン選択（単一・
+                    // 曜日ごとの両方）を削除した。座席の確保は下の「座席表から選ぶ」（1プロジェクト
+                    // ずつ）、またはプロジェクト座席一覧の「座席表からまとめて確保する」
+                    // （複数プロジェクトの座席表からの一括確保、ProjectSeatRequest参照）でのみ行う
+                    <span className="text-xs text-slate-400">座席表から確保してください</span>
                   ) : (
                     <div className="flex items-center gap-1">
                       <select
@@ -1056,7 +1004,9 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
                       >
                         <option value="">変更先を選択</option>
                         <option value="home">在宅勤務</option>
-                        {(plan.allocated_seats ?? []).filter((s) => s.id !== m.assigned_seat_id).map((s) => {
+                        {(plan.allocated_seats ?? [])
+                          .filter((s) => s.id !== m.assigned_seat_id && (!commonSeatIds || commonSeatIds.has(s.id)))
+                          .map((s) => {
                           const occupant = memberNameBySeatId.get(s.id)
                           return (
                             <option key={s.id} value={s.id}>
@@ -1092,62 +1042,11 @@ function BulkSeatAssign({ plan, onChanged }: { plan: ProjectPlanDetail; onChange
         {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {changeError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{changeError}</p>}
         {changeMessage && <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{changeMessage}</p>}
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3">
           <button type="button" disabled={unassigned.length === 0} onClick={goSeatMap} className="rounded border border-slate-500 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             座席表から選ぶ
           </button>
-          <button type="button" disabled={submitting || unassigned.length === 0} onClick={submit} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
-            この内容で一括確保する
-          </button>
         </div>
-
-        {results && (
-          <div className="mt-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-400 text-left text-slate-500">
-                  <th className="pb-2 pr-3">氏名</th>
-                  <th className="pb-2 pr-3">座席</th>
-                  <th className="pb-2">結果</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r, i) => {
-                  const member = plan.members.find((m) => m.user_id === r.member_user_id)
-                  return (
-                    <Fragment key={i}>
-                      <tr className="border-b border-slate-400">
-                        <td className="py-2 pr-3">{member?.name ?? r.member_user_id}</td>
-                        <td className="py-2 pr-3">{r.seat_no}</td>
-                        <td className="py-2">
-                          {r.status === 'assigned' ? (
-                            <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                              確保済み{r.excluded_days ? `（${r.excluded_days}日を除外）` : ''}
-                            </span>
-                          ) : (
-                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">除外（{r.reason}）</span>
-                          )}
-                        </td>
-                      </tr>
-                      {r.excluded_dates && r.excluded_dates.length > 0 && (
-                        <tr className="border-b border-slate-400">
-                          <td colSpan={3} className="py-1">
-                            <SeatIslandExcludedRetry
-                              excludedDates={r.excluded_dates}
-                              seatOptions={seatOptions.filter((s) => s.id !== r.seat_id)}
-                              onRetry={(dates, seatId) => retrySeatAssignment(r.member_user_id, dates, seatId)}
-                              onRetried={(result) => applySeatAssignmentRetryResult(r.member_user_id, r.excluded_dates!.map((d) => d.date), result)}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   )

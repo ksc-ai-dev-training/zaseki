@@ -5,7 +5,7 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
-import type { PreviousPlanDetail, QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
+import type { QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
   const d = new Date()
@@ -16,13 +16,6 @@ const WEEKDAYS: { key: Weekday; label: string }[] = [
   { key: 'mon', label: '月' }, { key: 'tue', label: '火' }, { key: 'wed', label: '水' },
   { key: 'thu', label: '木' }, { key: 'fri', label: '金' },
 ]
-
-// 出社曜日の確定・変更を「この内容で変更しますか」の確認画面に表示するための要約文字列
-// （2026-09-11追加。「曜日調整の変更がわかりにくい。確認欄に各プロジェクトが何曜日に出社するか
-// わかるようにしてほしい」との要望を受けた。それまでは確認なしに直接送信していた）
-function formatWeekdays(days: Weekday[]): string {
-  return WEEKDAYS.filter((w) => days.includes(w.key)).map((w) => w.label).join('・')
-}
 
 function weekdaysSummary(days: Set<Weekday> | undefined): string {
   const selected = WEEKDAYS.filter((w) => days?.has(w.key)).map((w) => w.label)
@@ -533,6 +526,7 @@ export default function ProjectSeatAllocation() {
               periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
               allocatedSeatIds: p.allocated_seat_ids ?? undefined,
               allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
+              hasPreviousPlan: p.has_previous_plan,
             })),
           },
         },
@@ -579,6 +573,7 @@ export default function ProjectSeatAllocation() {
             periodStart: p.period_start, weekdaysFinalized: p.weekdays_finalized, note: p.note,
             allocatedSeatIds: p.allocated_seat_ids ?? undefined,
             allocatedSeatsByWeekday: p.allocated_seats_by_weekday,
+            hasPreviousPlan: p.has_previous_plan,
           })),
         },
       },
@@ -813,7 +808,7 @@ export default function ProjectSeatAllocation() {
                           seatBlockDoomed(p) ? (
                             <span
                               className="cursor-help rounded bg-slate-100 px-3 py-1 text-xs text-slate-400"
-                              title="現在のメンバーが全員固定座席保有者または在宅のため不要のため、座席の島を割り当てられません。「人数を修正」の値にかかわらず割り当てできません。メンバー構成を見直すか、必要座席数を0に修正してください。"
+                              title="現在のメンバーが全員固定座席保有者または不要のため、座席の島を割り当てられません。「人数を修正」の値にかかわらず割り当てできません。メンバー構成を見直すか、必要座席数を0に修正してください。"
                             >
                               座席の島を割り当てる
                             </span>
@@ -851,7 +846,7 @@ export default function ProjectSeatAllocation() {
                           seatBlockDoomed(p) ? (
                             <span
                               className="cursor-help rounded bg-slate-100 px-3 py-1 text-xs text-slate-400"
-                              title="現在のメンバーが全員固定座席保有者または在宅のため不要のため、座席の島を割り当てられません。メンバー構成を見直すか、必要座席数を0に修正してください。"
+                              title="現在のメンバーが全員固定座席保有者または不要のため、座席の島を割り当てられません。メンバー構成を見直すか、必要座席数を0に修正してください。"
                             >
                               {weekdayFilter === 'all' ? '座席を編集' : `${WEEKDAYS.find((w) => w.key === weekdayFilter)?.label}曜日の座席を編集`}
                             </span>
@@ -1554,24 +1549,6 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 前回分の確定曜日・座席割当を常時表示（2026-09-16変更。当初は「前回の確定曜日をコピーする」ボタンで
-  // チェック状態へ直接コピーしていたが、「座席の位置と出社曜日を記載されているようにしてほしい」との
-  // 要望を受けて参照専用の表示に変更し、続けて「常時表示しててほしいのと座席番号のみでいいよ」との
-  // 要望を受け、クリックで開くトグルではなく行内に常時表示する形に改め、メンバーごとの内訳
-  // （assignments）ではなくその座席の島の座席番号だけ（allocated_seat_label）を表示するようにした。
-  // 次サイクルの曜日調整・座席割当を検討する際に前回の実績を見比べられるようにするのが目的で、
-  // チェック状態は変更しない。A-15（前回サイクルの参照）を再利用する
-  const [previousByPlan, setPreviousByPlan] = useState<Record<number, PreviousPlanDetail>>({})
-  useEffect(() => {
-    const targets = plans.filter((p) => p.has_previous_plan && !(p.id in previousByPlan))
-    targets.forEach((p) => {
-      apiFetch<PreviousPlanDetail>(`/api/project-quarter-plans/${p.id}/previous`)
-        .then((data) => setPreviousByPlan((prev) => ({ ...prev, [p.id]: data })))
-        .catch(() => {})
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans.map((p) => p.id).join(',')])
-
   if (plans.length === 0) return null
 
   // 2026-09-24修正:「常時保存機能を削除してほしい」との要望を受け、チェックのたびにA-84（仮の座席
@@ -1827,55 +1804,12 @@ function WeekdayMatrix({ plans, areaSeatCapacity, onCreateTentative, weekdayFilt
                             NEW
                           </span>
                         )}
-                        {/* 2026-09-16修正: 「前回: 木・金／F1、F2、F3、F4、F5、F6、F7、H3、H4」のように
-                            座席数が多いプロジェクトだと1行が長くなり画面が煩雑になるとの指摘を受け、
-                            常時全文表示からラベル＋titleツールチップ（カーソルを合わせると表示）に
-                            変更したが、続けて「文字が多すぎて目が疲れるので絵文字でもいいから表現
-                            できるものが欲しい」との要望を受け、ラベル文字も🕐（前回分）・🪑（仮の
-                            座席）の絵文字アイコンに置き換えた。前回分・仮の座席の情報自体は変更なく
-                            引き続き常に取得済みで、隠しているのは表示のみ（titleツールチップで
-                            カーソルを合わせると詳細が見える） */}
-                        {/* status='weekdays_finalized'でも、曜日で絞り込みながら一部の曜日だけ先に
-                            割り当てた直後はallocated_seats_by_weekdayが埋まる（2026-09-18修正、上の
-                            「座席の島を割り当てる」ボタンの曜日絞り込み対応参照）。「全て」表示に
-                            戻ったときにこの進捗が見えないと、既に割り当てた曜日を忘れて重複作業したり
-                            誤って上書きしてしまうため、seats_tentativeと同じバッジで表示する */}
-                        {(p.has_previous_plan || p.status === 'seats_tentative' || (p.status === 'weekdays_finalized' && p.allocated_seats_by_weekday)) && (
-                          <div className="mt-0.5 flex items-center gap-1.5 text-xs">
-                            {p.has_previous_plan && (
-                              <span
-                                className="cursor-help"
-                                title={
-                                  previousByPlan[p.id]
-                                    ? `前回: ${
-                                        previousByPlan[p.id].weekdays_finalized === null
-                                          ? '曜日未確定'
-                                          : previousByPlan[p.id].weekdays_finalized!.length > 0
-                                            ? formatWeekdays(previousByPlan[p.id].weekdays_finalized!)
-                                            : '出社なし'
-                                      }／${previousByPlan[p.id].allocated_seat_label ?? '座席未確保'}`
-                                    : '読み込み中...'
-                                }
-                              >
-                                🕐
-                              </span>
-                            )}
-                            {(p.status === 'seats_tentative' || p.status === 'weekdays_finalized') && p.allocated_seats_by_weekday && (
-                              <span
-                                className="cursor-help"
-                                title={
-                                  p.has_seat_override
-                                    ? `${p.status === 'seats_tentative' ? '仮の座席' : '割当状況'}（曜日によって異なる）: ${Object.entries(p.allocated_seats_by_weekday)
-                                        .map(([w, v]) => `${WEEKDAYS.find((wd) => wd.key === w)?.label}: ${v.seat_label || '未割当'}`)
-                                        .join('／')}`
-                                    : `${p.status === 'seats_tentative' ? '仮の座席' : '割当状況'}: ${p.allocated_seat_label ?? '未選択（下の「座席割り当て」欄から選んでください）'}`
-                                }
-                              >
-                                🪑
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        {/* 2026-09-24修正:「曜日調整表に絵文字（仮座席と前回の座席配置）を作成して
+                            くれましたが、それを削除して」との要望を受け、🕐（前回分）・🪑（仮の座席）
+                            の表示をこの調整表から削除した。前回の座席配置は代わりに座席の島の一括割当
+                            画面（S-02、Availability.tsx）のプロジェクト一覧に移設した（そちらを参照）。
+                            この画面では前回分・仮の座席の情報自体は表示せず、曜日のチェック状態のみを
+                            扱う */}
                       </td>
                       <td className="py-1 pr-3 align-top">{p.required_seats}名</td>
                       <td className="py-1 pr-3 align-top">

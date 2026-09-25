@@ -221,6 +221,10 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
             # 組み合わせ）場合true。RULE-07廃止に伴う座席表の赤色表示用（2026-09-09追加、docstring参照）
             "multi_seat_holder": multi_seat_holder,
             "title": None,
+            # 座席表で名前が表示されている座席をクリックしたときにプロフィールを表示できるよう
+            # 占有者のuser_idを返す（A-87、2026-09-25追加）。特定の個人が紐づかない状態
+            # （free・project_pending）はnull
+            "user_id": occupant_user_id,
             # 仕様書のレスポンス例にはないが、S-02「座席配置モード」で配置した座席のみ設定される
             # フロアマップ上の自由配置座標（エリアパネルに対する%）。未設定ならnull
             "pos_x": r["pos_x"],

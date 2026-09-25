@@ -4,7 +4,7 @@
 # 新設した。2026-09-10、A-70〔/free-seat-bookings〕はS-02の複数人代理予約〔A-75〕と内容が重複する
 # との判断により廃止した）
 import json
-from datetime import date as Date
+from datetime import date as Date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from auth_helpers import CurrentUser, require_auth
 from database import (
+    effective_seat_ids,
     generate_recurring_reservations,
     get_pool,
     retry_excluded_dates,
@@ -50,6 +51,23 @@ async def _seat_labels(pool, seat_ids: list[int]) -> dict[int, str]:
         return {}
     rows = await pool.fetch("SELECT id, seat_no FROM seats WHERE id = ANY($1::bigint[])", seat_ids)
     return {r["id"]: r["seat_no"] for r in rows}
+
+
+# python標準のDate.weekday()（0=月）を曜日コードへ変換する（database._WEEKDAY_CODESと同じ並び。
+# 2026-09-24追加、メンバー個別の座席確保〔A-18・A-72・A-64〕を曜日ごとの実効座席
+# 〔effective_seat_ids〕に対応させる際、除外理由を実際の日付付きで報告するために使う）
+_WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def _dates_for_weekday(start: Date, end: Date, weekday_code: str) -> list[Date]:
+    """[start, end]の範囲内で、指定した曜日（'mon'等）に該当する日付を全て返す"""
+    dates = []
+    d = start
+    while d <= end:
+        if _WEEKDAY_CODES[d.weekday()] == weekday_code:
+            dates.append(d)
+        d += timedelta(days=1)
+    return dates
 
 
 def _seat_label_for_plan(
@@ -233,18 +251,48 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
     )
     # メンバーの実際の予約は、曜日によって物理座席が異なりうるため、基本の島だけでなく曜日ごとの
     # 例外の座席も含めた和集合（all_effective_seat_ids）から探す（2026-09-18修正。従来は基本の島
-    # だけを見ており、例外の座席にしか予約がないメンバーが「未確保」と誤表示されるおそれがあった）
-    assigned_seat_by_user: dict[int, int] = {}
+    # だけを見ており、例外の座席にしか予約がないメンバーが「未確保」と誤表示されるおそれがあった）。
+    # 2026-09-24修正:「曜日ごとに分けて座席を選択できるようにしてほしい」との要望を受け、メンバー
+    # 個別の座席確保自体も曜日ごとに異なる座席を持てるようにした（下のbulk_assign_seats参照）ため、
+    # ここでも曜日（isodow）ごとに実際の予約座席を集計し、確定曜日どうしで座席が異なるメンバーには
+    # T-07の座席の島と同じ「月: B1／火: C3」形式の内訳ラベルを表示する（_seat_label_for_planと
+    # 同じ考え方）。1件のDISTINCT ONで代表1件だけ拾っていた従来の方式では、実際には曜日ごとに
+    # 別の座席へ確保されているメンバーの一部の曜日が確認できなかった
+    assigned_seats_by_weekday_by_user: dict[int, dict[str, int]] = {}
     if all_effective_seat_ids:
         assign_rows = await pool.fetch(
-            """SELECT DISTINCT ON (r.user_id) r.user_id, r.seat_id
+            """SELECT r.user_id, r.seat_id, EXTRACT(ISODOW FROM r.date)::int AS isodow
                FROM reservations r
                WHERE r.seat_id = ANY($1::bigint[]) AND r.status = 'active'
                  AND r.date BETWEEN $2 AND $3
-               ORDER BY r.user_id, r.date""",
+               ORDER BY r.date""",
             list(all_effective_seat_ids), plan["period_start"], plan["period_end"],
         )
-        assigned_seat_by_user = {r["user_id"]: r["seat_id"] for r in assign_rows}
+        isodow_to_weekday = {1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri"}
+        for r in assign_rows:
+            w = isodow_to_weekday.get(r["isodow"])
+            if w is None:
+                continue
+            assigned_seats_by_weekday_by_user.setdefault(r["user_id"], {}).setdefault(w, r["seat_id"])
+    assigned_seat_by_user: dict[int, int] = {
+        # 代表値（assigned_seat_id・単一の座席のみのメンバーのassigned_seat_no用）は確定曜日の
+        # 先頭から見つかったものを使う（従来のDISTINCT ON ... ORDER BY dateとほぼ同じ結果になる）
+        uid: next(iter(seats.values()))
+        for uid, seats in assigned_seats_by_weekday_by_user.items()
+    }
+
+    def _member_seat_label(user_id: int) -> str | None:
+        seats = assigned_seats_by_weekday_by_user.get(user_id)
+        if not seats:
+            return None
+        distinct = set(seats.values())
+        if len(distinct) == 1:
+            return seat_no_by_id.get(next(iter(distinct)))
+        parts = [
+            f"{_WEEKDAY_JA[w]}: {seat_no_by_id.get(seats[w], '?')}"
+            for w in (weekdays_finalized or []) if w in seats
+        ]
+        return "／".join(parts) if parts else None
 
     is_pmpl = my_member["project_title"] in ("PM", "PL")
     is_project_creator = plan["created_by"] == user.id
@@ -269,25 +317,24 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
         "has_seat_override": has_seat_override,
         "allocated_seats_by_weekday": allocated_seats_by_weekday,
         "allocated_seat_label": allocated_seat_label,
-        # 「割り当てる座席」の選択肢（未確保のメンバー向け）に座席番号を表示するため、
-        # allocated_seat_idsと対になる座席番号一覧を返す（2026-08-28追加）。メンバー個別の座席確保
-        # （A-18・A-64、BulkSeatAssign）は引き続き基本の島（allocated_seats）だけを対象とするため
-        # （2026-09-18時点でも未対応。has_seat_overrideがtrueの間はmember_seat_assign_blocked_by_overrideで
-        # フロント側に一括確保UI自体を止めてもらうため、ここは従来どおり基本の島のみでよい）
+        # 「割り当てる座席」の選択肢（未確保のメンバー向け）に座席番号を表示するため、座席番号一覧を
+        # 返す（2026-08-28追加）。2026-09-24修正:「このプロジェクトは曜日によって座席の島が異なる
+        # ため、メンバーへの座席確保はまだこの画面から行えません」というブロックを撤去し、メンバー
+        # 個別の座席確保（A-18・A-64、BulkSeatAssign）も曜日ごとに異なる座席を選べるようにしたため、
+        # 選択肢は基本の島（allocated_seat_ids）だけでなく曜日ごとの例外も含めた和集合
+        # （all_effective_seat_ids）を返す。フロント側は曜日によって座席が異なるプロジェクト
+        # （has_seat_override）では、確定曜日ごとに別々の<select>でこの中から選ぶ
         "allocated_seats": (
-            [{"id": sid, "seat_no": seat_no_by_id[sid]} for sid in allocated_seat_ids if sid in seat_no_by_id]
-            if allocated_seat_ids else None
+            [{"id": sid, "seat_no": seat_no_by_id[sid]} for sid in all_effective_seat_ids if sid in seat_no_by_id]
+            if all_effective_seat_ids else None
         ),
-        # メンバー個別の座席確保（A-18・A-64、BulkSeatAssign）は基本の島（allocated_seats）だけを
-        # 対象としており、曜日ごとの例外（allocated_seats_overrides）には未対応（2026-09-18追加）。
-        # has_seat_overrideの間にこの機能を使うと、ある曜日は既に別プロジェクトへ明け渡し済みの
-        # 座席へ誤ってメンバーの周期予約を作ってしまう恐れがあるため、対応するまでフロント側で
-        # 一括確保UI自体を止める目印。true＝ブロック中。2026-09-18再修正: 基本の島を一度も持たずに
-        # 曜日ごとの例外だけで座席を確保できるようになったため（confirmSeatBlockBulk参照）、
-        # allocated_seat_idsが空（＝A-18が対象にできる基本の島自体が無い）の場合もブロック対象に
-        # 追加した（has_seat_overrideだけだと、確定曜日どうしがたまたま同じ座席でも基本の島が
-        # 無ければ選択肢ゼロの空の一覧になってしまうため）
-        "member_seat_assign_blocked_by_override": has_seat_override or not allocated_seat_ids,
+        # メンバー個別の座席確保（A-18・A-64、BulkSeatAssign）を一律ブロックする目印だったが、
+        # 2026-09-24修正で撤去した。「曜日によって座席の島が異なるため確保できません」という要件は
+        # 本来不要で、確定曜日ごとに別々の座席を選べるようにするのが正しい対応だったとの指摘を受けた
+        # （bulk_assign_seats・retry_seat_assignment・change_member_seatのdocstring参照）。座席の島
+        # 自体が全く割り当てられていない（all_effective_seat_idsが空、通常status='seats_allocated'
+        # では起こらないはずの防御的なケース）の場合のみtrueにする
+        "member_seat_assign_blocked_by_override": not all_effective_seat_ids,
         "my_project_title": my_member["project_title"], "is_pmpl": is_pmpl,
         "is_project_creator": is_project_creator,
         "is_seat_assigner": is_seat_assigner,
@@ -308,7 +355,7 @@ async def get_quarter_plan_detail(id: int, user: CurrentUser = Depends(require_a
                 "has_fixed_seat": m["has_fixed_seat"],
                 "seat_not_required": m["seat_not_required"],
                 "assigned_seat_id": assigned_seat_by_user.get(m["user_id"]),
-                "assigned_seat_no": seat_no_by_id.get(assigned_seat_by_user.get(m["user_id"])),
+                "assigned_seat_no": _member_seat_label(m["user_id"]),
             }
             for m in members_rows
         ],
@@ -519,7 +566,13 @@ async def update_seat_not_required(id: int, body: SeatNotRequiredBody, user: Cur
 
 class SeatAssignmentItem(BaseModel):
     member_user_id: int
-    seat_id: int
+    # 従来どおり全確定曜日へ共通の1つの座席を割り当てる場合はseat_idを送る。曜日によって座席の島が
+    # 異なるプロジェクト（has_seat_override）では、代わりにseats_by_weekdayで曜日ごとに別々の座席を
+    # 指定できる（2026-09-24追加。「曜日ごとに座席が違うプロジェクトでも、その座席に割り当てられて
+    # いればそのエリアで席を割り振れるようにしてほしい」との要望を受けた。詳細はbulk_assign_seats
+    # docstring参照）。両方省略した場合はそのメンバーを除外扱いにする
+    seat_id: int | None = None
+    seats_by_weekday: dict[Literal["mon", "tue", "wed", "thu", "fri"], int] | None = None
 
 
 class SeatAssignmentsBody(BaseModel):
@@ -534,12 +587,30 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     （T-06.can_assign_seats）（2026-09-09に一時的にP-CREATOR〔T-05.created_by、プロジェクトの
     作成者〕へ変更していたが、「作成者は席決め担当にするのではなくただの作成者で、何も権限は
     ない」との指摘を受け、2026-09-14に元のP-PROXY基準へ戻した）。
-    座席はallocated_seatsの範囲外を指定不可。同一座席を複数のメンバーに重複して指定した場合、
-    当該メンバーの組み合わせのみ確保対象から除外する（要件定義書3.3節手順7）。固定座席保有者を
-    確保対象から一律除外していたRULE-07は2026-09-09に廃止した（「固定席・プロジェクト席・
-    フリー座席は同時に持てる状態でよい」との回答を受けた）。デフォルトの必要座席数
-    （required_seats）の算出ロジック自体は変更していないため、固定座席保有者を含めて確保する場合は
-    必要に応じてPM・PL側で必要座席数を調整する。"""
+    座席は各曜日の実効座席（database.effective_seat_ids()）の範囲外を指定不可。同一座席・同一曜日を
+    複数のメンバーに重複して指定した場合、当該メンバーの組み合わせのみ確保対象から除外する
+    （要件定義書3.3節手順7）。固定座席保有者を確保対象から一律除外していたRULE-07は2026-09-09に
+    廃止した（「固定席・プロジェクト席・フリー座席は同時に持てる状態でよい」との回答を受けた）。
+    デフォルトの必要座席数（required_seats）の算出ロジック自体は変更していないため、固定座席保有者を
+    含めて確保する場合は必要に応じてPM・PL側で必要座席数を調整する。
+
+    2026-09-24修正:「このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保は
+    まだこの画面から行えません」というブロックを撤去した。以前は基本の島（allocated_seats）のみを
+    対象に、確定した全曜日へ同じ物理座席で1本の周期予約（T-09）を作る仕組みだったため、曜日ごとに
+    実効座席が異なるプロジェクト（has_seat_override）には未対応で、対応しないまま実行すると、ある
+    曜日では既に別プロジェクトへ明け渡し済みの座席へ誤ってメンバーを確保してしまう恐れがあった
+    （2026-09-18のQA調査で発見し、いったんブロックで塞いでいた）。「曜日ごとに分けて座席を選択
+    できるようにしてほしい」との要望を受け、今回はブロックを外す代わりに本APIを曜日ごとの実効座席に
+    対応させた。メンバーごとにseats_by_weekdayで曜日別の座席を指定できるようにし、各(座席, 曜日)の
+    組み合わせがdatabase.effective_seat_ids()の結果に含まれているかをその都度検証する（project_seats.py
+    のA-44・A-80と同じ(座席id, 曜日)単位の考え方）。含まれていない・このバッチ内の他メンバーと同じ
+    曜日に重複している場合は、その曜日だけをこれまでの「除外」と同じ形式（excluded_dates、該当曜日の
+    実際の日付ぶん）で報告し、有効な曜日だけをまとめて座席ごとにgenerate_recurring_reservations()へ
+    渡す（1人のメンバーが曜日によって異なる座席を使う場合、座席ごとに複数のT-09行を作る）。
+    seats_by_weekdayを省略しseat_idのみ指定した場合は、従来どおりその1つの座席を全確定曜日へ適用
+    しようとするが、有効性の検証自体は上と同じ曜日単位で行うため、曜日によって座席の島が異なる
+    プロジェクトでその座席が一部の曜日にしか属さない場合は、属さない曜日だけが除外される
+    （その座席が全確定曜日に共通なら従来と全く同じ結果になる）。"""
     if not body.assignments:
         raise HTTPException(400, detail="座席を割り当てるメンバーを1人以上指定してください")
 
@@ -553,27 +624,6 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
-    # 2026-09-18追加: メンバー個別の座席確保は基本の島（allocated_seats）のみを対象に、確定した
-    # 全曜日へ同じ物理座席で1本の周期予約（T-09）を作る仕組みのため、確定曜日どうしで実効座席が
-    # 異なるプロジェクト（has_seat_override）には未対応。対応しないまま実行すると、ある曜日では
-    # 既に別プロジェクトへ明け渡し済みの座席へ誤ってメンバーを確保してしまう恐れがある
-    # （QA調査で発見。project_seats.pyのA-44・A-80は(座席id, 曜日)単位で重複判定するが、本APIは
-    # 曜日を区別せず1つの座席idだけでgenerate_recurring_reservationsを呼ぶため、この判定の外側になる）。
-    # 対応するまでは明確なエラーで止め、エリア担当（S-09）側で個別に調整してもらう。
-    # 2026-09-18再修正: 「座席の島の一括割当の時点で曜日ごとに別々の座席を選びたい」との要望を受け、
-    # 基本の島を一度も持たずに曜日ごとの例外だけで座席を確保できるようになった。この場合、確定曜日
-    # どうしがたまたま同じ座席になっていてもhas_seat_overrideはfalseのままだが、下のallocated_seat_ids
-    # は基本の島（plan["allocated_seats"]）そのものから求めるため空になり、座席が1つも選べない
-    # ままエラーメッセージも出ない不具合になる。基本の島自体が無い場合もあわせて拒否する
-    _, has_seat_override = seats_by_weekday(
-        plan["allocated_seats"], plan["allocated_seats_overrides"],
-        json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
-    )
-    if has_seat_override or not plan["allocated_seats"]:
-        raise HTTPException(
-            400,
-            detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください",
-        )
     # 2026-09-15追加: 「プロジェクトの人を変更するとき過去のプロジェクトにもそれが影響されている」
     # との報告を受けた。project_membersは期間を持たない単一の現在値のため、既に終了した過去の計画
     # （period_end<今日）に対して本APIを呼んでも、確保対象は常にその時点の「現在のメンバー」になって
@@ -593,54 +643,116 @@ async def bulk_assign_seats(id: int, body: SeatAssignmentsBody, user: CurrentUse
     if not can_manage:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
-    allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
+    weekdays_finalized = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
+    if not weekdays_finalized:
+        raise HTTPException(400, detail="出社曜日が確定していません")
+
+    # 曜日ごとの実効座席（database.effective_seat_ids()、project_seats.pyのA-44・A-80と同じ関数）。
+    # 座席の選択が実際にその曜日のプロジェクトの座席の島に含まれているかの検証に使う
+    effective_by_weekday: dict[str, set[int]] = {
+        w: set(effective_seat_ids(plan["allocated_seats"], plan["allocated_seats_overrides"], w))
+        for w in weekdays_finalized
+    }
+    all_effective_seat_ids = {sid for ids in effective_by_weekday.values() for sid in ids}
+    if not all_effective_seat_ids:
+        raise HTTPException(400, detail="座席の島が割り当てられていません")
+
     member_rows = await pool.fetch(
         "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
     )
     member_user_ids = {r["user_id"] for r in member_rows}
     seat_not_required_user_ids = {r["user_id"] for r in member_rows if r["seat_not_required"]}
-    weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
-    seat_no_by_id = await _seat_labels(pool, list(allocated_seat_ids))
+    seat_no_by_id = await _seat_labels(pool, list(all_effective_seat_ids))
 
-    seat_counts: dict[int, int] = {}
+    # メンバーごとの「曜日→座席」マップを組み立てる。seats_by_weekdayが指定されていればそれを使い
+    # （未指定の曜日は確保対象外）、無指定ならseat_idを全確定曜日に共通で使う
+    member_weekday_seat: dict[int, dict[str, int]] = {}
     for a in body.assignments:
-        seat_counts[a.seat_id] = seat_counts.get(a.seat_id, 0) + 1
+        if a.seats_by_weekday:
+            member_weekday_seat[a.member_user_id] = dict(a.seats_by_weekday)
+        elif a.seat_id is not None:
+            member_weekday_seat[a.member_user_id] = {w: a.seat_id for w in weekdays_finalized}
+        else:
+            member_weekday_seat[a.member_user_id] = {}
+
+    # (曜日, 座席id) → このバッチ内で割り当てようとしているメンバー数。同じ曜日・同じ座席を複数
+    # メンバーへ割り当てようとしていないか検出する（generate_recurring_reservationsは
+    # check_project_block=Falseで呼ぶため他プロジェクトとの重複は検出されるが、このバッチ内の
+    # メンバー同士の重複は自前で検出する必要がある。旧実装のseat_counts〔座席id単位〕を
+    # (曜日, 座席id)単位に拡張した）
+    weekday_seat_counts: dict[tuple[str, int], int] = {}
+    for seat_map in member_weekday_seat.values():
+        for w, sid in seat_map.items():
+            weekday_seat_counts[(w, sid)] = weekday_seat_counts.get((w, sid), 0) + 1
 
     start_date = max(plan["period_start"], Date.today())
     results = []
     for a in body.assignments:
-        seat_no = seat_no_by_id.get(a.seat_id, "?")
-        if a.member_user_id not in member_user_ids or a.seat_id not in allocated_seat_ids:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+        seat_map = member_weekday_seat[a.member_user_id]
+        seat_ids_used = sorted({sid for sid in seat_map.values()})
+        seat_label = (
+            _format_seat_range([seat_no_by_id.get(sid, "?") for sid in seat_ids_used])
+            if len(seat_ids_used) <= 1
+            else "／".join(f"{_WEEKDAY_JA[w]}: {seat_no_by_id.get(seat_map[w], '?')}" for w in weekdays_finalized if w in seat_map)
+        )
+        seat_id_out = seat_ids_used[0] if len(seat_ids_used) == 1 else None
+
+        if a.member_user_id not in member_user_ids:
+            results.append({"member_user_id": a.member_user_id, "seat_id": seat_id_out, "seat_no": seat_label,
                              "status": "excluded", "reason": "対象が見つかりません"})
             continue
         if a.member_user_id in seat_not_required_user_ids:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+            results.append({"member_user_id": a.member_user_id, "seat_id": seat_id_out, "seat_no": seat_label,
                              "status": "excluded", "reason": "在宅勤務のためプロジェクト座席は不要に設定されています"})
             continue
-        if seat_counts[a.seat_id] > 1:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": "他のメンバーと座席が重複しています"})
+        if not seat_map:
+            results.append({"member_user_id": a.member_user_id, "seat_id": None, "seat_no": None,
+                             "status": "excluded", "reason": "座席が選択されていません"})
             continue
         if start_date > plan["period_end"]:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
+            results.append({"member_user_id": a.member_user_id, "seat_id": seat_id_out, "seat_no": seat_label,
                              "status": "excluded", "reason": "対象四半期は既に終了しています"})
             continue
-        gen = await generate_recurring_reservations(
-            a.seat_id, a.member_user_id, {"type": "weekly", "weekdays": weekdays},
-            start_date, plan["period_end"], user.id,
-            enforce_rule05=False, check_project_block=False,
-        )
-        created = sum(1 for r in gen["results"] if r["status"] == "created")
-        excluded = [r for r in gen["results"] if r["status"] == "excluded"]
-        excluded_dates = [{"date": r["date"], "reason": r["reason"]} for r in excluded]
-        if created == 0:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "excluded", "reason": excluded[0]["reason"] if excluded else "確保できる日がありません",
+
+        excluded_dates: list[dict] = []
+        valid_weekdays_by_seat: dict[int, list[str]] = {}
+        for w, sid in seat_map.items():
+            if w not in weekdays_finalized:
+                continue
+            if sid not in effective_by_weekday.get(w, set()):
+                excluded_dates.extend(
+                    {"date": d.isoformat(), "reason": "この曜日はこの座席がプロジェクトの座席の島に含まれていません"}
+                    for d in _dates_for_weekday(start_date, plan["period_end"], w)
+                )
+                continue
+            if weekday_seat_counts.get((w, sid), 0) > 1:
+                excluded_dates.extend(
+                    {"date": d.isoformat(), "reason": "他のメンバーと座席が重複しています"}
+                    for d in _dates_for_weekday(start_date, plan["period_end"], w)
+                )
+                continue
+            valid_weekdays_by_seat.setdefault(sid, []).append(w)
+
+        created_total = 0
+        for sid, ws in valid_weekdays_by_seat.items():
+            gen = await generate_recurring_reservations(
+                sid, a.member_user_id, {"type": "weekly", "weekdays": ws},
+                start_date, plan["period_end"], user.id,
+                enforce_rule05=False, check_project_block=False,
+            )
+            created_total += sum(1 for r in gen["results"] if r["status"] == "created")
+            excluded_dates.extend(
+                {"date": r["date"], "reason": r["reason"]} for r in gen["results"] if r["status"] == "excluded"
+            )
+
+        if created_total == 0:
+            results.append({"member_user_id": a.member_user_id, "seat_id": seat_id_out, "seat_no": seat_label,
+                             "status": "excluded",
+                             "reason": excluded_dates[0]["reason"] if excluded_dates else "確保できる日がありません",
                              "excluded_dates": excluded_dates})
         else:
-            results.append({"member_user_id": a.member_user_id, "seat_id": a.seat_id, "seat_no": seat_no,
-                             "status": "assigned", "created_days": created, "excluded_days": len(excluded),
+            results.append({"member_user_id": a.member_user_id, "seat_id": seat_id_out, "seat_no": seat_label,
+                             "status": "assigned", "created_days": created_total, "excluded_days": len(excluded_dates),
                              "excluded_dates": excluded_dates})
     return {"results": results}
 
@@ -658,7 +770,11 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     座席版）。A-18と同じくRULE-05・座席専有チェックはスキップし（enforce_rule05=False・
     check_project_block=False）、対象期間もA-18と同じ（本日以降〜plan.period_end）。権限はA-18と同じ
     role='admin'またはP-PROXY（T-05.proxy_user_id）またはP-SEATASSIGN（2026-09-09に一時的にP-CREATOR
-    へ変更していたが、2026-09-14にP-PROXYへ戻した。A-18のdocstring参照）。"""
+    へ変更していたが、2026-09-14にP-PROXYへ戻した。A-18のdocstring参照）。
+    2026-09-24修正: A-18と同じ理由でブロックを撤去した。振替先のbody.seat_idが、指定した各日付の
+    実際の曜日について有効か（database.effective_seat_ids()）を日付ごとに検証する。曜日によって
+    座席の島が異なるプロジェクトで、振替先が一部の日の曜日にしか属さない座席の場合、属さない日は
+    振替を行わず除外として報告する（A-18と同じ(座席id, 曜日)単位の検証）。"""
     if not body.dates:
         raise HTTPException(400, detail="振り替える日付を1つ以上指定してください")
 
@@ -672,17 +788,6 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーへ座席を確保できません")
-    # A-18と同じ理由（2026-09-18追加、2026-09-18再修正で基本の島が無い場合も対象に追加）で、
-    # 曜日によって座席の島が異なる、または基本の島を一度も持たないプロジェクトへの振り替えは拒否する
-    _, has_seat_override = seats_by_weekday(
-        plan["allocated_seats"], plan["allocated_seats_overrides"],
-        json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
-    )
-    if has_seat_override or not plan["allocated_seats"]:
-        raise HTTPException(
-            400,
-            detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーへの座席確保はまだこの画面から行えません。エリア担当にご相談ください",
-        )
     # A-18と同じ理由（2026-09-15追加）で、既に終了した計画への振り替えは拒否する
     if plan["period_end"] < Date.today():
         raise HTTPException(400, detail="この計画の対象期間は既に終了しています。現在のメンバー構成を過去の期間に適用することはできません")
@@ -696,10 +801,6 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     if not can_manage:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
-    allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
-    if body.seat_id not in allocated_seat_ids:
-        raise HTTPException(400, detail="座席の島の範囲外の座席です")
-
     member_rows = await pool.fetch(
         "SELECT user_id, seat_not_required FROM project_members WHERE project_id = $1", plan["project_id"]
     )
@@ -710,17 +811,29 @@ async def retry_seat_assignment(id: int, body: RetrySeatAssignmentBody, user: Cu
     if body.member_user_id in seat_not_required_user_ids:
         raise HTTPException(400, detail="在宅勤務のためプロジェクト座席は不要に設定されています")
 
+    # 日付ごとに、その曜日の実効座席にbody.seat_idが含まれているかを検証する（2026-09-24修正）
+    valid_dates: list[Date] = []
+    excluded_dates: list[dict] = []
+    for d in body.dates:
+        w = _WEEKDAY_CODES[d.weekday()]
+        if body.seat_id in effective_seat_ids(plan["allocated_seats"], plan["allocated_seats_overrides"], w):
+            valid_dates.append(d)
+        else:
+            excluded_dates.append({"date": d.isoformat(), "reason": "この曜日はこの座席がプロジェクトの座席の島に含まれていません"})
+    if not valid_dates:
+        raise HTTPException(400, detail="座席の島の範囲外の座席です")
+
     seat_no_by_id = await _seat_labels(pool, [body.seat_id])
     results = await retry_excluded_dates(
-        body.seat_id, body.member_user_id, body.dates, user.id,
+        body.seat_id, body.member_user_id, valid_dates, user.id,
         enforce_rule05=False, check_project_block=False,
     )
     created = [r for r in results if r["status"] == "created"]
-    excluded = [r for r in results if r["status"] == "excluded"]
+    excluded_dates.extend({"date": r["date"], "reason": r["reason"]} for r in results if r["status"] == "excluded")
     return {
         "seat_id": body.seat_id, "seat_no": seat_no_by_id.get(body.seat_id, "?"),
-        "created_days": len(created), "excluded_days": len(excluded),
-        "excluded_dates": [{"date": r["date"], "reason": r["reason"]} for r in excluded],
+        "created_days": len(created), "excluded_days": len(excluded_dates),
+        "excluded_dates": excluded_dates,
     }
 
 
@@ -946,7 +1059,15 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
     との要望を受けた。従来、確保済みメンバーを在宅勤務〔seat_not_required〕に切り替えるには、この画面の
     「在宅のため不要」チェックボックスが確保済みの間は非活性〔先に予約の取消が必要〕で、この画面からは
     完結できなかった）。旧座席の予約を（未来分のみ）取り消し、T-06.seat_not_requiredをtrueにする。
-    新しい座席の確保は行わない。"""
+    新しい座席の確保は行わない。
+
+    2026-09-24修正:「このプロジェクトは曜日によって座席の島が異なるため、メンバーの座席変更はまだ
+    この画面から行えません」というブロックを撤去した。ただし本APIは「全確定曜日に共通の1つの座席」
+    という前提のswap（交換）操作のため、A-18のように曜日ごとに異なる座席へ部分的に変更する機能は
+    今回のスコープ外とし、代わりに変更先の座席が全確定曜日の実効座席（database.effective_seat_ids()）
+    に共通して含まれていることを要求する（1日でも属さない曜日があれば拒否）。曜日ごとに異なる座席へ
+    変更したい場合は、A-18（この内容で一括確保する）で該当メンバーを選び直すか、エリア担当にご相談
+    いただく。"""
     pool = get_pool()
     plan = await pool.fetchrow(
         """SELECT pqp.*, p.proxy_user_id FROM project_quarter_plans pqp JOIN projects p ON p.id = pqp.project_id
@@ -957,17 +1078,6 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         raise HTTPException(404, detail="対象が見つかりません")
     if plan["status"] != "seats_allocated":
         raise HTTPException(400, detail="座席の島の割当後でなければメンバーの座席を変更できません")
-    # A-18と同じ理由（2026-09-18追加、2026-09-18再修正で基本の島が無い場合も対象に追加）で、
-    # 曜日によって座席の島が異なる、または基本の島を一度も持たないプロジェクトの座席変更は拒否する
-    _, has_seat_override = seats_by_weekday(
-        plan["allocated_seats"], plan["allocated_seats_overrides"],
-        json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else None,
-    )
-    if has_seat_override or not plan["allocated_seats"]:
-        raise HTTPException(
-            400,
-            detail="このプロジェクトは曜日によって座席の島が異なるため、メンバーの座席変更はまだこの画面から行えません。エリア担当にご相談ください",
-        )
 
     my_member = await _member_row(pool, plan["project_id"], user.id)
     can_manage = (
@@ -978,9 +1088,19 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
     if not can_manage:
         raise HTTPException(403, detail="この操作を行う権限がありません")
 
-    allocated_seat_ids = set(json.loads(plan["allocated_seats"]) if plan["allocated_seats"] else [])
-    if body.seat_id is not None and body.seat_id not in allocated_seat_ids:
-        raise HTTPException(400, detail="この座席の島に含まれない座席です")
+    weekdays_finalized = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
+    if not weekdays_finalized:
+        raise HTTPException(400, detail="出社曜日が確定していません")
+    effective_by_weekday = {
+        w: set(effective_seat_ids(plan["allocated_seats"], plan["allocated_seats_overrides"], w))
+        for w in weekdays_finalized
+    }
+    allocated_seat_ids = {sid for ids in effective_by_weekday.values() for sid in ids}
+    if body.seat_id is not None and not all(body.seat_id in ids for ids in effective_by_weekday.values()):
+        raise HTTPException(
+            400,
+            detail="この座席は確定曜日の一部でプロジェクトの座席の島に含まれていないため選べません。曜日ごとに異なる座席にしたい場合は「この内容で一括確保する」から選び直してください",
+        )
 
     member = await pool.fetchrow(
         "SELECT id, user_id, seat_not_required FROM project_members WHERE project_id = $1 AND user_id = $2",
@@ -1027,7 +1147,7 @@ async def change_member_seat(id: int, member_user_id: int, body: SeatChangeBody,
         None,
     )
 
-    weekdays = json.loads(plan["weekdays_finalized"]) if plan["weekdays_finalized"] else []
+    weekdays = weekdays_finalized
     seat_labels = await _seat_labels(pool, [old_seat_id, body.seat_id])
 
     await pool.execute(

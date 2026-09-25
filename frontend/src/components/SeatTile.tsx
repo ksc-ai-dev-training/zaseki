@@ -42,6 +42,11 @@ interface SeatTileProps {
   /** このセッション中に暫定的に割り当て済みの座席id→メンバー氏名（送信前のプレビュー表示用） */
   memberAssignPickedLabels?: Record<number, string>
   onMemberAssignClick?: (seat: Seat) => void
+  /** 座席に氏名が表示されている（PERSON_OCCUPIED_STATUSES）座席をクリックしたときにその利用者の
+   * プロフィールを表示する（A-87、2026-09-25新設）。「名前が記入されている座席を押したとき
+   * プロフィールが出てくるようにしたい」との要望を受けた。自分の予約（status='mine'）は従来どおり
+   * 取消モーダルを優先し、対象外とする */
+  onViewProfile?: (userId: number) => void
   /** フロアマップの座席配置編集モード（S-07「座席表の配置を編集する」から遷移するplaceSeatMode
    * の拡張、2026-09-10追加）。「座席をドラッグして配置できるようにしてほしい」との要望を受けた。
    * 有効な間は通常の予約・取消を行わず、ドラッグで位置（pos_x/pos_y）を変更できるようにする */
@@ -96,7 +101,7 @@ export default function SeatTile({
   seat, onReserve, onCancel, style, fixedSeatAssignMode, onAssignFixedSeat, selectedSeatIds, originalAllocatedSeatIds,
   otherWeekdaySeatIds, claimedByOtherPlanLabel, memberAssignMode, memberAssignEligibleIds, memberAssignPickedLabels, onMemberAssignClick,
   positionEditMode, onSeatDragPointerDown, onSeatDragPointerMove, onSeatDragPointerUp,
-  previewColorBySeatId, previewLabelBySeatId,
+  previewColorBySeatId, previewLabelBySeatId, onViewProfile,
 }: SeatTileProps) {
   if (!seat) {
     return <div className="seat-tile status-occupied opacity-40" style={style}>…</div>
@@ -250,6 +255,21 @@ export default function SeatTile({
   if (seat.status === 'mine') {
     return (
       <button type="button" className={`seat-tile ${tileClass(seat)}`} style={style} onClick={() => onCancel(seat)}>
+        <SeatContent seat={seat} />
+      </button>
+    )
+  }
+  // 座席に氏名が表示されている（他利用者が使用中・固定座席・プロジェクト座席個人確定済み）座席は、
+  // クリックするとその利用者のプロフィールを表示する（2026-09-25追加）
+  if (PERSON_OCCUPIED_STATUSES.has(seat.status) && seat.user_id !== null && onViewProfile) {
+    return (
+      <button
+        type="button"
+        className={`seat-tile ${tileClass(seat)}${otherWeekdayClass(seat, otherWeekdaySeatIds)}`}
+        style={style}
+        title={seat.title ?? (otherWeekdaySeatIds?.has(seat.id) ? '他の曜日にこのプロジェクトが使用中の座席です' : 'クリックするとプロフィールを表示します')}
+        onClick={() => onViewProfile(seat.user_id as number)}
+      >
         <SeatContent seat={seat} />
       </button>
     )

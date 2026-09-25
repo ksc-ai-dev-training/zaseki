@@ -28,6 +28,21 @@ export interface MyProfile {
   /** 生年月日は月・日のみ（年は保存しない、FR-08-2）。未登録はいずれもnull */
   birth_month: number | null
   birth_day: number | null
+  /** 趣味（任意、200文字以内。2026-09-25追加） */
+  hobby: string | null
+}
+
+// A-87 GET /api/users/{id}/profile（S-02、座席表で名前が表示されている座席から閲覧する
+// 他利用者のプロフィール、2026-09-25新設）。メールアドレス・在籍状況等は含めない読み取り専用の
+// 軽い自己紹介情報
+export interface PublicProfile {
+  last_name: string
+  first_name: string
+  role: Role
+  avatar_image: string | null
+  birth_month: number | null
+  birth_day: number | null
+  hobby: string | null
 }
 
 export interface DevUser {
@@ -62,6 +77,9 @@ export interface Seat {
   /** この座席の占有者が同じ日に別の座席も保有している場合true（RULE-07廃止に伴う座席表の赤色表示用、
    * 2026-09-09追加） */
   multi_seat_holder: boolean
+  /** 座席タイルに氏名が表示されている座席（mine・occupied・occupied_fixed・project_confirmed）の
+   * 占有者user_id。特定の個人が紐づかないstatus（free・project_pending）はnull（A-87、2026-09-25追加） */
+  user_id: number | null
 }
 
 export interface SeatBlock {
@@ -396,6 +414,10 @@ export interface SeatBlockBulkFor {
     // やめてほしい」との要望を受け、一括割当画面でも曜日を絞り込んでいる間はプロジェクトごとの
     // 全体の島ではなく、この曜日別の実効座席（既存の例外があればそれ、なければ全体の島）を初期値にする
     allocatedSeatsByWeekday?: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
+    /** 前回サイクルの実績があるか（2026-09-24追加）。座席の島の一括割当のプロジェクト一覧に、
+     * 前回の確定曜日・座席の島を表示する🕐アイコンを出すかどうかの判定に使う（A-15参照。
+     * 出社曜日の調整表〔WeekdayMatrix〕から移設した） */
+    hasPreviousPlan?: boolean
   }[]
 }
 
@@ -413,11 +435,35 @@ export interface MemberSeatAssignFor {
   weekdaysFinalized?: Weekday[] | null
   // 座席の島の範囲（この範囲内の座席のみ選択対象にする）。freeSeatモードでは使わない
   allocatedSeatIds: number[]
+  // 確定曜日ごとの実効座席（2026-09-24追加。「これを一括割当のように座席表から曜日を選択して
+  // 座席を決めるようにしてほしい」との要望を受け、座席の島の一括割当〔SeatBlockBulkFor〕と同じ
+  // 曜日タブ切り替えの仕組みをメンバーへの座席確保にも導入した）。曜日ごとに座席が異なる
+  // プロジェクトでは、曜日タブで選んだ曜日のseat_idsだけが選択可能になる。freeSeatモードでは使わない
+  allocatedSeatsByWeekday?: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
   // まだ座席が確保されていないメンバー（固定座席保有者は対象外）
   members: { userId: number; name: string }[]
   // true: 座席の島に限らず、フロアマップで表示中の日に空いているフリー座席から選ぶ
   // （2026-09-04追加。「複数人の代理予約をS-02のフロアマップからできるようにしたい」との要望を受けた）
   freeSeat?: boolean
+}
+
+// S-04から「座席表からまとめて確保する」で複数プロジェクトを一度に開く際にlocation.stateへ積む値
+// （2026-09-24新設。「一括で全てのプロジェクト席をきめるようにしたい、座席の島の一括割当と同じように
+// 左に座席表、右にプロジェクト選択画面と曜日、割り当てられた島、各プロジェクトの情報が見えるように」
+// との要望を受けた。座席の島の一括割当〔SeatBlockBulkFor〕のメンバー確保版。freeSeatモードは
+// 対象外（複数人の代理予約は元々フリー座席から選ぶ別の機能のため））
+export interface MemberSeatAssignBulkFor {
+  plans: {
+    planId: number
+    projectName: string
+    periodStart: string
+    weekdaysFinalized: Weekday[] | null
+    requiredSeats: number
+    allocatedSeatIds: number[]
+    allocatedSeatsByWeekday?: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
+    // まだ座席が確保されていないメンバー（固定座席保有者は対象外）
+    members: { userId: number; name: string }[]
+  }[]
 }
 
 export type ProjectTitle = 'PM' | 'PL' | 'SL' | null
@@ -493,10 +539,13 @@ export interface ProjectPlanDetail {
    * 座席の島が未割当・曜日未確定ならnull */
   allocated_seats_by_weekday: Record<Weekday, { seat_ids: number[]; seat_label: string }> | null
   allocated_seat_label: string | null
+  /** メンバー個別の座席確保（BulkSeatAssign）の選択肢。2026-09-24修正: 基本の島だけでなく曜日ごとの
+   * 例外（allocated_seats_overrides）も含めた和集合を返すようになった。has_seat_overrideがtrueの
+   * プロジェクトでは、BulkSeatAssign側が確定曜日ごとに別々の<select>でこの中から選ぶ */
   allocated_seats: { id: number; seat_no: string }[] | null
-  /** メンバー個別の座席確保（A-18・A-64、BulkSeatAssign）は基本の島だけを対象としており、
-   * 曜日ごとの例外（has_seat_override）には未対応（2026-09-18追加）。trueの間はこの画面から
-   * 実行するとバックエンドが400で拒否するため、フロント側でも一括確保UIを止める */
+  /** 座席の島が全く割り当てられていない場合のみtrue（2026-09-24修正。以前はhas_seat_override
+   * （曜日によって座席の島が異なる）の間もtrueにしてBulkSeatAssign自体を止めていたが、「曜日ごとに
+   * 分けて座席を選択できるようにしてほしい」との要望を受け、その制限を撤去した） */
   member_seat_assign_blocked_by_override: boolean
   my_project_title: ProjectTitle
   /** @deprecated 表示用（PM/PLバッジ等）にのみ使う。権限判定にはis_seat_assignerを使うこと */
@@ -560,8 +609,13 @@ export interface ExcludedDate {
 // A-18 POST /project-quarter-plans/{id}/seat-assignments（S-04）
 export interface SeatAssignmentResult {
   member_user_id: number
-  seat_id: number
-  seat_no: string
+  /** 曜日によって異なる複数の座席を使った場合はnull（seat_noが曜日ごとの内訳文字列になる、
+   * 2026-09-24追加。「曜日ごとに座席が違うプロジェクトでも、メンバーへの座席確保をできるように
+   * してほしい」との要望を受けた） */
+  seat_id: number | null
+  /** 座席が1つも選ばれなかった場合のみnull。曜日によって複数の座席を使った場合は
+   * 「月: B1／火: C3」のような内訳文字列になる */
+  seat_no: string | null
   status: 'assigned' | 'excluded'
   reason?: string
   created_days?: number
