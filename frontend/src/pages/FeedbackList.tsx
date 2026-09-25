@@ -34,6 +34,7 @@ export default function FeedbackList() {
     <div>
       <header className="flex items-baseline gap-2 border-b border-slate-400 bg-white px-8 py-4">
         <h1 className="text-xl font-bold">フィードバック一覧</h1>
+        {!isLoading && <span className="text-sm text-slate-500">全{items?.length ?? 0}件</span>}
       </header>
 
       <div className="p-6">

@@ -2,6 +2,7 @@ import { useState, type SVGProps } from 'react'
 import { NavLink } from 'react-router'
 import type { Me } from '../types'
 import { CARDS as ADMIN_MENU_CARDS } from '../pages/AdminMenu'
+import { useFeedbackCount } from '../hooks/useFeedback'
 
 interface SidebarProps {
   me: Me
@@ -104,6 +105,11 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
     })
   }
 
+  // 「現状何件のフィードバックが来ているか確認できるようにしたい」との要望を受け、「フィードバック
+  // 一覧」の横に総件数のバッジを表示する（A-88、2026-09-25追加。システム運用担当以外には
+  // そもそもこのナビ項目自体を表示しないため、フックもis_system_operatorの場合のみ有効にする）
+  const feedbackCount = useFeedbackCount(me.is_system_operator)
+
   if (collapsed) {
     return (
       <aside className="hidden w-14 shrink-0 flex-col items-center gap-3 bg-gradient-to-b from-[#26346f] to-[#10173a] py-4 sm:sticky sm:top-0 sm:flex sm:h-screen">
@@ -155,7 +161,12 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
               }
             >
               <item.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.to === '/feedback' && !!feedbackCount && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                  {feedbackCount}
+                </span>
+              )}
             </NavLink>
             {/* 管理メニューの下に各画面への入口をまとめて出す（2026-09-14追加。「管理部メニューの
                 下に固定座席の指定、代理予約・取り消し、座席マスタ管理、権限・PJ管理、プロジェクト

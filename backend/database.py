@@ -82,6 +82,9 @@ CREATE TABLE IF NOT EXISTS users (
     -- 運用している人に見せたい」との要望を受けた。role='admin'（管理部、業務上の役割）とは独立した
     -- 属性とし、area_manager_role同様、S-08「利用者ロール管理」で管理部が任意の利用者に付与する
     is_system_operator BOOLEAN NOT NULL DEFAULT false,
+    -- フィードバック一覧（S-14）を最後に開いた日時（2026-09-25追加）。サイドバーの未読件数
+    -- バッジ（A-88）の基準に使う
+    feedback_last_viewed_at TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -90,6 +93,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_month SMALLINT CHECK (birth_mon
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_day SMALLINT CHECK (birth_day BETWEEN 1 AND 31);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS hobby VARCHAR(200);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system_operator BOOLEAN NOT NULL DEFAULT false;
+-- フィードバック一覧（S-14）を最後に開いた日時（2026-09-25追加）。「フィードバック開いたら件数が
+-- 消えるようにしたい」との要望を受けた。サイドバーのバッジ（A-88）は未読件数
+-- （created_at > feedback_last_viewed_at）を表示し、一覧取得（A-60）のたびにnow()へ更新することで
+-- 一覧を開いた時点のバッジが消える（未設定NULLの場合は全件を未読扱いにする）
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_last_viewed_at TIMESTAMPTZ;
 
 -- T-02 areas
 CREATE TABLE IF NOT EXISTS areas (
