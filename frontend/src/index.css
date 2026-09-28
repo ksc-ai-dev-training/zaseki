@@ -193,7 +193,7 @@ button.seat-tile.status-free:hover { filter: none; background: #f1f5f9; }
   max-width: 100%;
 }
 .north-column { display: flex; flex-direction: column; flex: 0 0 auto; }
-.north-side-rooms { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; padding: 16px 24px; }
+.north-side-rooms { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; padding: 16px 24px; position: relative; }
 .north-side-rooms .floor-room { min-height: 0; }
 .panel-north { background: #fdf6e3; padding: 28px 24px; flex: 0 0 auto; display: flex; flex-direction: column; position: relative; }
 .floor-overview-stack { display: flex; flex-direction: column; gap: 0; flex: 0 0 auto; background: #e8f5ea; }

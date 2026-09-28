@@ -57,6 +57,9 @@ export type SeatType = 'free' | 'fixed' | 'project'
 export type SeatStatus =
   | 'free' | 'mine' | 'occupied' | 'occupied_fixed' | 'project_confirmed' | 'project_pending'
 
+/** pos_x/pos_yの基準領域（2026-09-28追加、Seat/SeatMasterItem共通） */
+export type PosZone = 'north_rooms' | null
+
 export interface Seat {
   /** 仕様書のレスポンス例にはないが、予約登録（A-09）のBody.seat_idに使う拡張フィールド */
   id: number
@@ -74,6 +77,9 @@ export interface Seat {
   /** S-02「座席配置モード」で配置した座席のみ設定される、エリアパネルに対する%座標。未設定はnull */
   pos_x: number | null
   pos_y: number | null
+  /** pos_x/pos_yの基準領域。nullはNORTH/EAST/WESTパネル本体、'north_rooms'はNORTHエリア上部の
+   * 非座席スペース（会議室D・ワークラウンジ）に対する座標（2026-09-28追加） */
+  pos_zone: PosZone
   /** この座席の占有者が同じ日に別の座席も保有している場合true（RULE-07廃止に伴う座席表の赤色表示用、
    * 2026-09-09追加） */
   multi_seat_holder: boolean
@@ -253,6 +259,7 @@ export interface SeatMasterItem {
   /** S-02「座席配置モード」で配置した座席のみ設定される。編集時に保持するため取得しておく */
   pos_x: number | null
   pos_y: number | null
+  pos_zone: PosZone
 }
 
 // A-08 GET /reservations/mine（S-02）
@@ -480,6 +487,10 @@ export interface MyProjectPlanSummary {
    * プロジェクトでは、allocated_seat_labelが単一の範囲ではなく「月: B1〜B3／火: C1〜C3」の
    * ような曜日ごとの内訳文字列になる） */
   has_seat_override: boolean
+  /** status='seats_allocated'で、実効座席に予約のない（未確保の）メンバーが1人以上いるか
+   * （2026-09-28追加。「座席表からまとめてメンバーへの座席を確保する」バナーの表示条件に使う。
+   * それ以外のstatusでは常にfalse） */
+  has_unassigned_members: boolean
 }
 
 export interface MyProjectItem {

@@ -5,7 +5,7 @@ import { useAreas } from '../hooks/useAreas'
 import { useSeatMaster, type SeatStatusFilter } from '../hooks/useSeatMaster'
 import type { AreaFilter } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
-import type { SeatMasterItem, SeatType } from '../types'
+import type { PosZone, SeatMasterItem, SeatType } from '../types'
 
 const PAGE_SIZE = 10
 
@@ -29,9 +29,10 @@ interface SeatForm {
   seatType: SeatType
   active: boolean
   hasFixedAssignment: boolean
-  /** 座席配置モードで設定された座標。編集時は変更せずそのまま送り返す（消えないように） */
+  /** 座席配置モードで設定された座標・基準領域。編集時は変更せずそのまま送り返す（消えないように） */
   posX: number | null
   posY: number | null
+  posZone: PosZone
 }
 
 // 座席の一括追加（A-77、2026-09-09追加）。連番プレフィックス欄は、この職場の座席番号が
@@ -90,14 +91,14 @@ export default function SeatMaster() {
 
   const openAdd = () => {
     setFormError(null)
-    setForm({ id: null, seatNo: '', areaId: areas[0]?.id ?? 0, seatType: 'free', active: true, hasFixedAssignment: false, posX: null, posY: null })
+    setForm({ id: null, seatNo: '', areaId: areas[0]?.id ?? 0, seatType: 'free', active: true, hasFixedAssignment: false, posX: null, posY: null, posZone: null })
   }
   const openEdit = (seat: SeatMasterItem) => {
     setFormError(null)
     setForm({
       id: seat.id, seatNo: seat.seat_no, areaId: seat.area_id, seatType: seat.seat_type,
       active: seat.status === 'active', hasFixedAssignment: seat.has_fixed_assignment,
-      posX: seat.pos_x, posY: seat.pos_y,
+      posX: seat.pos_x, posY: seat.pos_y, posZone: seat.pos_zone,
     })
   }
 
@@ -117,7 +118,7 @@ export default function SeatMaster() {
           body: JSON.stringify({
             seat_no: form.seatNo, area_id: form.areaId, seat_type: form.seatType,
             status: form.active ? 'active' : 'retired',
-            pos_x: form.posX, pos_y: form.posY,
+            pos_x: form.posX, pos_y: form.posY, pos_zone: form.posZone,
           }),
         })
       }

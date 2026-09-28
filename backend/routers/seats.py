@@ -96,7 +96,7 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
     history_min_date = Date.today() - timedelta(days=lookback_days)
     pool = get_pool()
     rows = await pool.fetch(
-        """SELECT s.id, s.seat_no, s.seat_type, s.pos_x, s.pos_y, a.name AS area_name,
+        """SELECT s.id, s.seat_no, s.seat_type, s.pos_x, s.pos_y, s.pos_zone, a.name AS area_name,
                   r.id AS reservation_id, r.user_id AS reserved_user_id, ru.last_name, ru.first_name,
                   ru.avatar_image AS reserved_avatar_image, ru.birth_month AS reserved_birth_month,
                   ru.birth_day AS reserved_birth_day,
@@ -229,6 +229,9 @@ async def _build_availability(date: Date, area: str, user: CurrentUser) -> dict:
             # フロアマップ上の自由配置座標（エリアパネルに対する%）。未設定ならnull
             "pos_x": r["pos_x"],
             "pos_y": r["pos_y"],
+            # pos_x/pos_yの基準領域。NULL（既定）はNORTH/EAST/WESTパネル本体、'north_rooms'は
+            # NORTHエリア上部の非座席スペース（会議室D・ワークラウンジ）に対する座標（2026-09-28追加）
+            "pos_zone": r["pos_zone"],
             # 仕様書のレスポンス例にはないが、フロアマップから直接取消する（A-11）ために
             # 自分の予約にのみ付与する拡張フィールド
             "reservation_id": r["reservation_id"] if status == "mine" else None,

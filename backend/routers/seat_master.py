@@ -38,7 +38,7 @@ async def list_seat_master(
     await release_expired_fixed_seats()
     rows = await get_pool().fetch(
         """SELECT s.id, s.seat_no, s.area_id, a.name AS area_name, s.seat_type, s.status,
-                  s.pos_x, s.pos_y,
+                  s.pos_x, s.pos_y, s.pos_zone,
                   EXISTS(SELECT 1 FROM fixed_seat_assignments fsa WHERE fsa.seat_id = s.id AND fsa.ended_on IS NULL) AS has_fixed_assignment
            FROM seats s
            JOIN areas a ON a.id = s.area_id
@@ -54,7 +54,7 @@ async def list_seat_master(
                 "id": r["id"], "seat_no": r["seat_no"], "area_id": r["area_id"], "area": r["area_name"],
                 "seat_type": r["seat_type"], "status": r["status"],
                 "has_fixed_assignment": r["has_fixed_assignment"],
-                "pos_x": r["pos_x"], "pos_y": r["pos_y"],
+                "pos_x": r["pos_x"], "pos_y": r["pos_y"], "pos_zone": r["pos_zone"],
             }
             for r in rows
         ]
@@ -73,6 +73,9 @@ class SeatCreate(BaseModel):
     # 両方指定するか両方省略する（2026-08-27追加）
     pos_x: float | None = None
     pos_y: float | None = None
+    # pos_x/pos_yの基準領域。NULL（既定）はNORTH/EAST/WESTパネル本体、'north_rooms'はNORTHエリア
+    # 上部の非座席スペース（会議室D・ワークラウンジ）に対する座標（2026-09-28追加）
+    pos_zone: str | None = None
 
 
 @router.post("")
@@ -89,8 +92,8 @@ async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("
     if duplicate:
         raise HTTPException(409, detail="この座席番号は既に使用されています")
     row = await pool.fetchrow(
-        "INSERT INTO seats (seat_no, area_id, seat_type, pos_x, pos_y) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-        seat_no, body.area_id, body.seat_type, body.pos_x, body.pos_y,
+        "INSERT INTO seats (seat_no, area_id, seat_type, pos_x, pos_y, pos_zone) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        seat_no, body.area_id, body.seat_type, body.pos_x, body.pos_y, body.pos_zone,
     )
     return {"id": row["id"], "detail": "座席を追加しました"}
 
@@ -141,6 +144,7 @@ class SeatUpdate(BaseModel):
     status: Literal["active", "retired"]
     pos_x: float | None = None
     pos_y: float | None = None
+    pos_zone: str | None = None
 
 
 @router.put("/{id}")
@@ -163,9 +167,9 @@ async def update_seat(id: int, body: SeatUpdate, _: CurrentUser = Depends(requir
         raise HTTPException(409, detail="この座席番号は既に使用されています")
     await pool.execute(
         """UPDATE seats SET seat_no = $1, area_id = $2, seat_type = $3, status = $4,
-                             pos_x = $5, pos_y = $6, updated_at = now()
-           WHERE id = $7""",
-        seat_no, body.area_id, body.seat_type, body.status, body.pos_x, body.pos_y, id,
+                             pos_x = $5, pos_y = $6, pos_zone = $7, updated_at = now()
+           WHERE id = $8""",
+        seat_no, body.area_id, body.seat_type, body.status, body.pos_x, body.pos_y, body.pos_zone, id,
     )
     return {"detail": "座席を更新しました"}
 
@@ -174,6 +178,9 @@ class SeatPositionUpdate(BaseModel):
     area_id: int
     pos_x: float
     pos_y: float
+    # ドロップ先がNORTHエリア上部の非座席スペース（会議室D・ワークラウンジ）だった場合
+    # 'north_rooms'、それ以外（各エリアパネル本体）はNone（2026-09-28追加）
+    pos_zone: str | None = None
 
 
 @router.patch("/{id}/position")
@@ -182,8 +189,8 @@ async def update_seat_position(id: int, body: SeatPositionUpdate, _: CurrentUser
     変更したとき変更できるようになっていますか？」「実際のオフィス配置を再現した座席（A1やC1等）
     も含めて全座席をドラッグで移動できるようにしてほしい」との要望を受けた。座席番号・座席タイプ・
     状態は変更しないため、これらが必須のA-24（PUT /seats/{id}）を毎回のドラッグで呼ぶのは
-    煩雑・過剰な再検証になる。本APIはarea_id・pos_x・pos_yの3項目のみを更新する軽量な専用API。
-    ドラッグ先が別エリアのパネルであることも想定し、area_idも同時に更新できるようにした
+    煩雑・過剰な再検証になる。本APIはarea_id・pos_x・pos_y・pos_zoneの4項目のみを更新する軽量な
+    専用API。ドラッグ先が別エリアのパネルであることも想定し、area_idも同時に更新できるようにした
     （ドロップ先のパネルから一意に決まるため、フロントエンドは常に確定した値を送る）。"""
     pool = get_pool()
     existing = await pool.fetchrow("SELECT id FROM seats WHERE id = $1", id)
@@ -193,8 +200,8 @@ async def update_seat_position(id: int, body: SeatPositionUpdate, _: CurrentUser
     if area is None:
         raise HTTPException(404, detail="対象が見つかりません")
     await pool.execute(
-        "UPDATE seats SET area_id = $1, pos_x = $2, pos_y = $3, updated_at = now() WHERE id = $4",
-        body.area_id, body.pos_x, body.pos_y, id,
+        "UPDATE seats SET area_id = $1, pos_x = $2, pos_y = $3, pos_zone = $4, updated_at = now() WHERE id = $5",
+        body.area_id, body.pos_x, body.pos_y, body.pos_zone, id,
     )
     return {"detail": "座席の位置を更新しました"}
 

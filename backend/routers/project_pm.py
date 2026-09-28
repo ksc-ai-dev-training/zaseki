@@ -104,6 +104,15 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     だったが、同日中の千田さんの案によるワークフロー変更で権限の基準がproxy_user_idからcreated_by
     〔プロジェクトの作成者〕に変わったことに伴い、フィールド名・基準列とも変更した）: 自分がこの
     プロジェクトの作成者（T-05.created_by）かどうか。表示用の情報にのみ使う。
+    <strong>2026-09-28追加:</strong> 「座席割当済みのプロジェクトが1件あります。座席表からまとめて
+    メンバーへの座席を確保できます、というバナーが常に表示されているが何なのか」との指摘を受けた。
+    調査したところ、ProjectSeatRequest.tsxのこのバナー（座席表からまとめて確保する導線、2026-09-24
+    新設）はstatus='seats_allocated'の計画が1件でもあれば表示する条件のみで、実際にその中に
+    未確保のメンバーが残っているかどうかは見ておらず、全員の座席が確保済みになった後もバナーが
+    消えずに残り続ける不具合だった（押すと「座席の確保が必要なメンバーがいるプロジェクトは
+    ありません」と表示される、goBulkSeatMap参照）。各計画に<code>has_unassigned_members</code>
+    （実効座席（基本の島＋曜日ごとの例外の和集合）を持ち、かつ未確保（seat_not_requiredでない）
+    メンバーが1人以上いるか）を追加し、フロント側のバナー表示条件をこちらに揃えた。
     <strong>2026-09-14訂正:</strong> 「作成者は席決め担当にするのではなくただの作成者で、何も権限は
     ない。席決め担当になった人がアンケートなどに回答できる」との指摘を受け、権限判定の基準を
     is_project_creator（created_by）からis_seat_assigner（T-05.proxy_user_id、PJ席決担当）に戻した
@@ -148,6 +157,10 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
     seat_no_by_id = await _seat_labels(pool, list(all_seat_ids))
 
     items_by_project: dict[int, dict] = {}
+    # status='seats_allocated'の計画についてのみ、has_unassigned_membersの算出に使う実効座席id集合を
+    # 記録しておく（plan_id→{project_id, seat_ids, period_start, period_end}。2026-09-28追加）
+    allocated_plans: dict[int, dict] = {}
+    plan_dict_by_id: dict[int, dict] = {}
     for r in rows:
         item = items_by_project.setdefault(r["project_id"], {
             "project_id": r["project_id"], "project_name": r["project_name"],
@@ -163,13 +176,56 @@ async def list_my_projects(user: CurrentUser = Depends(require_auth)):
         seat_label, has_seat_override = _seat_label_for_plan(
             r["allocated_seats"], r["allocated_seats_overrides"], weekdays_finalized, seat_no_by_id
         )
-        item["plans"].append({
+        plan_dict = {
             "id": r["plan_id"], "period_start": r["period_start"].isoformat(),
             "period_end": r["period_end"].isoformat(), "status": r["status"],
             "required_seats": r["required_seats"],
             "allocated_seat_label": seat_label,
             "has_seat_override": has_seat_override,
-        })
+            "has_unassigned_members": False,
+        }
+        item["plans"].append(plan_dict)
+        plan_dict_by_id[r["plan_id"]] = plan_dict
+        if r["status"] == "seats_allocated":
+            raw_by_weekday, _ = seats_by_weekday(r["allocated_seats"], r["allocated_seats_overrides"], weekdays_finalized)
+            plan_seat_ids = {sid for seat_ids in (raw_by_weekday or {}).values() for sid in seat_ids}
+            if plan_seat_ids:
+                allocated_plans[r["plan_id"]] = {
+                    "project_id": r["project_id"], "seat_ids": plan_seat_ids,
+                    "period_start": r["period_start"], "period_end": r["period_end"],
+                }
+
+    # 「座席表からまとめてメンバーへの座席を確保する」バナー（ProjectSeatRequest.tsx）向けに、
+    # status='seats_allocated'の計画それぞれについて、未確保（seat_not_requiredでない）メンバーが
+    # 実際に残っているかを判定する（2026-09-28追加。従来はバナー表示条件にこの判定がなく、
+    # 全員確保済みになった後もバナーが表示され続ける不具合があった）
+    if allocated_plans:
+        project_ids = {p["project_id"] for p in allocated_plans.values()}
+        member_rows = await pool.fetch(
+            "SELECT project_id, user_id FROM project_members WHERE project_id = ANY($1::bigint[]) AND seat_not_required = false",
+            list(project_ids),
+        )
+        members_by_project: dict[int, list[int]] = {}
+        for m in member_rows:
+            members_by_project.setdefault(m["project_id"], []).append(m["user_id"])
+
+        all_plan_seat_ids = {sid for p in allocated_plans.values() for sid in p["seat_ids"]}
+        reservation_rows = await pool.fetch(
+            """SELECT user_id, seat_id, date FROM reservations
+               WHERE status = 'active' AND seat_id = ANY($1::bigint[])""",
+            list(all_plan_seat_ids),
+        )
+
+        for plan_id, p in allocated_plans.items():
+            assigned_user_ids = {
+                res["user_id"] for res in reservation_rows
+                if res["seat_id"] in p["seat_ids"] and p["period_start"] <= res["date"] <= p["period_end"]
+            }
+            member_user_ids = members_by_project.get(p["project_id"], [])
+            plan_dict_by_id[plan_id]["has_unassigned_members"] = any(
+                uid not in assigned_user_ids for uid in member_user_ids
+            )
+
     return {"items": list(items_by_project.values())}
 
 

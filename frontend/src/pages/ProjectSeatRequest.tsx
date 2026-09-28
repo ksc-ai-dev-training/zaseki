@@ -185,10 +185,16 @@ export default function ProjectSeatRequest() {
   // ここでも適用する。A-13〔/projects/mine〕のis_seat_assigner・can_assign_seatsで判定できるため、
   // A-14を呼ぶ前の時点で絞り込める）
   const canManageSeatAssign = (mp: MyProjectItem) => mp.is_seat_assigner || mp.can_assign_seats || me?.role === 'admin'
+  // 未確保のメンバーが実際に残っている計画だけを数える（2026-09-28修正。「座席割当済みのプロジェクトが
+  // 1件あります、というバナーが常に表示されているが何なのか」との指摘を受けた。従来はstatus判定のみで、
+  // 全メンバーの座席確保が済んだ後もバナーが表示され続け、押すと「座席の確保が必要なメンバーがいる
+  // プロジェクトはありません」と出るだけの不具合だった。has_unassigned_members〔A-13〕を条件に追加した）
   const bulkAllocatedCount = items
     .filter(canManageSeatAssign)
     .reduce(
-      (sum, mp) => sum + mp.plans.filter((p) => p.period_start === selectedQuarter && p.status === 'seats_allocated').length,
+      (sum, mp) => sum + mp.plans.filter(
+        (p) => p.period_start === selectedQuarter && p.status === 'seats_allocated' && p.has_unassigned_members
+      ).length,
       0,
     )
   const goBulkSeatMap = async () => {
@@ -197,7 +203,9 @@ export default function ProjectSeatRequest() {
     try {
       const candidates = items
         .filter(canManageSeatAssign)
-        .flatMap((mp) => mp.plans.filter((p) => p.period_start === selectedQuarter && p.status === 'seats_allocated'))
+        .flatMap((mp) => mp.plans.filter(
+          (p) => p.period_start === selectedQuarter && p.status === 'seats_allocated' && p.has_unassigned_members
+        ))
       const details = await Promise.all(
         candidates.map((p) => apiFetch<ProjectPlanDetail>(`/api/project-quarter-plans/${p.id}`))
       )

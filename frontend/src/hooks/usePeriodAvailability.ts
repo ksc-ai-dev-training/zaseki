@@ -14,6 +14,10 @@ export function usePeriodAvailability(start: string | undefined, end: string | u
   const { data, error, isLoading, mutate } = useSWR<PeriodAvailabilityResponse>(
     `/api/seats/availability/period${query ? `?${query}` : ''}`,
     apiFetch,
+    // useAvailability（A-06）と同じ理由で1秒間隔のポーリングを行う（2026-09-28追加、
+    // 「もっとすぐに反映することは可能か」との質問を受け当初の5秒から短縮）。dedupingIntervalも
+    // 既定2000msのままだと実質2秒間隔になってしまうため、あわせて1秒に下げる
+    { refreshInterval: 1000, dedupingInterval: 1000 },
   )
   return { period: data, error, isLoading, refresh: mutate }
 }

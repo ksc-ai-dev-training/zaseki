@@ -122,12 +122,20 @@ CREATE TABLE IF NOT EXISTS seats (
     -- 追加した座席のみ設定される。
     pos_x       DOUBLE PRECISION,
     pos_y       DOUBLE PRECISION,
+    -- pos_x/pos_yがどの領域に対する%座標かを示す（2026-09-28追加）。NULL（既定）はNORTH/EAST/WEST
+    -- 各パネル本体（.panel-north等）に対する座標。'north_rooms'はNORTHエリア上部の非座席スペース
+    -- （会議室D・ワークラウンジの行、.north-side-rooms）に対する座標で、「NORTHエリアの上にある
+    -- ワークラウンジなどは座席の配置ができないが、配置できるようにしたい」との要望を受けて追加した。
+    -- パネル本体とは別のDOM要素（別のposition:relative基準）のため、同じpos_x/pos_yの数値でも
+    -- どちらの領域を基準にするかを区別する必要がある。
+    pos_zone    VARCHAR(20),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- 2026-08-27追加時点で既にseatsテーブルが存在する環境向け（CREATE TABLE IF NOT EXISTSは列追加をしないため）
 ALTER TABLE seats ADD COLUMN IF NOT EXISTS pos_x DOUBLE PRECISION;
 ALTER TABLE seats ADD COLUMN IF NOT EXISTS pos_y DOUBLE PRECISION;
+ALTER TABLE seats ADD COLUMN IF NOT EXISTS pos_zone VARCHAR(20);
 
 -- T-04 fixed_seat_assignments。日次のreservation行は作らず、変更・解除（A-20・A-21）も
 -- 物理DELETEはしない（2026-09-04変更。以前は物理DELETEで表現していたが、過去日の空き状況

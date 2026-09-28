@@ -15,7 +15,7 @@ import SeatTile from '../components/SeatTile'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf, compareSeatNo } from '../lib/floorLayout'
 import type {
-  AssignFixedSeatFor, MemberSeatAssignBulkFor, MemberSeatAssignFor, MyReservation, PreviousPlanDetail, ProjectPlanDetail, ProxyBookingFor, PublicProfile, QuarterPlanItem,
+  AssignFixedSeatFor, MemberSeatAssignBulkFor, MemberSeatAssignFor, MyReservation, PosZone, PreviousPlanDetail, ProjectPlanDetail, ProxyBookingFor, PublicProfile, QuarterPlanItem,
   RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockBulkFor, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
 } from '../types'
 
@@ -426,7 +426,7 @@ export default function Availability() {
   // 固定座席の開始日（2026-09-07追加。「何日から固定座席の指定ができるようにしたい」との
   // 要望を受けた）。過去日を指定すれば記録の補正、未来日を指定すれば事前の予約設定に使える
   const [assignValidFrom, setAssignValidFrom] = useState(todayStr())
-  const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number } | null>(null)
+  const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number; zone: PosZone } | null>(null)
   const [newSeatNo, setNewSeatNo] = useState('')
   const [newSeatType, setNewSeatType] = useState<SeatType>('free')
   // 割当済み計画を「編集」で開いた場合、現在の割当座席を初期選択状態にする（2026-08-28追加）
@@ -1044,15 +1044,29 @@ export default function Availability() {
   }
 
   // 座席配置モード中、パネルの本当に何もない背景をクリックした場合のみ配置を開始する
-  // （既存の座席タイル・部屋・柱等の上のクリックはそれぞれの本来の動作に任せる）
-  const handlePanelClick = (e: MouseEvent<HTMLDivElement>, area: 'NORTH' | 'EAST' | 'WEST') => {
-    if (!placeSeatMode || e.target !== e.currentTarget) return
+  // （既存の座席タイルの上のクリックはその座席本来の動作に任せる）。会議室・ロッカー・柱等
+  // （.floor-room・.floor-pillar）はクリックしても何も起きないただの表示要素のため、その上への
+  // クリックも「空いている場所」として配置対象に含める（2026-09-28修正。「NORTHエリアの上にある
+  // ワークラウンジなどは座席の配置ができない」との指摘を受けた。会議室D・ワークラウンジの行
+  // 〔.north-side-rooms〕はこの2つの部屋の箱で幅いっぱいに埋まっており、部屋の上のクリックを
+  // 除外したままだとクリックできる余白が一切ないため、この行に限らずロッカー・柱等も含めて
+  // 一律で配置対象にした）。
+  // zoneを指定すると、パネル本体ではなくその領域（e.currentTarget）自身を基準にした%座標になる
+  // （NORTHエリア上部の非座席スペース〔.north-side-rooms〕は、パネル本体〔panel-north〕とは別の
+  // position:relative要素のため、どちらを基準にした座標かを区別する必要がある）
+  const handlePanelClick = (e: MouseEvent<HTMLDivElement>, area: 'NORTH' | 'EAST' | 'WEST', zone: PosZone = null) => {
+    if (!placeSeatMode) return
+    const target = e.target as HTMLElement
+    const isBackground = target === e.currentTarget
+    const isDecor = target.classList.contains('floor-room') || target.classList.contains('floor-pillar')
+    if (!isBackground && !isDecor) return
     const rect = e.currentTarget.getBoundingClientRect()
     setActionError(null)
     setNewSeatNo('')
     setNewSeatType('free')
     setPlaceSeatTarget({
       area,
+      zone,
       posX: ((e.clientX - rect.left) / rect.width) * 100,
       posY: ((e.clientY - rect.top) / rect.height) * 100,
     })
@@ -1283,7 +1297,7 @@ export default function Availability() {
         method: 'POST',
         body: JSON.stringify({
           seat_no: newSeatNo, area_id: area.id, seat_type: newSeatType,
-          pos_x: placeSeatTarget.posX, pos_y: placeSeatTarget.posY,
+          pos_x: placeSeatTarget.posX, pos_y: placeSeatTarget.posY, pos_zone: placeSeatTarget.zone,
         }),
       })
       setPlaceSeatTarget(null)
@@ -1304,6 +1318,10 @@ export default function Availability() {
   // freePositionedByArea参照）。ドラッグ中の見た目はポインタ追従のゴースト表示のみとし、
   // ドラッグ元のタイル自体はAPI成功までそのまま残す（失敗時に元へ戻す処理を省くため）
   const panelRefs = useRef<Record<'NORTH' | 'EAST' | 'WEST', HTMLDivElement | null>>({ NORTH: null, EAST: null, WEST: null })
+  // NORTHエリア上部の非座席スペース（.north-side-rooms、会議室D・ワークラウンジ）専用の別ref
+  // （2026-09-28追加。panel-northとは別のposition:relative要素のため、ドロップ判定・%座標の
+  // 基準も別に持つ必要がある）
+  const northRoomsRef = useRef<HTMLDivElement | null>(null)
   const [draggingSeat, setDraggingSeat] = useState<{ seat: Seat; clientX: number; clientY: number } | null>(null)
 
   // 座席の位置を自動で整列（グリッドスナップ・近くの座席への吸着）させる機能を2026-09-10に
@@ -1311,6 +1329,20 @@ export default function Availability() {
   // 却下でいいです。消してください」との指摘を受け、同日中に撤回した。ドロップした位置を
   // そのままpos_x/pos_yとして使う、素朴な実装に戻している
   const findDropPoint = (clientX: number, clientY: number) => {
+    // north-side-rooms（会議室D・ワークラウンジ）は各パネルより上に重なりなく描画されるため、
+    // 先にこちらを判定する（2026-09-28追加）
+    const roomsEl = northRoomsRef.current
+    if (roomsEl) {
+      const roomsRect = roomsEl.getBoundingClientRect()
+      if (clientX >= roomsRect.left && clientX <= roomsRect.right && clientY >= roomsRect.top && clientY <= roomsRect.bottom) {
+        return {
+          areaName: 'NORTH' as const,
+          zone: 'north_rooms' as PosZone,
+          posX: ((clientX - roomsRect.left) / roomsRect.width) * 100,
+          posY: ((clientY - roomsRect.top) / roomsRect.height) * 100,
+        }
+      }
+    }
     const target = (['NORTH', 'EAST', 'WEST'] as const)
       .map((areaName) => ({ areaName, el: panelRefs.current[areaName] }))
       .find(({ el }) => {
@@ -1322,6 +1354,7 @@ export default function Availability() {
     const rect = target.el.getBoundingClientRect()
     return {
       areaName: target.areaName,
+      zone: null as PosZone,
       posX: ((clientX - rect.left) / rect.width) * 100,
       posY: ((clientY - rect.top) / rect.height) * 100,
     }
@@ -1346,7 +1379,7 @@ export default function Availability() {
     try {
       await apiFetch(`/api/seats/${seat.id}/position`, {
         method: 'PATCH',
-        body: JSON.stringify({ area_id: area.id, pos_x: dropPoint.posX, pos_y: dropPoint.posY }),
+        body: JSON.stringify({ area_id: area.id, pos_x: dropPoint.posX, pos_y: dropPoint.posY, pos_zone: dropPoint.zone }),
       })
       await refreshAvailability()
     } catch (err) {
@@ -1539,12 +1572,18 @@ export default function Availability() {
   // 対になる形で描画しないよう修正済み）
   const extraSeatGroups = new Map<string, Seat[]>()
   const freePositionedByArea: Record<'NORTH' | 'EAST' | 'WEST', Seat[]> = { NORTH: [], EAST: [], WEST: [] }
+  // NORTHエリア上部の非座席スペース（.north-side-rooms、会議室D・ワークラウンジ）に配置された座席
+  // （pos_zone==='north_rooms'）。panel-northとは別のposition:relative要素の上に重ねて描画するため、
+  // freePositionedByAreaとは別枠で持つ（2026-09-28追加。「ワークラウンジなどにも座席を配置できる
+  // ようにしたい」との要望を受けた）
+  const freePositionedNorthRooms: Seat[] = []
   Object.keys(seatByNo).forEach((no) => {
     const area = seatArea[no] as 'NORTH' | 'EAST' | 'WEST' | undefined
     if (!area) return
     const seat = seatByNo[no]
     if (seat.pos_x !== null && seat.pos_y !== null) {
-      freePositionedByArea[area].push(seat)
+      if (seat.pos_zone === 'north_rooms') freePositionedNorthRooms.push(seat)
+      else freePositionedByArea[area].push(seat)
       return
     }
     if (FLOOR_LAYOUT_SEATS[area].has(no)) return
@@ -1554,8 +1593,8 @@ export default function Availability() {
   })
   extraSeatGroups.forEach((seats) => seats.sort((a, b) => compareSeatNo(a.seat_no, b.seat_no)))
 
-  const renderFreePositionedSeats = (area: 'NORTH' | 'EAST' | 'WEST') =>
-    freePositionedByArea[area].map((seat) => (
+  const renderFreePlacedSeats = (seats: Seat[]) =>
+    seats.map((seat) => (
       <div key={seat.id} className="free-placed-seat" style={{ left: `${seat.pos_x}%`, top: `${seat.pos_y}%` }}>
         <SeatTile
           seat={seat}
@@ -1916,10 +1955,15 @@ export default function Availability() {
           <div ref={overviewRef} className="floor-overview inline-flex">
             {hasNorth && (
               <div className="north-column">
-                {areaFilter === 'all' && (
-                  <div className="north-side-rooms">
+                {(areaFilter === 'all' || areaFilter === 'north') && (
+                  <div
+                    ref={(el) => { northRoomsRef.current = el }}
+                    className={`north-side-rooms ${placeSeatMode ? 'placement-mode-active' : ''}`}
+                    onClick={(e) => handlePanelClick(e, 'NORTH', 'north_rooms')}
+                  >
                     <div className="floor-room" style={{ flex: 1 }}>会議室D</div>
                     <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
+                    {renderFreePlacedSeats(freePositionedNorthRooms)}
                   </div>
                 )}
                 <div
@@ -1929,7 +1973,7 @@ export default function Availability() {
                 >
                   <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
                   <NorthFloor {...floorProps} />
-                  {renderFreePositionedSeats('NORTH')}
+                  {renderFreePlacedSeats(freePositionedByArea.NORTH)}
                 </div>
               </div>
             )}
@@ -1943,7 +1987,7 @@ export default function Availability() {
                   >
                     <h2 className="area-heading area-east mb-3">EASTエリア</h2>
                     <EastFloor {...floorProps} />
-                    {renderFreePositionedSeats('EAST')}
+                    {renderFreePlacedSeats(freePositionedByArea.EAST)}
                   </div>
                 )}
                 {hasWest && (
@@ -1954,7 +1998,7 @@ export default function Availability() {
                   >
                     <h2 className="area-heading area-west mb-3">WESTエリア</h2>
                     <WestFloor {...floorProps} />
-                    {renderFreePositionedSeats('WEST')}
+                    {renderFreePlacedSeats(freePositionedByArea.WEST)}
                   </div>
                 )}
               </div>
@@ -2989,7 +3033,10 @@ export default function Availability() {
           }
         >
           <div className="space-y-3 text-sm">
-            <div className="flex justify-between"><span className="text-slate-500">エリア</span><span>{placeSeatTarget.area}</span></div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">エリア</span>
+              <span>{placeSeatTarget.area}{placeSeatTarget.zone === 'north_rooms' && '（会議室D・ワークラウンジ）'}</span>
+            </div>
             <label className="block">
               <span className="mb-1 block text-slate-500">座席番号</span>
               <input
