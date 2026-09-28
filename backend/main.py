@@ -2,12 +2,13 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import database
 from routers import admin, auth, feedback, fixed_seats, profile, project_pm, project_seats, proxy, reservations, roles, seat_master, seats
+from ws_manager import manager as ws_manager
 
 
 @asynccontextmanager
@@ -33,6 +34,48 @@ app.include_router(project_pm.router)
 app.include_router(profile.router)
 app.include_router(profile.public_router)
 app.include_router(feedback.router)
+
+
+# A-89: 座席の空き状況に影響しうる書き込み系APIが成功した直後、接続中のクライアントへ
+# WebSocketで「空き状況を取り直してください」と合図する（2026-09-28追加。ws_manager.py参照）。
+# エンドポイントごとに個別にブロードキャスト呼び出しを埋め込むのではなく、対象パスへの
+# 書き込み系リクエスト（POST/PUT/PATCH/DELETE）が2xx/3xxで成功した場合に一律で発火させる
+# ミドルウェア方式にした。エンドポイントを追加・変更するたびにブロードキャスト呼び出しを
+# 個別に足し忘れる不具合を防ぐのが狙い（新しく増える座席関連のAPIも、このいずれかのパス配下に
+# 置く限り自動的に対象になる）。多少発火対象が広め（例: 曜日確定・備考欄の変更等、実際には
+# フロアマップの表示に影響しない更新も含む）だが、クライアント側は単に無害な再取得を行うだけの
+# ため実害はない。
+_AVAILABILITY_AFFECTING_PATH_PREFIXES = (
+    "/api/reservations",
+    "/api/seats",
+    "/api/fixed-seat-assignments",
+    "/api/project-quarter-plans",
+)
+
+
+@app.middleware("http")
+async def broadcast_availability_changes(request: Request, call_next):
+    response = await call_next(request)
+    if (
+        request.method in ("POST", "PUT", "PATCH", "DELETE")
+        and response.status_code < 400
+        and request.url.path.startswith(_AVAILABILITY_AFFECTING_PATH_PREFIXES)
+    ):
+        await ws_manager.broadcast_availability_changed()
+    return response
+
+
+@app.websocket("/ws/availability")
+async def availability_ws(websocket: WebSocket):
+    """A-89: 座席の空き状況の変更通知専用WebSocket。認証は行わず（送るのは「変わった」という
+    合図のみで実データを含まないため）、接続を維持するだけでよい。クライアントからのメッセージは
+    無視し、切断を検知したら登録を解除する。"""
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
 
 
 @app.get("/healthz", include_in_schema=False)

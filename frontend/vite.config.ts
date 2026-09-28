@@ -43,6 +43,12 @@ export default defineConfig({
         // ポート番号がずれてredirect_uri_mismatchになる（Google認証編5.3参照。2026-09-04追加）
         changeOrigin: false,
       },
+      // A-89: 座席の空き状況変更通知用WebSocket（ws_manager.py参照、2026-09-28追加）。
+      // ws: trueを付けないとViteの開発サーバーがUpgradeリクエストを転送しない
+      '/ws': {
+        target: `http://localhost:${backendPort}`,
+        ws: true,
+      },
     },
   },
 })

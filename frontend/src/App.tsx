@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { useMe } from './hooks/useMe'
+import { useLiveAvailabilitySync } from './hooks/useLiveAvailabilitySync'
 import { apiFetch } from './lib/api'
 import Login from './pages/Login'
 import Availability from './pages/Availability'
@@ -20,6 +21,10 @@ import Layout from './components/Layout'
 // ルーティング定義・認証ガード。S-01〜S-11、全11画面の実装が完了した（2026-08-31）
 export default function App() {
   const { me, isLoading, mutate } = useMe()
+  // A-89: 座席の空き状況のリアルタイム反映（2026-09-28追加）。Rules of Hooksのため、
+  // ログイン判定によるearly returnより前で無条件に呼び出し、有効・無効はフック内部（enabled）で
+  // 切り替える
+  useLiveAvailabilitySync(Boolean(me))
 
   if (isLoading) {
     return <div className="p-8 text-center text-sm text-slate-400">読み込み中...</div>
