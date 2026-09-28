@@ -7,6 +7,7 @@ import { usePeriodGrid } from '../hooks/usePeriodGrid'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { AreaFilter } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
+import DatePicker from '../components/DatePicker'
 import type { AssignFixedSeatFor, ProxyBookingFor, ProxyRow, ProxyRowKind, SeatType } from '../types'
 
 const SEAT_TYPE_OPTIONS: { key: ProxySeatTypeFilter; label: string }[] = [
@@ -270,20 +271,18 @@ export default function ProxyBooking() {
           <div className="p-4">
             <div className="mb-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               <span className="shrink-0 text-sm font-medium text-slate-600">表示期間</span>
-              <input
-                type="date"
+              <DatePicker
                 value={gridPeriodStart}
                 disabled={!grid}
-                onChange={(e) => setGridPeriodOverride({ start: e.target.value, end: gridPeriodEnd })}
-                className="h-8 rounded border border-slate-500 px-2 text-sm"
+                onChange={(v) => setGridPeriodOverride({ start: v, end: gridPeriodEnd })}
+                className="w-36"
               />
               <span className="text-center text-sm text-slate-500 sm:text-left">〜</span>
-              <input
-                type="date"
+              <DatePicker
                 value={gridPeriodEnd}
                 disabled={!grid}
-                onChange={(e) => setGridPeriodOverride({ start: gridPeriodStart, end: e.target.value })}
-                className="h-8 rounded border border-slate-500 px-2 text-sm"
+                onChange={(v) => setGridPeriodOverride({ start: gridPeriodStart, end: v })}
+                className="w-36"
               />
               <button
                 type="button"

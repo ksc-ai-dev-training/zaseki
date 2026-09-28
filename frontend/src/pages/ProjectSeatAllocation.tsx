@@ -5,6 +5,7 @@ import { useQuarterPlans } from '../hooks/useQuarterPlans'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useProjects } from '../hooks/useProjects'
 import Modal from '../components/Modal'
+import DatePicker from '../components/DatePicker'
 import type { QuarterPlanItem, Weekday, WeekdayAiSuggestion } from '../types'
 
 function todayStr(): string {
@@ -976,20 +977,18 @@ export default function ProjectSeatAllocation() {
             <MonthDurationPicker onApply={(s, e) => { setPeriodStartValue(s); setPeriodEndValue(e) }} />
             <label className="block">
               <span className="mb-1 block text-slate-500">開始日</span>
-              <input
-                type="date"
+              <DatePicker
                 value={periodStartValue}
-                onChange={(e) => setPeriodStartValue(e.target.value)}
-                className="h-9 w-full rounded border border-slate-500 px-3"
+                onChange={setPeriodStartValue}
+                className="w-full"
               />
             </label>
             <label className="block">
               <span className="mb-1 block text-slate-500">終了日</span>
-              <input
-                type="date"
+              <DatePicker
                 value={periodEndValue}
-                onChange={(e) => setPeriodEndValue(e.target.value)}
-                className="h-9 w-full rounded border border-slate-500 px-3"
+                onChange={setPeriodEndValue}
+                className="w-full"
               />
             </label>
             {actionError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{actionError}</p>}
@@ -1020,20 +1019,18 @@ export default function ProjectSeatAllocation() {
             <div className="flex gap-3">
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">開始日</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={bulkCreateStartValue}
-                  onChange={(e) => setBulkCreateStartValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-500 px-3"
+                  onChange={setBulkCreateStartValue}
+                  className="w-full"
                 />
               </label>
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">終了日</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={bulkCreateEndValue}
-                  onChange={(e) => setBulkCreateEndValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-500 px-3"
+                  onChange={setBulkCreateEndValue}
+                  className="w-full"
                 />
               </label>
             </div>
@@ -1088,20 +1085,18 @@ export default function ProjectSeatAllocation() {
             <div className="flex gap-3">
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">開始日</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={bulkPeriodStartValue}
-                  onChange={(e) => setBulkPeriodStartValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-500 px-3"
+                  onChange={setBulkPeriodStartValue}
+                  className="w-full"
                 />
               </label>
               <label className="block flex-1">
                 <span className="mb-1 block text-slate-500">終了日</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={bulkPeriodEndValue}
-                  onChange={(e) => setBulkPeriodEndValue(e.target.value)}
-                  className="h-9 w-full rounded border border-slate-500 px-3"
+                  onChange={setBulkPeriodEndValue}
+                  className="w-full"
                 />
               </label>
             </div>

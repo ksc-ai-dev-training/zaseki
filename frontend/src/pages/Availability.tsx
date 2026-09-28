@@ -10,6 +10,7 @@ import { useAreas } from '../hooks/useAreas'
 import { useMyProjects } from '../hooks/useMyProjects'
 import { useMe } from '../hooks/useMe'
 import Modal from '../components/Modal'
+import DatePicker from '../components/DatePicker'
 import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
@@ -571,6 +572,19 @@ export default function Availability() {
   // 表示し続ける（無効な日付を打ち消し合って表示が飛ばないように）。
   const periodStart = periodOverride?.start ?? period?.start ?? ''
   const periodEnd = periodOverride?.end ?? period?.end ?? ''
+
+  // 「複数人の代理予約（PJメンバー）」モード中は、フリー座席としてRULE-05の予約可能期間の対象に
+  // なるため、期間外の日付をそもそも選べないようにする（2026-09-28追加。「予約可能日を過ぎた状態でも
+  // 予約できてしまう」との指摘を受けた。バックエンド〔A-75〕は既に非admin利用者に対してRULE-05を
+  // 正しく適用し拒否していたが、選んでから拒否されるのではなく選択肢自体から外してほしいとの要望）。
+  // admin（管理部）はFR-01-7によりRULE-05・過去日の制限を一切受けないため、この絞り込みの対象外とし、
+  // 従来どおりhistory_min_date（閲覧できる過去日の下限）のみを適用する
+  const floorMapMinDate = memberSeatAssignFor?.freeSeat && me?.role !== 'admin'
+    ? todayStr()
+    : availability?.history_min_date ?? ''
+  const floorMapMaxDate = memberSeatAssignFor?.freeSeat && me?.role !== 'admin'
+    ? period?.full_end
+    : undefined
 
   const refreshAll = async () => {
     await Promise.all([refreshAvailability(), refreshPeriod(), upcoming.mutate(), past.mutate()])
@@ -1869,23 +1883,24 @@ export default function Availability() {
                 type="button"
                 onClick={() => setDate((d) => shiftDateStr(d, -1))}
                 aria-label="前日"
-                disabled={Boolean(availability?.history_min_date) && date <= availability!.history_min_date}
+                disabled={date <= floorMapMinDate}
                 className="h-8 w-8 shrink-0 rounded border border-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
                 ‹
               </button>
-              <input
-                type="date"
+              <DatePicker
                 value={date}
-                min={availability?.history_min_date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-8 min-w-0 flex-1 rounded border border-slate-500 px-2 text-sm sm:flex-none"
+                min={floorMapMinDate}
+                max={floorMapMaxDate}
+                onChange={setDate}
+                className="min-w-0 flex-1 sm:w-36 sm:flex-none"
               />
               <button
                 type="button"
                 onClick={() => setDate((d) => shiftDateStr(d, 1))}
                 aria-label="翌日"
-                className="h-8 w-8 shrink-0 rounded border border-slate-500 hover:bg-slate-50"
+                disabled={Boolean(floorMapMaxDate) && date >= floorMapMaxDate!}
+                className="h-8 w-8 shrink-0 rounded border border-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
                 ›
               </button>
@@ -1906,6 +1921,9 @@ export default function Availability() {
                   setFreeSeatPicks([])
                   setMemberAssignResult(null)
                   setMemberSeatAssignOverride(payload)
+                  // モード開始時に表示中の日付が予約可能期間外（過去日を見ていた場合など）だと
+                  // 新しいmin/maxの範囲外のまま止まってしまうため、必ず今日に戻す（2026-09-28追加）
+                  setDate(todayStr())
                 }}
               />
             )}
@@ -2062,20 +2080,18 @@ export default function Availability() {
         <div className="mb-8">
           <div className="mb-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
             <span className="shrink-0 text-sm font-medium text-slate-600">表示期間</span>
-            <input
-              type="date"
+            <DatePicker
               value={periodStart}
               disabled={!period}
-              onChange={(e) => setPeriodOverride({ start: e.target.value, end: periodEnd })}
-              className="h-8 rounded border border-slate-500 px-2 text-sm"
+              onChange={(v) => setPeriodOverride({ start: v, end: periodEnd })}
+              className="w-36"
             />
             <span className="text-center text-sm text-slate-500 sm:text-left">〜</span>
-            <input
-              type="date"
+            <DatePicker
               value={periodEnd}
               disabled={!period}
-              onChange={(e) => setPeriodOverride({ start: periodStart, end: e.target.value })}
-              className="h-8 rounded border border-slate-500 px-2 text-sm"
+              onChange={(v) => setPeriodOverride({ start: periodStart, end: v })}
+              className="w-36"
             />
             <button
               type="button"
@@ -2834,13 +2850,12 @@ export default function Availability() {
                       )}
                       <label className="block">
                         <span className="mb-1 block text-xs text-slate-500">終了日（この日を含む）</span>
-                        <input
-                          type="date"
+                        <DatePicker
                           min={reserveTarget.date}
                           max={me?.role === 'admin' ? undefined : period?.full_end}
                           value={recurringEndDate}
-                          onChange={(e) => setRecurringEndDate(e.target.value)}
-                          className="h-9 w-44 rounded border border-slate-500 px-3"
+                          onChange={setRecurringEndDate}
+                          className="w-44"
                         />
                       </label>
                     </div>
@@ -2989,11 +3004,10 @@ export default function Availability() {
           <div className="mt-3 space-y-2 border-t border-slate-400 pt-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-slate-500">開始日（過去日を指定すると記録の補正、未来日を指定すると事前の予約設定になります）</span>
-              <input
-                type="date"
+              <DatePicker
                 value={assignValidFrom}
-                onChange={(e) => setAssignValidFrom(e.target.value)}
-                className="h-9 w-full rounded border border-slate-500 px-3"
+                onChange={setAssignValidFrom}
+                className="w-full"
               />
             </label>
             <label className="flex items-center gap-2">
@@ -3007,12 +3021,11 @@ export default function Availability() {
             {!assignIndefinite && (
               <label className="block">
                 <span className="mb-1 block text-slate-500">期限を決めてください（この日まで固定座席として使用、翌日以降は自動的に空き席になる）</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={assignValidUntil}
-                  onChange={(e) => setAssignValidUntil(e.target.value)}
+                  onChange={setAssignValidUntil}
                   min={shiftDateStr(assignValidFrom || todayStr(), 1)}
-                  className="h-9 w-full rounded border border-slate-500 px-3"
+                  className="w-full"
                 />
               </label>
             )}
@@ -3230,13 +3243,12 @@ export default function Availability() {
                 )}
                 <label className="block">
                   <span className="mb-1 block text-xs text-slate-500">終了日（この日を含む）</span>
-                  <input
-                    type="date"
+                  <DatePicker
                     min={pickMemberConfig.startDate}
                     max={period?.full_end}
                     value={pickRecurringEndDate}
-                    onChange={(e) => setPickRecurringEndDate(e.target.value)}
-                    className="h-9 w-44 rounded border border-slate-500 px-3"
+                    onChange={setPickRecurringEndDate}
+                    className="w-44"
                   />
                 </label>
               </div>
