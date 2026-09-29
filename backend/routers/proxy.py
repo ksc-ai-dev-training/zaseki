@@ -31,14 +31,19 @@ _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 @router.get("/proxy-candidates")
-async def list_proxy_candidates(q: str = "", _: CurrentUser = Depends(require_roles("admin"))):
+async def list_proxy_candidates(q: str = "", admin_user: CurrentUser = Depends(require_roles("admin"))):
     """A-54: 代理予約する対象者検索（登録済みの全利用者が対象、氏名の部分一致）。2026-08-28追加。
     S-05のA-52（固定座席を持たない利用者に限定）と異なり、S-11は固定座席の指定・プロジェクトメンバー
     への代理予約のいずれにも該当しない任意の利用者が対象のため、固定座席の有無で絞り込まない
     （基本設計書4.11節「対象者検索、登録済みの全利用者が対象」）。座席利用状況は'free'|'fixed'|'project'
     の3区分（SeatTypeと同じ値、2026-08-28再訂正。プロジェクト座席の利用状況〔T-05〜T-07〕は当初
     未実装のため区別せず一律の文言を返していたが、実装済みとなったため本日時点で実際に利用中かどうか
-    を区別する）。"""
+    を区別する）。
+
+    検索対象から自分自身（呼び出した管理部利用者）は除外する（2026-09-29追加。「名目上自分自身を
+    代理予約できてしまうのがおかしい」との指摘を受けた。「代理」は本人以外のために行う操作のため、
+    通常の予約画面（S-02）が既にある自分自身は対象外とする）。
+    """
     await release_expired_fixed_seats()
     # 2026-09-16修正: 画面表示「姓 名」のスペースを除去してから比較する（last_name||first_nameは
     # スペース無し結合のため、表示通りに入力すると常に0件になっていた）
@@ -47,10 +52,10 @@ async def list_proxy_candidates(q: str = "", _: CurrentUser = Depends(require_ro
                   fsa.seat_id AS fixed_seat_id
            FROM users u
            LEFT JOIN fixed_seat_assignments fsa ON fsa.user_id = u.id AND fsa.ended_on IS NULL
-           WHERE u.deleted_at IS NULL
+           WHERE u.deleted_at IS NULL AND u.id != $2
              AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
            ORDER BY u.last_name, u.first_name""",
-        q,
+        q, admin_user.id,
     )
     pj_user_ids = await users_with_current_project_seat()
     return {
@@ -344,6 +349,11 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
     target = await pool.fetchrow("SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL", body.user_id)
     if target is None:
         raise HTTPException(404, detail="対象が見つかりません")
+    # 対象者検索（A-54）側で既に自分自身を除外しているが、APIを直接呼ばれた場合の保険として
+    # サーバー側でも拒否する（2026-09-29追加。「代理」は本人以外のために行う操作のため、通常の
+    # 予約画面（S-02）がある自分自身を対象にすることはできない）
+    if body.user_id == admin_user.id:
+        raise HTTPException(400, detail="代理予約の対象に自分自身を指定することはできません。通常の予約画面からご予約ください")
 
     # 対象者が同じ日に複数のフリー座席の予約を持ち得る（両方保有・keep_both、A-09参照）ため、
     # ORDER BY r.id ASCで結果を決定的にする（2026-09-29追加。「C2を変更しますかと表示されているのに
