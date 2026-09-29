@@ -2978,7 +2978,11 @@ export default function Availability() {
                   <p>
                     {anySameDayReservation.seat_type === 'project'
                       ? `この日は既に、PM・PLが割り当てたプロジェクトの確保済み座席（${anySameDayReservation.seat_no}）があります。このまま「予約する」を押すと重複エラーになります。取り消してこの座席に変更するか、他の座席として追加でもう1つ予約してください。`
-                      : `この日は既に別の座席（${anySameDayReservation.seat_no}）を予約しています。「${anySameDayReservation.seat_no}を取消して変更する」を押すとその予約を取り消してこの座席に変更されます。既存の予約を残したい場合は「両方予約する」を選んでください。`}
+                      // 2026-09-29短縮: フッターのボタン文言（「{座席番号}を取消して変更する」）で
+                      // 「変更するとどうなるか」は既に伝わっているため、ここでは何と重複しているかの
+                      // 一言のみに縮めた（「このメッセージが表示されるのをやめてほしい」との指摘を受け、
+                      // 案内文だけ短くし「両方予約する」ボタン自体は残した）
+                      : `この日は既に${anySameDayReservation.seat_no}を予約しています。`}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {anySameDayReservation.seat_type === 'project' && (
