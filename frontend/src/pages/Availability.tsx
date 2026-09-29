@@ -1369,10 +1369,17 @@ export default function Availability() {
     if (!hasPlaceSeatPendingChanges) { exitPlaceSeatMode(); return }
     setSubmitting(true)
     setActionError(null)
-    try {
-      for (const s of pendingNewSeats) {
-        const area = areas.find((a) => a.name === s.area)
-        if (!area) continue
+    // 2026-09-29修正: 以前は全件送信し終えてからまとめてpendingNewSeats/pendingMovesをクリアして
+    // いたため、バッチの途中（例: 2件目の座席番号が重複していた）でエラーになると、既にAPI保存済みの
+    // 1件目も下書きに残ったままになり、「完了」を再度押すと保存済みの1件目を再送信してしまっていた
+    // （座席番号重複で再度エラーになる等、リカバリー不能な状態に陥る不具合があった）。1件ごとに成功した
+    // 直後にその項目だけ下書きから取り除くことで、失敗時も「まだ未保存の項目だけ」が下書きに残る
+    // ようにした
+    let firstError: unknown = null
+    for (const s of pendingNewSeats) {
+      const area = areas.find((a) => a.name === s.area)
+      if (!area) { setPendingNewSeats((prev) => prev.filter((p) => p.tempId !== s.tempId)); continue }
+      try {
         await apiFetch('/api/seats', {
           method: 'POST',
           body: JSON.stringify({
@@ -1380,24 +1387,40 @@ export default function Availability() {
             pos_x: s.posX, pos_y: s.posY, pos_zone: s.zone,
           }),
         })
+        setPendingNewSeats((prev) => prev.filter((p) => p.tempId !== s.tempId))
+      } catch (e) {
+        firstError = e
+        break
       }
+    }
+    if (!firstError) {
       for (const [seatId, move] of pendingMoves) {
         const area = areas.find((a) => a.name === move.areaName)
-        if (!area) continue
-        await apiFetch(`/api/seats/${seatId}/position`, {
-          method: 'PATCH',
-          body: JSON.stringify({ area_id: area.id, pos_x: move.posX, pos_y: move.posY, pos_zone: move.zone }),
-        })
+        if (!area) { setPendingMoves((prev) => { const next = new Map(prev); next.delete(seatId); return next }); continue }
+        try {
+          await apiFetch(`/api/seats/${seatId}/position`, {
+            method: 'PATCH',
+            body: JSON.stringify({ area_id: area.id, pos_x: move.posX, pos_y: move.posY, pos_zone: move.zone }),
+          })
+          setPendingMoves((prev) => { const next = new Map(prev); next.delete(seatId); return next })
+        } catch (e) {
+          firstError = e
+          break
+        }
       }
-      setPendingNewSeats([])
-      setPendingMoves(new Map())
-      await refreshAvailability()
-      exitPlaceSeatMode()
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : '座席配置の保存に失敗しました')
-    } finally {
-      setSubmitting(false)
     }
+    try {
+      await refreshAvailability()
+    } catch {
+      // 保存自体（上のfor文）の成否には影響しないため、ここでは無視する。次回の定期ポーリング
+      // （30秒間隔）やWebSocket再接続で最終的に反映される
+    }
+    if (firstError) {
+      setActionError(firstError instanceof ApiError ? firstError.message : '座席配置の保存に失敗しました。保存できなかった項目は下書きに残っています。')
+    } else {
+      exitPlaceSeatMode()
+    }
+    setSubmitting(false)
   }
 
   // 座席配置編集モードの「キャンセル」: 下書きを画面上だけで破棄し、APIは一切呼ばない
@@ -2945,7 +2968,7 @@ export default function Availability() {
                   <p>
                     {anySameDayReservation.seat_type === 'project'
                       ? `この日は既に、PM・PLが割り当てたプロジェクトの確保済み座席（${anySameDayReservation.seat_no}）があります。このまま「予約する」を押すと重複エラーになります。取り消してこの座席に変更するか、他の座席として追加でもう1つ予約してください。`
-                      : `この日は既に別の座席（${anySameDayReservation.seat_no}）を予約しています。「変更する」を押すとその予約を取り消してこの座席に変更されます。既存の予約を残したい場合は「両方予約する」を選んでください。`}
+                      : `この日は既に別の座席（${anySameDayReservation.seat_no}）を予約しています。「${anySameDayReservation.seat_no}を取消して変更する」を押すとその予約を取り消してこの座席に変更されます。既存の予約を残したい場合は「両方予約する」を選んでください。`}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {anySameDayReservation.seat_type === 'project' && (

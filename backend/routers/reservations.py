@@ -45,8 +45,10 @@ class ReservationCreate(BaseModel):
     # 別々の変数（anySameDayReservation・existingSameDayReservation）で別々の候補を画面に表示して
     # いたため、画面に表示された座席とは異なる方が実際に取り消される不具合になっていた。フロント側が
     # 画面に表示した対象の予約idをここで明示的に指定できるようにし、指定された場合はそのidの予約のみを
-    # 対象にする（未指定の場合は従来どおりの検索にフォールバックするが、こちらもORDER BY r.id ASCを
-    # 追加し、同じ結果を安定して返すようにした）
+    # 対象にする（未指定の場合、および指定されたidが見つからない場合〔他タブでの取消等〕は従来どおりの
+    # 検索にフォールバックするが、こちらもORDER BY r.id ASCを追加し、同じ結果を安定して返すようにした。
+    # 2026-09-29修正: 当初はid指定時に該当なしだと重複チェック自体がすり抜けてしまっていたため、
+    # フォールバックするよう修正した）
     replace_reservation_id: int | None = None
 
 
@@ -101,13 +103,18 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # 既存の予約を取り消さず、この座席も追加で登録する（両方保有、下記参照）。
     # replace_reservation_id指定時はそのidの予約のみを対象にする（2026-09-29追加、ReservationCreate
     # 参照）。未指定時は同じ日に複数の候補があり得る場合に備えてORDER BY r.id ASCで決定的にする
+    duplicate = None
     if body.replace_reservation_id is not None:
         duplicate = await pool.fetchrow(
             """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
                WHERE r.id = $1 AND r.user_id = $2 AND r.date = $3 AND r.status = 'active' AND s.seat_type = 'free'""",
             body.replace_reservation_id, user.id, body.date,
         )
-    else:
+    if duplicate is None:
+        # 指定されたidが見つからない場合（他タブでの取消等、画面表示後に対象の予約が変わった場合を
+        # 含む）は通常の検索にフォールバックする（2026-09-29修正。以前はreplace_reservation_id指定時に
+        # 該当なしだとduplicate=Noneのまま先へ進み、既存の予約を取り消さずに新しい予約だけが追加され、
+        # RULE-02〔同日複数のフリー座席禁止〕が気づかれずに破られる不具合があった）
         duplicate = await pool.fetchrow(
             """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
                WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'
