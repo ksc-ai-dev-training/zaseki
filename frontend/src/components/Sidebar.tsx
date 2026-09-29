@@ -1,8 +1,13 @@
-import { useState, type SVGProps } from 'react'
+import { useState, type MouseEvent, type SVGProps } from 'react'
 import { NavLink } from 'react-router'
 import type { Me } from '../types'
 import { CARDS as ADMIN_MENU_CARDS } from '../pages/AdminMenu'
 import { useFeedbackCount } from '../hooks/useFeedback'
+import { confirmNavigation } from '../lib/navigationGuard'
+
+// 座席配置編集モード（S-07）に保存されていない変更がある間、サイドバーのリンク・ログアウトから
+// 離脱しようとした場合に確認する（2026-09-29新設、frontend/src/lib/navigationGuard.ts参照）
+const guardClick = (e: MouseEvent) => { if (!confirmNavigation()) e.preventDefault() }
 
 interface SidebarProps {
   me: Me
@@ -154,6 +159,7 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
             <NavLink
               to={item.to}
               end={item.to === '/'}
+              onClick={guardClick}
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded px-3 py-2 text-sm ${
                   isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/80 hover:bg-white/10 hover:text-white'
@@ -178,6 +184,7 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
                   <NavLink
                     key={c.to}
                     to={c.to}
+                    onClick={guardClick}
                     className={({ isActive }) =>
                       `block rounded px-3 py-1.5 text-xs ${
                         isActive ? 'bg-white font-semibold text-[#1b2a5e]' : 'text-indigo-100/70 hover:bg-white/10 hover:text-white'
@@ -218,7 +225,7 @@ export default function Sidebar({ me, onLogout }: SidebarProps) {
         </div>
         <button
           type="button"
-          onClick={onLogout}
+          onClick={() => { if (confirmNavigation()) onLogout() }}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded border border-white/15 px-3 py-1.5 text-xs text-indigo-100 hover:bg-white/10 hover:text-white"
         >
           <LogoutIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />

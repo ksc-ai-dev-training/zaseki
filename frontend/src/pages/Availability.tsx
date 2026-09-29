@@ -15,6 +15,7 @@ import { NorthFloor, EastFloor, WestFloor } from '../components/FloorAreas'
 import SeatTile from '../components/SeatTile'
 import ExcludedDatesRetry from '../components/ExcludedDatesRetry'
 import { FLOOR_LAYOUT_SEATS, blockLabelOf, compareSeatNo } from '../lib/floorLayout'
+import { setNavigationGuard } from '../lib/navigationGuard'
 import type {
   AssignFixedSeatFor, MemberSeatAssignBulkFor, MemberSeatAssignFor, MyReservation, PosZone, PreviousPlanDetail, ProjectPlanDetail, ProxyBookingFor, PublicProfile, QuarterPlanItem,
   RecurringReservationResult, RetrySeatAssignmentResult, SeatAssignmentResult, SeatBlockBulkFor, SeatBlockFor, Seat, SeatStatus, SeatType, Weekday,
@@ -430,6 +431,39 @@ export default function Availability() {
   const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number; zone: PosZone } | null>(null)
   const [newSeatNo, setNewSeatNo] = useState('')
   const [newSeatType, setNewSeatType] = useState<SeatType>('free')
+  // 座席配置編集モードの下書き（未保存）の変更（2026-09-29新設。「完了を押さなくても勝手に
+  // 保存されてしまっている。保存していないままページ移動をすると注意勧告が出て、気にせず移動すると
+  // 編集データが吹き飛ぶ、というイメージがある」との要望を受けた。従来は新規配置・ドラッグ移動の
+  // いずれも操作した瞬間にAPIへ即時保存していたが〔新規配置は確認モーダルを経由していたが、
+  // ドラッグ移動は確認なしで即保存だった〕、「完了」を押すまでは画面上だけの下書きにとどめ、
+  // 「完了」で一括保存・「キャンセル」で一括破棄する方式に変更した。ドラッグ移動はpendingMovesに
+  // 座席id→新しい位置を保持し、seatByNo構築時にその場で上書き反映する（下記参照）。新規配置は
+  // まだ実体のseatIdを持たないためpendingNewSeatsに別途保持し、free-placed-seatと同じ見た目の
+  // 専用プレビュータイルとして描画する
+  const [pendingMoves, setPendingMoves] = useState<Map<number, { areaName: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number; zone: PosZone }>>(new Map())
+  const [pendingNewSeats, setPendingNewSeats] = useState<{
+    tempId: string; area: 'NORTH' | 'EAST' | 'WEST'; zone: PosZone; posX: number; posY: number; seatNo: string; seatType: SeatType
+  }[]>([])
+  const hasPlaceSeatPendingChanges = pendingMoves.size > 0 || pendingNewSeats.length > 0
+  // 座席配置編集モードに未保存の変更がある間、離脱前に確認する（2026-09-29新設）。
+  // beforeunloadはブラウザの戻る/進む・タブを閉じる・URLを直接入力する等、SPA外へ実際にページが
+  // 遷移する操作を検知する（react-router自身のnavigate()によるSPA内遷移では発火しない）。
+  // SPA内の遷移（サイドバー等のリンク）はnavigationGuard.ts側のconfirmNavigationで別途扱う
+  useEffect(() => {
+    if (!placeSeatMode || !hasPlaceSeatPendingChanges) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [placeSeatMode, hasPlaceSeatPendingChanges])
+  useEffect(() => {
+    if (!placeSeatMode || !hasPlaceSeatPendingChanges) { setNavigationGuard(null); return }
+    const count = pendingNewSeats.length + pendingMoves.size
+    setNavigationGuard(() => window.confirm(
+      `座席配置に保存されていない変更が${count}件あります。このまま移動すると破棄されます。移動しますか？`
+    ))
+    return () => setNavigationGuard(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeSeatMode, hasPlaceSeatPendingChanges, pendingNewSeats.length, pendingMoves.size])
   // 割当済み計画を「編集」で開いた場合、現在の割当座席を初期選択状態にする（2026-08-28追加）
   const [seatBlockSelection, setSeatBlockSelection] = useState<Set<number>>(
     () => new Set(seatBlockFor?.allocatedSeatIds ?? []),
@@ -1179,6 +1213,12 @@ export default function Availability() {
         body: JSON.stringify({
           seat_id: reserveTarget.seatId, date: reserveTarget.date,
           replace_existing: Boolean(existingSameDayReservation),
+          // 2026-09-29追加。「C2を変更しますかと表示されているのにC3が変更される」との報告を受けた。
+          // 同じ日にプロジェクト座席とフリー座席の予約を両方持っている等、取消候補が2件以上あり得る
+          // ケースでバックエンド側の問い合わせが不定になっていたため、この画面（ボタン文言「変更する」）
+          // が対象にしているのと同じexistingSameDayReservationのidを明示的に指定し、実際に取り消される
+          // 予約と画面表示を一致させる
+          replace_reservation_id: existingSameDayReservation?.id ?? null,
         }),
       })
       // upcoming.mutate()（自分の予約一覧の再取得）が完了する前にモーダルを閉じると、閉じた直後に
@@ -1217,6 +1257,9 @@ export default function Availability() {
         body: JSON.stringify({
           seat_id: reserveTarget.seatId, date: reserveTarget.date,
           replace_existing: mode === 'replace', keep_both: mode === 'keep_both',
+          // このボタン（事前通知バナー）が画面に表示しているのはanySameDayReservationのため、
+          // confirmReserveと同じ理由でそのidを明示的に指定する（2026-09-29追加）
+          replace_reservation_id: anySameDayReservation?.id ?? null,
         }),
       })
       // 上のconfirmReserveと同じ理由でrefreshAll完了後にモーダルを閉じる（2026-09-11修正）
@@ -1300,28 +1343,73 @@ export default function Availability() {
     }
   }
 
-  const confirmPlaceSeat = async () => {
+  // 2026-09-29修正: 以前はここで即座にAPI（POST /api/seats）を呼んでいたが、「完了を押さなくても
+  // 勝手に保存されてしまっている」との指摘を受け、下書き（pendingNewSeats）へ追加するだけに変更した。
+  // 実際の保存は「完了」（confirmPlaceSeatModeChanges）でまとめて行う
+  const confirmPlaceSeat = () => {
     if (!placeSeatTarget) return
-    const area = areas.find((a) => a.name === placeSeatTarget.area)
-    if (!area) return
+    if (!newSeatNo.trim()) { setActionError('座席番号を入力してください'); return }
+    setActionError(null)
+    setPendingNewSeats((prev) => [...prev, {
+      tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      area: placeSeatTarget.area, zone: placeSeatTarget.zone,
+      posX: placeSeatTarget.posX, posY: placeSeatTarget.posY,
+      seatNo: newSeatNo.trim(), seatType: newSeatType,
+    }])
+    setPlaceSeatTarget(null)
+    // 配置モード自体は続行し、続けて別の座席を配置できるようにする
+  }
+
+  // 座席配置編集モードの「完了」: 下書き（pendingNewSeats・pendingMoves）をまとめてAPIへ送信する
+  // （2026-09-29新設。方針はpendingMoves定義のコメント参照）。新規配置→移動の順で送る（同じ操作内で
+  // 新規配置した座席を続けて移動していても、先に実体化してから移動を反映できるようにするため。
+  // ただし新規配置はpendingNewSeats側の座標をそのままpos_x/pos_yとして送るため、実際にはこの順序に
+  // 依存しない）
+  const confirmPlaceSeatModeChanges = async () => {
+    if (!hasPlaceSeatPendingChanges) { exitPlaceSeatMode(); return }
     setSubmitting(true)
     setActionError(null)
     try {
-      await apiFetch('/api/seats', {
-        method: 'POST',
-        body: JSON.stringify({
-          seat_no: newSeatNo, area_id: area.id, seat_type: newSeatType,
-          pos_x: placeSeatTarget.posX, pos_y: placeSeatTarget.posY, pos_zone: placeSeatTarget.zone,
-        }),
-      })
-      setPlaceSeatTarget(null)
+      for (const s of pendingNewSeats) {
+        const area = areas.find((a) => a.name === s.area)
+        if (!area) continue
+        await apiFetch('/api/seats', {
+          method: 'POST',
+          body: JSON.stringify({
+            seat_no: s.seatNo, area_id: area.id, seat_type: s.seatType,
+            pos_x: s.posX, pos_y: s.posY, pos_zone: s.zone,
+          }),
+        })
+      }
+      for (const [seatId, move] of pendingMoves) {
+        const area = areas.find((a) => a.name === move.areaName)
+        if (!area) continue
+        await apiFetch(`/api/seats/${seatId}/position`, {
+          method: 'PATCH',
+          body: JSON.stringify({ area_id: area.id, pos_x: move.posX, pos_y: move.posY, pos_zone: move.zone }),
+        })
+      }
+      setPendingNewSeats([])
+      setPendingMoves(new Map())
       await refreshAvailability()
-      // 配置モード自体は続行し、続けて別の座席を配置できるようにする
+      exitPlaceSeatMode()
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : '座席の追加に失敗しました')
+      setActionError(e instanceof ApiError ? e.message : '座席配置の保存に失敗しました')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // 座席配置編集モードの「キャンセル」: 下書きを画面上だけで破棄し、APIは一切呼ばない
+  // （2026-09-29新設）。実際に何か変更していた場合のみ確認する
+  const cancelPlaceSeatModeChanges = () => {
+    if (hasPlaceSeatPendingChanges) {
+      const count = pendingNewSeats.length + pendingMoves.size
+      if (!window.confirm(`保存されていない座席配置の変更が${count}件あります。破棄してよろしいですか？`)) return
+    }
+    setPendingNewSeats([])
+    setPendingMoves(new Map())
+    exitPlaceSeatMode()
   }
 
   // 座席配置編集モード中、既存の座席タイルをドラッグして位置を変更する（2026-09-10追加。
@@ -1382,23 +1470,20 @@ export default function Availability() {
     if (!draggingSeat) return
     setDraggingSeat({ ...draggingSeat, clientX: e.clientX, clientY: e.clientY })
   }
-  const onSeatDragPointerUp = async (e: ReactPointerEvent<HTMLButtonElement>) => {
+  // 2026-09-29修正: 以前はここで即座にAPI（PATCH /api/seats/{id}/position）を呼んでいたが、
+  // 「完了を押さなくても勝手に保存されてしまっている」との指摘を受け、下書き（pendingMoves）へ
+  // 記録するだけに変更した。実際の保存は「完了」（confirmPlaceSeatModeChanges）でまとめて行う
+  const onSeatDragPointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
     if (!draggingSeat) return
     const seat = draggingSeat.seat
     setDraggingSeat(null)
     const dropPoint = findDropPoint(e.clientX, e.clientY)
     if (!dropPoint) return
-    const area = areas.find((a) => a.name === dropPoint.areaName)
-    if (!area) return
-    try {
-      await apiFetch(`/api/seats/${seat.id}/position`, {
-        method: 'PATCH',
-        body: JSON.stringify({ area_id: area.id, pos_x: dropPoint.posX, pos_y: dropPoint.posY, pos_zone: dropPoint.zone }),
-      })
-      await refreshAvailability()
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : '座席の位置の変更に失敗しました')
-    }
+    setPendingMoves((prev) => {
+      const next = new Map(prev)
+      next.set(seat.id, { areaName: dropPoint.areaName, posX: dropPoint.posX, posY: dropPoint.posY, zone: dropPoint.zone })
+      return next
+    })
   }
 
   const confirmListCancel = async () => {
@@ -1439,6 +1524,21 @@ export default function Availability() {
       })
     })
   })
+  // 座席配置編集モードの下書き（pendingMoves）を、その場でseatByNo/seatAreaへ上書き反映する
+  // （2026-09-29新設）。FloorAreas.tsx側の「pos_xがあれば固定レイアウトを描画しない」という
+  // 既存の判定（NorthFloor等）がpos_xの有無だけを見ているため、ここでpos_x/pos_y/pos_zoneを
+  // 上書きするだけでFloorAreas.tsx自体には手を入れずに済む。下のfreePositionedByArea等の
+  // 振り分けも、この上書き後のseatByNo/seatAreaを使うため自動的に新しい位置に反映される
+  if (placeSeatMode && pendingMoves.size > 0) {
+    pendingMoves.forEach((move, seatId) => {
+      const no = seatNoById.get(seatId)
+      if (!no) return
+      const seat = seatByNo[no]
+      if (!seat) return
+      seatByNo[no] = { ...seat, pos_x: move.posX, pos_y: move.posY, pos_zone: move.zone }
+      seatArea[no] = move.areaName
+    })
+  }
   // 座席の島の一括割当モード: 今選んでいるプロジェクトと出社曜日が重なる他プロジェクトが、この
   // 一括登録の中で選択中の座席は、使用中（他プロジェクトが選択中）として選べないようにする
   // （2026-09-10追加、2026-09-11修正）。出社曜日が重ならないプロジェクト同士は同じ座席を共有できる
@@ -1609,7 +1709,13 @@ export default function Availability() {
 
   const renderFreePlacedSeats = (seats: Seat[]) =>
     seats.map((seat) => (
-      <div key={seat.id} className="free-placed-seat" style={{ left: `${seat.pos_x}%`, top: `${seat.pos_y}%` }}>
+      <div
+        key={seat.id}
+        // 下書き（未保存）の移動先は破線の黄色い枠で目立たせる（2026-09-29新設。
+        // 「完了」を押すまではAPIに送られていないことが見た目でも伝わるようにする狙い）
+        className={`free-placed-seat${pendingMoves.has(seat.id) ? ' rounded border-2 border-dashed border-amber-500' : ''}`}
+        style={{ left: `${seat.pos_x}%`, top: `${seat.pos_y}%` }}
+      >
         <SeatTile
           seat={seat}
           onReserve={floorProps.onReserve}
@@ -1632,6 +1738,32 @@ export default function Availability() {
         />
       </div>
     ))
+
+  // 座席配置編集モードの下書き（未保存）の新規配置プレビュー（2026-09-29新設）。まだ実体の座席id・
+  // Seatオブジェクトを持たないためSeatTileは使わず、専用の簡易タイルとして描画する。「完了」を
+  // 押すまでは実際の座席として振る舞わない（予約・取消等の操作対象にならない）ことを、破線の
+  // 黄色い枠と×ボタンで表す
+  const renderPendingNewSeats = (area: 'NORTH' | 'EAST' | 'WEST', zone: PosZone) =>
+    pendingNewSeats
+      .filter((s) => s.area === area && s.zone === zone)
+      .map((s) => (
+        <div key={s.tempId} className="free-placed-seat" style={{ left: `${s.posX}%`, top: `${s.posY}%` }}>
+          <div className="seat-tile status-free relative rounded border-2 border-dashed border-amber-500 bg-amber-50">
+            {s.seatNo}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setPendingNewSeats((prev) => prev.filter((p) => p.tempId !== s.tempId))
+              }}
+              title="この配置（未保存）を取り消す"
+              className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] leading-none text-white hover:bg-red-700"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ))
 
   return (
     <div>
@@ -1661,15 +1793,34 @@ export default function Availability() {
 
       {placeSeatMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
-          {/* クリック・ドラッグのたびに即座にAPIへ保存される（一括保存・取消の概念がない）モードのため、
-              「キャンセル」を含む文言は「押すと今までの配置が取り消される」という誤解を招く
-              （2026-09-29修正。「完了・キャンセルが並列に並んでいるが別物のはず、キャンセルは保存
-              しないイメージ」との指摘を受けた）。単にモードを抜けるだけの操作であることが伝わる
-              「完了」のみに変更した */}
-          <span>座席表の配置を編集中です。空いている位置をクリックすると新しい座席を追加、既存の座席はドラッグすると位置を変更できます（操作するたびに自動的に保存されます）。</span>
-          <button type="button" onClick={exitPlaceSeatMode} className="shrink-0 text-blue-700 underline hover:text-blue-900">
-            完了
-          </button>
+          {/* 2026-09-29再修正:「完了を押さなくても勝手に保存されてしまっている。保存していないまま
+              ページ移動をすると注意勧告が出て、気にせず移動すると編集データが吹き飛ぶ、というイメージが
+              ある」との指摘を受け、即時保存方式から下書き方式に変更した（pendingMoves・pendingNewSeats
+              定義のコメント参照）。クリック・ドラッグは画面上の下書きにとどまり、「完了」を押すまでは
+              APIを一切呼ばない。これにより「キャンセル」も実際に破棄する対象を持つ、意味のある
+              操作になったため、前回削除した「キャンセル」ボタンを復活させた（前回は下書きが存在
+              しなかったため「キャンセル」に紐づく処理がなく削除していた） */}
+          <span>
+            座席表の配置を編集中です。空いている位置をクリックすると新しい座席を追加、既存の座席はドラッグすると位置を変更できます。
+            {hasPlaceSeatPendingChanges ? (
+              <strong className="ml-1">未保存の変更が{pendingNewSeats.length + pendingMoves.size}件あります。「完了」を押すまで保存されません。</strong>
+            ) : (
+              <span className="ml-1 text-blue-700">（まだ未保存の変更はありません）</span>
+            )}
+          </span>
+          <div className="flex shrink-0 items-center gap-3">
+            <button type="button" onClick={cancelPlaceSeatModeChanges} className="text-blue-700 underline hover:text-blue-900">
+              キャンセル
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={confirmPlaceSeatModeChanges}
+              className="rounded bg-blue-800 px-3 py-1 text-white hover:bg-blue-900 disabled:opacity-50"
+            >
+              完了
+            </button>
+          </div>
         </div>
       )}
 
@@ -2003,6 +2154,7 @@ export default function Availability() {
                     <div className="floor-room" style={{ flex: 1 }}>会議室D</div>
                     <div className="floor-room" style={{ flex: 2 }}>ワークラウンジ</div>
                     {renderFreePlacedSeats(freePositionedNorthRooms)}
+                    {placeSeatMode && renderPendingNewSeats('NORTH', 'north_rooms')}
                   </div>
                 )}
                 <div
@@ -2013,6 +2165,7 @@ export default function Availability() {
                   <h2 className="area-heading area-north mb-3">NORTHエリア</h2>
                   <NorthFloor {...floorProps} />
                   {renderFreePlacedSeats(freePositionedByArea.NORTH)}
+                  {placeSeatMode && renderPendingNewSeats('NORTH', null)}
                 </div>
               </div>
             )}
@@ -2027,6 +2180,7 @@ export default function Availability() {
                     <h2 className="area-heading area-east mb-3">EASTエリア</h2>
                     <EastFloor {...floorProps} />
                     {renderFreePlacedSeats(freePositionedByArea.EAST)}
+                    {placeSeatMode && renderPendingNewSeats('EAST', null)}
                   </div>
                 )}
                 {hasWest && (
@@ -2038,6 +2192,7 @@ export default function Availability() {
                     <h2 className="area-heading area-west mb-3">WESTエリア</h2>
                     <WestFloor {...floorProps} />
                     {renderFreePlacedSeats(freePositionedByArea.WEST)}
+                    {placeSeatMode && renderPendingNewSeats('WEST', null)}
                   </div>
                 )}
               </div>
@@ -2711,12 +2866,20 @@ export default function Availability() {
                     ベース）に既に同じ操作のボタンがあり、existingSameDayReservationが真になる条件
                     （＝プロジェクト座席以外の同日予約がある）は常にanySameDayReservationも真になる
                     ため、フッターにもここで同じボタンを重複表示していた（QA報告の修正、2026-09-18）。
-                    削除してバナー側のボタン1つに統一する */}
+                    削除してバナー側のボタン1つに統一する。
+                    2026-09-29追加: 上の「常にanySameDayReservationも真になる」は真偽値としては
+                    正しいが、「同じ予約を指している」とは限らない。同じ日にプロジェクト座席の予約
+                    （anySameDayReservationが指す方）とフリー座席の予約（existingSameDayReservationが
+                    指す方）を両方持っている場合、このボタンはexistingSameDayReservation側を取り消す
+                    のに対し、バナーはanySameDayReservation（プロジェクト座席）の文言・専用ボタンを
+                    表示するため、「C2を変更しますかと表示されているのにC3が変更される」という
+                    不具合になっていた。ボタンの文言に実際に取り消す座席番号を明記し、画面表示と
+                    実際の対象を一致させた */}
                 <button type="button" disabled={submitting} onClick={confirmReserve} className="rounded bg-blue-800 px-4 py-1.5 text-sm text-white disabled:opacity-50">
                   {recurring
                     ? 'この内容で登録する'
                     : !proxyBookingFor && existingSameDayReservation
-                      ? '変更する'
+                      ? `${existingSameDayReservation.seat_no}を取消して変更する`
                       : '予約する'}
                 </button>
               </>

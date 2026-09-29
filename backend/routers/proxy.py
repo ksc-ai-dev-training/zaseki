@@ -345,9 +345,16 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
     if target is None:
         raise HTTPException(404, detail="対象が見つかりません")
 
+    # 対象者が同じ日に複数のフリー座席の予約を持ち得る（両方保有・keep_both、A-09参照）ため、
+    # ORDER BY r.id ASCで結果を決定的にする（2026-09-29追加。「C2を変更しますかと表示されているのに
+    # C3の座席を変更される」というA-09の不具合と同じ原因〔ORDER BY無しの問い合わせが複数候補のうち
+    # どれを返すか不定だった〕がここにも当てはまるため、同じ対処をした。A-09と異なり本APIの呼び出し元
+    # 〔S-11代理予約・取消〕は対象者本人の予約一覧を保持していないため、A-09のような
+    # replace_reservation_idでの明示的な指定はまだ導入していない）
     duplicate = await pool.fetchrow(
         """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
-           WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
+           WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'
+           ORDER BY r.id LIMIT 1""",
         body.user_id, body.date,
     )
     if duplicate and not body.replace_existing:

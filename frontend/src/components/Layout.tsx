@@ -1,6 +1,11 @@
+import type { MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import Sidebar from './Sidebar'
 import type { Me } from '../types'
+import { confirmNavigation } from '../lib/navigationGuard'
+
+// Sidebar.tsxと同じガード（座席配置編集モードの未保存の変更、2026-09-29新設）
+const guardClick = (e: MouseEvent) => { if (!confirmNavigation()) e.preventDefault() }
 
 interface LayoutProps {
   me: Me
@@ -28,6 +33,7 @@ export default function Layout({ me, onLogout }: LayoutProps) {
           <NavLink
             to="/"
             end
+            onClick={guardClick}
             aria-label="空き状況・予約に戻る"
             title="空き状況・予約に戻る"
             className="flex shrink-0 items-center justify-center rounded border border-slate-500 p-1.5 text-slate-600 hover:bg-slate-50"
@@ -38,10 +44,14 @@ export default function Layout({ me, onLogout }: LayoutProps) {
           </NavLink>
         )}
         <span className="mr-auto min-w-0 truncate">{me.last_name} {me.first_name}</span>
-        <NavLink to="/profile" className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+        <NavLink to="/profile" onClick={guardClick} className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
           プロフィール
         </NavLink>
-        <button type="button" onClick={onLogout} className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs hover:bg-slate-50">
+        <button
+          type="button"
+          onClick={() => { if (confirmNavigation()) onLogout() }}
+          className="shrink-0 rounded border border-slate-500 px-3 py-1 text-xs hover:bg-slate-50"
+        >
           ログアウト
         </button>
       </div>

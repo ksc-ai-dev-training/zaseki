@@ -37,6 +37,17 @@ class ReservationCreate(BaseModel):
     # 「両方保有」は本人が明示的に選んだ場合のみの選択肢とする。replace_existingと同時にtrueには
     # ならない想定〔フロント側で排他的なボタンとして提供する〕）。
     keep_both: bool = False
+    # 取り消す対象の予約id（2026-09-29追加）。「3席確保した時など、C2を変更しますか？と表示されて
+    # いるのに、いざ変更しようとするとC3の座席を変更されたりする」との報告を受けた。プロジェクト座席の
+    # 専有はseats.seat_type自体を変更しない設計（3.9節）のため、ユーザーが同じ日にプロジェクト座席の
+    # 予約とフリー座席の予約を両方持っている場合、下の「同じ日の重複予約」検索はDB上どちらもseat_type=
+    # 'free'に見え、ORDER BYの無い問い合わせでは2件中どちらが返るか不定だった。一方フロント側は
+    # 別々の変数（anySameDayReservation・existingSameDayReservation）で別々の候補を画面に表示して
+    # いたため、画面に表示された座席とは異なる方が実際に取り消される不具合になっていた。フロント側が
+    # 画面に表示した対象の予約idをここで明示的に指定できるようにし、指定された場合はそのidの予約のみを
+    # 対象にする（未指定の場合は従来どおりの検索にフォールバックするが、こちらもORDER BY r.id ASCを
+    # 追加し、同じ結果を安定して返すようにした）
+    replace_reservation_id: int | None = None
 
 
 @router.post("")
@@ -88,11 +99,21 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     # 詳細設計書6章のとおりRULE-05と異なりP-ADMIN除外の定めがないため、管理部が自分の予約として
     # 登録する場合（A-09は常に本人の予約として登録する）も対象とする。ただしkeep_both=trueの場合は
     # 既存の予約を取り消さず、この座席も追加で登録する（両方保有、下記参照）。
-    duplicate = await pool.fetchrow(
-        """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
-           WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'""",
-        user.id, body.date,
-    )
+    # replace_reservation_id指定時はそのidの予約のみを対象にする（2026-09-29追加、ReservationCreate
+    # 参照）。未指定時は同じ日に複数の候補があり得る場合に備えてORDER BY r.id ASCで決定的にする
+    if body.replace_reservation_id is not None:
+        duplicate = await pool.fetchrow(
+            """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
+               WHERE r.id = $1 AND r.user_id = $2 AND r.date = $3 AND r.status = 'active' AND s.seat_type = 'free'""",
+            body.replace_reservation_id, user.id, body.date,
+        )
+    else:
+        duplicate = await pool.fetchrow(
+            """SELECT r.id, s.seat_no FROM reservations r JOIN seats s ON s.id = r.seat_id
+               WHERE r.user_id = $1 AND r.date = $2 AND r.status = 'active' AND s.seat_type = 'free'
+               ORDER BY r.id LIMIT 1""",
+            user.id, body.date,
+        )
     if duplicate and not body.replace_existing and not body.keep_both:
         raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
 
