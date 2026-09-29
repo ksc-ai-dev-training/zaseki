@@ -130,18 +130,24 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         )
     if duplicate and not body.replace_existing and not body.keep_both:
         raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
+    # 固定座席（T-18により当日だけ解除されている場合を除く）もMAX_SEATS_PER_DAYの1席として数える
+    # （2026-09-29追加。「固定席も該当するようにしてほしい」との要望を受けた。fixed_seat_absent_on
+    # は下のmulti_seat_warning算出でも使うため、ここで1回だけ呼んで使い回す）
+    has_fixed_seat_today = own_fixed_seat is not None and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], body.date)
     if body.keep_both:
         # 取り消さずに追加するため、実際に保有座席数が増える。MAX_SEATS_PER_DAY参照
         active_count = await pool.fetchval(
             "SELECT COUNT(*) FROM reservations WHERE user_id = $1 AND date = $2 AND status = 'active'",
             user.id, body.date,
         )
+        if has_fixed_seat_today:
+            active_count += 1
         if active_count >= MAX_SEATS_PER_DAY:
             raise HTTPException(400, detail=f"同じ日に保有できる座席は最大{MAX_SEATS_PER_DAY}席までです")
 
     multi_seat_warning = None
     warning_reasons = []
-    if own_fixed_seat is not None and not await fixed_seat_absent_on(own_fixed_seat["seat_id"], body.date):
+    if has_fixed_seat_today:
         warning_reasons.append(f"固定座席（{own_fixed_seat['seat_no']}）")
     if duplicate and body.keep_both:
         warning_reasons.append(f"{duplicate['seat_no']}の予約")
