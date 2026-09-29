@@ -28,6 +28,14 @@ from slack import (
 
 router = APIRouter(prefix="/api", tags=["project-seats"])
 
+# プロジェクト名の文字数上限（2026-09-29新設）。「プロジェクト名が長いと座席タイル（58px×54px、
+# .seat-tag）の表示が崩れる」との指摘を受けた。実測したところ全角のみだと10文字までは2行に収まり
+# 16文字以降で実際にタイルの高さをはみ出す。現在の実データの最長は18文字（「コムチュア_WebPerformer」）
+# だったため、これに少し余裕を持たせた20文字を上限とした（AskUserQuestionで20/14/10文字を提示し20を
+# 選択）。A-28（create_project）・A-29（update_project_members、名称変更）・A-78（create_my_project、
+# project_pm.py）の3箇所で共通してこの上限を使う
+PROJECT_NAME_MAX_LEN = 20
+
 _WEEKDAY_JA = {"mon": "月", "tue": "火", "wed": "水", "thu": "木", "fri": "金"}
 _WEEKDAY_ISODOW = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5}
 
@@ -164,6 +172,8 @@ async def create_project(body: ProjectCreate, user: CurrentUser = Depends(requir
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
+    if len(name) > PROJECT_NAME_MAX_LEN:
+        raise HTTPException(400, detail=f"プロジェクト名は{PROJECT_NAME_MAX_LEN}文字以内で入力してください")
     row = await get_pool().fetchrow(
         "INSERT INTO projects (name, created_by) VALUES ($1, $2) RETURNING id", name, user.id
     )
@@ -209,6 +219,8 @@ async def update_project_members(id: int, body: ProjectMembersUpdate, user: Curr
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
+    if len(name) > PROJECT_NAME_MAX_LEN:
+        raise HTTPException(400, detail=f"プロジェクト名は{PROJECT_NAME_MAX_LEN}文字以内で入力してください")
     if len(body.members) != len({m.user_id for m in body.members}):
         raise HTTPException(400, detail="同じ利用者が複数の行に指定されています")
 

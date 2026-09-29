@@ -1968,6 +1968,22 @@ export default function Availability() {
       <>
       {isLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
+      {/* 座席の色分けの凡例（何色が何を表すか）は、以前はフロアマップの下（画面をスクロールしないと
+          見えない位置）にあり、「初めて開いた際にわかりにくい」との指摘を受けた（2026-09-29修正）。
+          フロアマップより先に見えるよう上へ移動した */}
+      <div className="seat-legend mb-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
+        {LEGEND.map((l) => (
+          <span key={l.status} className="legend-item flex items-center gap-1.5">
+            <span className={`legend-swatch inline-block h-3.5 w-3.5 rounded-sm ${STATUS_CSS_CLASS[l.status]}`} />
+            {l.label}
+          </span>
+        ))}
+        <span className="legend-item flex items-center gap-1.5">
+          <span className="legend-swatch inline-block h-3.5 w-3.5 rounded-sm seat-multi-holder" />
+          複数の座席を保有中（要確認）
+        </span>
+      </div>
+
       {hasAnyArea && (
         <div ref={viewportRef} className="floor-zoom-viewport mb-6 overflow-auto pb-2">
           <div ref={overviewRef} className="floor-overview inline-flex">
@@ -2060,19 +2076,6 @@ export default function Availability() {
           </div>
         </div>
       )}
-
-      <div className="seat-legend mb-8 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
-        {LEGEND.map((l) => (
-          <span key={l.status} className="legend-item flex items-center gap-1.5">
-            <span className={`legend-swatch inline-block h-3.5 w-3.5 rounded-sm ${STATUS_CSS_CLASS[l.status]}`} />
-            {l.label}
-          </span>
-        ))}
-        <span className="legend-item flex items-center gap-1.5">
-          <span className="legend-swatch inline-block h-3.5 w-3.5 rounded-sm seat-multi-holder" />
-          複数の座席を保有中（要確認）
-        </span>
-      </div>
       </>
       )}
 

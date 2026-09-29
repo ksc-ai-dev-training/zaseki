@@ -6,6 +6,12 @@ import type { ProjectTitle } from '../types'
 
 export const PROJECT_TITLE_LABEL: Record<'PM' | 'PL' | 'SL', string> = { PM: 'PM', PL: 'PL', SL: 'SL' }
 
+// プロジェクト名の文字数上限（2026-09-29新設。バックエンドのPROJECT_NAME_MAX_LEN
+// 〔routers/project_seats.py〕と同じ値。「プロジェクト名が長いと座席タイルの表示が崩れる」
+// との指摘を受けた。実測にもとづき、現在の実データの最長〔18文字〕に少し余裕を持たせた
+// 20文字を上限とした）
+const PROJECT_NAME_MAX_LEN = 20
+
 export interface ProjectMemberRow {
   user_id: number
   name: string
@@ -103,8 +109,10 @@ export default function ProjectEditModal({ form, setForm, onClose, onSubmit, sub
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例: Zaseki研修プロジェクト"
+            maxLength={PROJECT_NAME_MAX_LEN}
             className="h-9 w-full rounded border border-slate-500 px-3"
           />
+          <span className="mt-1 block text-right text-xs text-slate-400">{form.name.length}/{PROJECT_NAME_MAX_LEN}</span>
         </label>
 
         <div>

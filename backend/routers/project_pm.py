@@ -18,7 +18,7 @@ from database import (
     retry_excluded_dates,
     seats_by_weekday,
 )
-from routers.project_seats import _WEEKDAY_JA, _format_seat_range
+from routers.project_seats import PROJECT_NAME_MAX_LEN, _WEEKDAY_JA, _format_seat_range
 
 router = APIRouter(prefix="/api", tags=["project-pm"])
 
@@ -249,6 +249,8 @@ async def create_my_project(body: SelfProjectCreate, user: CurrentUser = Depends
     name = body.name.strip()
     if not name:
         raise HTTPException(400, detail="プロジェクト名を入力してください")
+    if len(name) > PROJECT_NAME_MAX_LEN:
+        raise HTTPException(400, detail=f"プロジェクト名は{PROJECT_NAME_MAX_LEN}文字以内で入力してください")
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
