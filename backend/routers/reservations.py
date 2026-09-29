@@ -22,6 +22,13 @@ router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
 _WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
+# 同じ日に本人が保有できる座席（reservations行、種別を問わずプロジェクト座席も含む）の上限
+# （2026-09-29新設。「重複予約は最大2席までにしてほしい」との要望を受けた。keep_both（両方保有）は
+# 従来何度でも積み増しできたが、これ以降はこの上限に達している場合はkeep_both自体を拒否する。
+# replace_existing（取消して変更）は既存の1件を取り消してから1件追加するため、上限チェックの対象外
+# （件数は変わらないため））
+MAX_SEATS_PER_DAY = 2
+
 
 class ReservationCreate(BaseModel):
     seat_id: int
@@ -123,6 +130,14 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
         )
     if duplicate and not body.replace_existing and not body.keep_both:
         raise HTTPException(400, detail=DUPLICATE_SEAT_MESSAGE)
+    if body.keep_both:
+        # 取り消さずに追加するため、実際に保有座席数が増える。MAX_SEATS_PER_DAY参照
+        active_count = await pool.fetchval(
+            "SELECT COUNT(*) FROM reservations WHERE user_id = $1 AND date = $2 AND status = 'active'",
+            user.id, body.date,
+        )
+        if active_count >= MAX_SEATS_PER_DAY:
+            raise HTTPException(400, detail=f"同じ日に保有できる座席は最大{MAX_SEATS_PER_DAY}席までです")
 
     multi_seat_warning = None
     warning_reasons = []

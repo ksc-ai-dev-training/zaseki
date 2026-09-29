@@ -1141,6 +1141,14 @@ export default function Availability() {
     ? upcoming.items.find((r) => r.date === reserveTarget.date && r.seat_no !== reserveTarget.seatNo)
     : undefined
 
+  // 同じ日に本人が保有できる座席数の上限（2026-09-29新設。「重複予約は最大2席までにしてほしい」との
+  // 要望を受けた。バックエンド〔reservations.py MAX_SEATS_PER_DAY〕と同じ値。「両方予約する」は
+  // 押しても上限に達していれば拒否されるだけになるため、ボタン自体を無効化して気づけるようにする
+  const sameDayReservationCount = reserveTarget
+    ? upcoming.items.filter((r) => r.date === reserveTarget.date).length
+    : 0
+  const atMaxSeatsPerDay = sameDayReservationCount >= 2
+
   // 繰り返し予約は開始日（クリックした日）自体が予約可能期間内でなければ意味がないため、
   // その場合はチェックボックス自体を選べないようにする（2026-09-07追加。「繰り返し予約は
   // そもそも予約範囲可能範囲でしか選べないようにしてほしい」との要望を受けた。終了日は既に
@@ -1215,8 +1223,11 @@ export default function Availability() {
       // フリー座席同士の重複〔replace_existing=trueで自動的に変更〕とは異なり、PM/PLが割り当てた
       // プロジェクト座席を無言で取り消すのは安全ではないため、このボタンの既定動作は「両方予約する」
       // 〔取り消さず追加〕にする。明示的に取り消したい場合は上の事前通知バナーの「プロジェクト座席を
-      // 取り消して変更する」ボタンを使う）
-      const projectOnlyConflict = !existingSameDayReservation && Boolean(anySameDayReservation)
+      // 取り消して変更する」ボタンを使う）。既に上限（2席）まで保有している場合は「両方予約する」も
+      // 拒否されるだけのため、この既定の付け替えは行わない（2026-09-29追加、MAX_SEATS_PER_DAY参照。
+      // 通常の重複エラーとして扱われ、事前通知バナーの「プロジェクト座席を取り消して変更する」で
+      // 明示的に取り消してもらう）
+      const projectOnlyConflict = !existingSameDayReservation && Boolean(anySameDayReservation) && !atMaxSeatsPerDay
       const data = await apiFetch<{ multi_seat_warning: string | null }>('/api/reservations', {
         method: 'POST',
         body: JSON.stringify({
@@ -2999,13 +3010,19 @@ export default function Availability() {
                     )}
                     <button
                       type="button"
-                      disabled={submitting}
+                      disabled={submitting || atMaxSeatsPerDay}
                       onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                      title={atMaxSeatsPerDay ? '同じ日に保有できる座席は最大2席までです' : undefined}
                       className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                     >
                       両方予約する（既存の予約は残す）
                     </button>
                   </div>
+                  {atMaxSeatsPerDay && (
+                    <p className="mt-1.5 text-xs text-amber-700">
+                      既に{sameDayReservationCount}席保有しているため、これ以上追加できません（同じ日に保有できる座席は最大2席までです）。
+                    </p>
+                  )}
                 </div>
               )}
               {!proxyBookingFor && (
@@ -3103,8 +3120,9 @@ export default function Availability() {
                         {!proxyBookingFor && (
                           <button
                             type="button"
-                            disabled={submitting}
+                            disabled={submitting || atMaxSeatsPerDay}
                             onClick={() => confirmReserveResolveDuplicate('keep_both')}
+                            title={atMaxSeatsPerDay ? '同じ日に保有できる座席は最大2席までです' : undefined}
                             className="rounded border border-slate-500 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                           >
                             両方予約する（既存の予約は残す）
