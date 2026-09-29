@@ -1208,17 +1208,27 @@ export default function Availability() {
         await refreshAll()
         return
       }
+      // 同じ日の唯一の重複がプロジェクト座席（existingSameDayReservationの対象外）の場合、
+      // このボタンは「予約する」のまま変わらないため、素直に送信するとRULE-02の重複エラーに
+      // なっていた（2026-09-29追加。「3席目を予約しようとするとエラー文が表示される」との報告を
+      // 受けた。実際には2席目の時点で既にこの状態〔プロジェクト座席1件のみ保有〕になっており、
+      // フリー座席同士の重複〔replace_existing=trueで自動的に変更〕とは異なり、PM/PLが割り当てた
+      // プロジェクト座席を無言で取り消すのは安全ではないため、このボタンの既定動作は「両方予約する」
+      // 〔取り消さず追加〕にする。明示的に取り消したい場合は上の事前通知バナーの「プロジェクト座席を
+      // 取り消して変更する」ボタンを使う）
+      const projectOnlyConflict = !existingSameDayReservation && Boolean(anySameDayReservation)
       const data = await apiFetch<{ multi_seat_warning: string | null }>('/api/reservations', {
         method: 'POST',
         body: JSON.stringify({
           seat_id: reserveTarget.seatId, date: reserveTarget.date,
           replace_existing: Boolean(existingSameDayReservation),
+          keep_both: projectOnlyConflict,
           // 2026-09-29追加。「C2を変更しますかと表示されているのにC3が変更される」との報告を受けた。
           // 同じ日にプロジェクト座席とフリー座席の予約を両方持っている等、取消候補が2件以上あり得る
           // ケースでバックエンド側の問い合わせが不定になっていたため、この画面（ボタン文言「変更する」）
           // が対象にしているのと同じexistingSameDayReservationのidを明示的に指定し、実際に取り消される
-          // 予約と画面表示を一致させる
-          replace_reservation_id: existingSameDayReservation?.id ?? null,
+          // 予約と画面表示を一致させる（上のprojectOnlyConflict時はanySameDayReservationのidを指定する）
+          replace_reservation_id: (existingSameDayReservation ?? (projectOnlyConflict ? anySameDayReservation : undefined))?.id ?? null,
         }),
       })
       // upcoming.mutate()（自分の予約一覧の再取得）が完了する前にモーダルを閉じると、閉じた直後に
