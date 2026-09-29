@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useFixedSeatAssignments } from '../hooks/useFixedSeatAssignments'
 import { useFixedSeatCandidates } from '../hooks/useFixedSeatCandidates'
+import { usePagination } from '../hooks/usePagination'
 import Modal from '../components/Modal'
+import Pagination from '../components/Pagination'
 import type { AssignFixedSeatFor, FixedSeatAssignment, SeatType } from '../types'
 
 const SEAT_STATUS_JA: Record<SeatType, string> = { free: 'フリー', fixed: '固定', project: 'PJ' }
@@ -35,6 +37,7 @@ export default function FixedSeats() {
   const assignments = assignmentQuery
     ? allAssignments.filter((a) => a.user_name.includes(assignmentQuery))
     : allAssignments
+  const { page, setPage, pageSize, setPageSize, totalPages, pageItems: pageAssignments, totalCount: assignmentCount } = usePagination(assignments)
 
   const [unassignTarget, setUnassignTarget] = useState<FixedSeatAssignment | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -123,7 +126,7 @@ export default function FixedSeats() {
             <input
               type="search"
               value={assignmentQuery}
-              onChange={(e) => setAssignmentQuery(e.target.value)}
+              onChange={(e) => { setAssignmentQuery(e.target.value); setPage(1) }}
               placeholder="氏名で検索"
               className="ml-auto h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm font-normal"
             />
@@ -140,7 +143,7 @@ export default function FixedSeats() {
                 </tr>
               </thead>
               <tbody>
-                {assignments.map((a) => {
+                {pageAssignments.map((a) => {
                   // 開始日（valid_from）がまだ来ていない予約設定（A-20参照）は、対象者の従来の
                   // 固定座席は既に解除済みだが、この座席自体はvalid_fromまでまだ通常のフリー座席の
                   // ままになっている。従来は一覧上「今日から既に固定」であるかのように見分けが
@@ -190,6 +193,7 @@ export default function FixedSeats() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} totalPages={totalPages} totalCount={assignmentCount} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
         </div>
       </div>
 

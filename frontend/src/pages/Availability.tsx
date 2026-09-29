@@ -1661,9 +1661,14 @@ export default function Availability() {
 
       {placeSeatMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-8 py-2.5 text-sm text-blue-900">
-          <span>座席表の配置を編集中です。空いている位置をクリックすると新しい座席を追加、既存の座席はドラッグすると位置を変更できます。</span>
+          {/* クリック・ドラッグのたびに即座にAPIへ保存される（一括保存・取消の概念がない）モードのため、
+              「キャンセル」を含む文言は「押すと今までの配置が取り消される」という誤解を招く
+              （2026-09-29修正。「完了・キャンセルが並列に並んでいるが別物のはず、キャンセルは保存
+              しないイメージ」との指摘を受けた）。単にモードを抜けるだけの操作であることが伝わる
+              「完了」のみに変更した */}
+          <span>座席表の配置を編集中です。空いている位置をクリックすると新しい座席を追加、既存の座席はドラッグすると位置を変更できます（操作するたびに自動的に保存されます）。</span>
           <button type="button" onClick={exitPlaceSeatMode} className="shrink-0 text-blue-700 underline hover:text-blue-900">
-            完了・キャンセル
+            完了
           </button>
         </div>
       )}
@@ -1935,7 +1940,7 @@ export default function Availability() {
             onClick={() => setViewMode('floormap')}
             className={`rounded-full px-3 py-1 text-sm ${viewMode === 'floormap' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
           >
-            フロアマップ表示
+            フロアマップビュー
           </button>
           <button
             type="button"
@@ -2114,28 +2119,33 @@ export default function Availability() {
           {periodLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
           {period && (
-            <div className="overflow-x-auto rounded border border-slate-500 bg-white">
+            <div className="max-h-[75vh] overflow-auto rounded border border-slate-500 bg-white">
               <table className="text-sm">
                 <thead>
-                  {/* 期間ビューを「箱の中でスクロール」から「ページ全体のスクロール」に変更した
-                      （2026-09-10、「全期間見れるようにしてほしい」との要望を受けた。従来は
-                      max-h-[70vh]の箱の中に全期間を収めていたため、パッと見では今月あたりまでしか
-                      見えず「1ヶ月しか見れない」と誤解されやすかった）。横スクロール用の
-                      overflow-x-autoを維持したまま縦方向もsticky top-0で追従させることはCSSの
-                      仕様上できない（overflow-xを visible 以外にすると overflow-y も自動的に
-                      auto 扱いになり、この要素自身が縦のスクロールコンテナになってページ全体の
-                      スクロールを追従できなくなる）ため、ヘッダーの縦方向のstickyは諦め、
-                      左端の列（日付・曜日・予約数・空席）の横方向のstickyのみ残した */}
+                  {/* 2026-09-10には「全期間見れるようにしてほしい」との要望で、この表を小さな箱
+                      （内部スクロール）からページ全体スクロールへ変更し、縦方向のsticky（座席番号の
+                      見出し行）を諦めていた。2026-09-29、S-11代理予約・取消の同じ構造の表について
+                      「座席番号も固定で表示されてほしい」との指摘を受け、overflow-x-autoのままでは
+                      CSS仕様上縦方向のstickyを両立できないこと（横スクロール用にoverflow-xを効かせると
+                      同じ要素のoverflow-yも自動的にautoとなり、ページ全体の代わりにこの要素自身が
+                      縦スクロールの基準になってしまう）を実機検証で確認したうえで、画面高の75%
+                      （max-h-[75vh]）を使う内部スクロールの箱に戻す方針を採用し、S-11側に先行導入した。
+                      続けて「期間ビューの表にも座席番号を固定で表示させたい」との要望を受け、S-02の
+                      この表にも同じ変更を適用した。箱を画面のほとんどを占める高さにすることで、以前の
+                      「1ヶ月分しか見えないと誤解されやすい」という問題は実質的に解消する。見出し行
+                      （座席番号を含む）にsticky top-0を、左端の列（日付・曜日・予約数・空席）には
+                      従来どおりsticky left-<オフセット>を、その交差する左上のセルには両方を適用し、
+                      表計算ソフトのウィンドウ枠の固定と同じ見た目になる */}
                   <tr className="text-left text-slate-500">
                     <th
-                      className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
+                      className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
                       style={{ minWidth: periodDateColW }}
                     >
                       日付
                     </th>
                     {!isMobile && (
                       <th
-                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                       >
                         曜日
@@ -2143,14 +2153,14 @@ export default function Availability() {
                     )}
                     {!isMobile && (
                       <th
-                        className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                       >
                         予約数
                       </th>
                     )}
                     <th
-                      className="sticky z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                      className="sticky top-0 z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
                       style={{ left: periodVacantLeftOffset, minWidth: PERIOD_COL_VAC_W }}
                     >
                       空席
@@ -2158,7 +2168,7 @@ export default function Availability() {
                     {period.seats.map((seat) => (
                       <th
                         key={seat.id}
-                        className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
+                        className="sticky top-0 z-20 min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
                       >
                         <div className="font-semibold text-slate-700">{seat.seat_no}</div>
                         <div className="text-slate-400">{SEAT_TYPE_JA[seat.seat_type]}</div>
@@ -2204,7 +2214,7 @@ export default function Availability() {
                           const cell = seat.days[d]
                           const status = cell?.status ?? 'free'
                           // 2026-09-16修正: 固定席・プロジェクト席は未使用中の日でも「空き」ボタンが
-                          // 出てしまい、押しても必ずエラーになっていた（フロアマップ表示は
+                          // 出てしまい、押しても必ずエラーになっていた（フロアマップビューは
                           // seat.seat_type==='free'も見て正しくフィルタしているのに、期間ビューは
                           // statusしか見ていなかった）。座席タイプもフリーの場合のみボタンにする
                           const bookable = status === 'free' && seat.seat_type === 'free'

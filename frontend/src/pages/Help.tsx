@@ -192,7 +192,7 @@ export default function Help() {
               </ul>
             </Section>
 
-            <Section title="座席の予約・取消（フロアマップ表示）">
+            <Section title="座席の予約・取消（フロアマップビュー）">
               <ol className="list-decimal space-y-3 pl-5">
                 <li>サイドバーの「空き状況・予約」がトップ画面です。日付とエリアを選びます。
                   <div className="mt-2 max-w-md">

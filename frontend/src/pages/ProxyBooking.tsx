@@ -318,22 +318,32 @@ export default function ProxyBooking() {
             {gridLoading && <p className="text-sm text-slate-400">読み込み中...</p>}
 
             {grid && (
-              <div className="overflow-x-auto rounded border border-slate-500 bg-white">
+              <div className="max-h-[75vh] overflow-auto rounded border border-slate-500 bg-white">
                 <table className="text-sm">
                   <thead>
-                    {/* S-02と同じ理由で縦方向のsticky（top-0）は外し、横方向のsticky（左端の列）
-                        のみ残した（2026-09-10、「全期間見れるようにしてほしい」対応。Availability.tsx
-                        の期間ビュー側コメント参照） */}
+                    {/* 2026-09-10には「全期間見れるようにしてほしい」との要望で、この表を小さな箱
+                        （内部スクロール）からページ全体スクロールへ変更し、縦方向のsticky（座席番号の
+                        見出し行）を諦めていた。2026-09-29、「変更・削除の表について、座席番号も固定で
+                        表示されてほしい」との指摘を受け、overflow-x-autoのままではCSS仕様上縦方向の
+                        stickyを両立できないこと（横スクロール用にoverflow-xを効かせると同じ要素の
+                        overflow-yも自動的にautoとなり、ページ全体の代わりにこの要素自身が縦スクロールの
+                        基準になってしまう）を実機検証で確認したうえでAskUserQuestionを行い、画面高の75%
+                        （max-h-[75vh]）を使う内部スクロールの箱に戻す方針を選んだ。以前の「1ヶ月分しか
+                        見えないと誤解されやすい」という問題は、箱を画面のほとんどを占める高さにすることで
+                        実質的に解消する（薄い箱で一部だけ見えていたのが誤解の原因だった）。箱に戻した
+                        ことで、見出し行（座席番号を含む）にsticky top-0を、左端の列（日付・曜日・予約数・
+                        空席）には従来どおりsticky left-<オフセット>を、その交差する左上のセルには両方を
+                        適用でき、表計算ソフトのウィンドウ枠の固定と同じ見た目になる */}
                     <tr className="text-left text-slate-500">
                       <th
-                        className="sticky left-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
+                        className="sticky left-0 top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-3 py-2"
                         style={{ minWidth: periodDateColW }}
                       >
                         日付
                       </th>
                       {!isMobile && (
                         <th
-                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                          className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                           style={{ left: periodDateColW, minWidth: PERIOD_COL_WD_W }}
                         >
                           曜日
@@ -341,14 +351,14 @@ export default function ProxyBooking() {
                       )}
                       {!isMobile && (
                         <th
-                          className="sticky z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                          className="sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-2 py-2 text-center"
                           style={{ left: periodDateColW + PERIOD_COL_WD_W, minWidth: PERIOD_COL_RES_W }}
                         >
                           予約数
                         </th>
                       )}
                       <th
-                        className="sticky z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
+                        className="sticky top-0 z-30 whitespace-nowrap border-r border-b border-slate-500 bg-slate-100 px-2 py-2 text-center"
                         style={{ left: periodVacantLeftOffset, minWidth: PERIOD_COL_VAC_W }}
                       >
                         空席
@@ -356,7 +366,7 @@ export default function ProxyBooking() {
                       {grid.seats.map((seat) => (
                         <th
                           key={seat.id}
-                          className="min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
+                          className="sticky top-0 z-20 min-w-[64px] whitespace-nowrap border-b border-r border-slate-500 bg-slate-100 px-1 py-2 text-center text-xs font-normal"
                         >
                           <div className="font-semibold text-slate-700">{seat.seat_no}</div>
                           <div className="text-slate-400">{SEAT_TYPE_JA[seat.seat_type]}</div>

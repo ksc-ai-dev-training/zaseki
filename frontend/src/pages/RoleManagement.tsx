@@ -4,7 +4,9 @@ import { useUsers, type UserRoleFilter, type UserStatusFilter } from '../hooks/u
 import { useAppSettings } from '../hooks/useAppSettings'
 import { useProjects } from '../hooks/useProjects'
 import { useMe } from '../hooks/useMe'
+import { usePagination } from '../hooks/usePagination'
 import Modal from '../components/Modal'
+import Pagination from '../components/Pagination'
 import ProjectEditModal, { PROJECT_TITLE_LABEL, ProjectDeleteConfirmModal, type ProjectForm } from '../components/ProjectEditModal'
 import type {
   AreaManagerRole, EmploymentType, EmploymentStatus, ProjectListItem, ProjectMemberSummary,
@@ -95,6 +97,7 @@ function UsersTab() {
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all')
   const [showRetired, setShowRetired] = useState(false)
   const { items, isLoading, refresh } = useUsers(roleFilter, statusFilter, showRetired, query)
+  const { page, setPage, pageSize, setPageSize, totalPages, pageItems, totalCount } = usePagination(items)
 
   const [form, setForm] = useState<UserForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -139,20 +142,20 @@ function UsersTab() {
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setPage(1) }}
           placeholder="氏名・メールで検索"
           className="h-9 w-full max-w-[220px] rounded border border-slate-500 px-3 text-sm"
         />
         <span className="text-sm text-slate-500">役割</span>
-        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UserRoleFilter)} className="h-9 rounded border border-slate-500 px-2 text-sm">
+        <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value as UserRoleFilter); setPage(1) }} className="h-9 rounded border border-slate-500 px-2 text-sm">
           {ROLE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
         <span className="text-sm text-slate-500">在籍状況</span>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as UserStatusFilter)} className="h-9 rounded border border-slate-500 px-2 text-sm">
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as UserStatusFilter); setPage(1) }} className="h-9 rounded border border-slate-500 px-2 text-sm">
           {STATUS_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-slate-600">
-          <input type="checkbox" checked={showRetired} onChange={(e) => setShowRetired(e.target.checked)} />
+          <input type="checkbox" checked={showRetired} onChange={(e) => { setShowRetired(e.target.checked); setPage(1) }} />
           退職済みを表示する
         </label>
       </div>
@@ -171,7 +174,7 @@ function UsersTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((u) => (
+            {pageItems.map((u) => (
               <tr key={u.id} className="border-b border-slate-400">
                 <td className="px-4 py-2 font-semibold">{u.last_name} {u.first_name}</td>
                 <td className="px-4 py-2 text-xs text-slate-500">{u.email}</td>
@@ -203,6 +206,8 @@ function UsersTab() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
 
       {form && (
         <Modal
@@ -295,6 +300,7 @@ function UsersTab() {
 function ProjectsTab() {
   const { me } = useMe()
   const { items, isLoading, refresh } = useProjects()
+  const { page, setPage, pageSize, setPageSize, totalPages, pageItems, totalCount } = usePagination(items)
   const [form, setForm] = useState<ProjectForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -385,7 +391,7 @@ function ProjectsTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((p) => {
+            {pageItems.map((p) => {
               const titled = p.members.filter((m): m is ProjectMemberSummary & { project_title: 'PM' | 'PL' | 'SL' } => m.project_title !== null)
               return (
                 <tr key={p.id} className="border-b border-slate-400">
@@ -423,6 +429,8 @@ function ProjectsTab() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} totalCount={totalCount} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
 
       {form && (
         <ProjectEditModal

@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router'
 import { apiFetch, ApiError } from '../lib/api'
 import { useAreas } from '../hooks/useAreas'
 import { useSeatMaster, type SeatStatusFilter } from '../hooks/useSeatMaster'
+import { usePagination } from '../hooks/usePagination'
 import type { AreaFilter } from '../hooks/useAvailability'
 import Modal from '../components/Modal'
+import Pagination from '../components/Pagination'
 import type { PosZone, SeatMasterItem, SeatType } from '../types'
-
-const PAGE_SIZE = 10
 
 const AREA_OPTIONS: { key: AreaFilter; label: string }[] = [
   { key: 'all', label: 'すべて' },
@@ -52,25 +52,12 @@ interface BulkSeatResult {
   skipped: string[]
 }
 
-function pageNumbers(current: number, total: number): (number | '…')[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  const pages = new Set([1, 2, total - 1, total, current - 1, current, current + 1])
-  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b)
-  const result: (number | '…')[] = []
-  sorted.forEach((p, i) => {
-    if (i > 0 && p - (sorted[i - 1] as number) > 1) result.push('…')
-    result.push(p)
-  })
-  return result
-}
-
 // S-07 座席マスタ管理。座席の追加・編集・廃止を行う（FR-06-1, FR-06-2）
 export default function SeatMaster() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('all')
   const [statusFilter, setStatusFilter] = useState<SeatStatusFilter>('all')
-  const [page, setPage] = useState(1)
   const [form, setForm] = useState<SeatForm | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -84,10 +71,7 @@ export default function SeatMaster() {
 
   const { items: areas } = useAreas()
   const { items, isLoading, refresh } = useSeatMaster(areaFilter, statusFilter, query)
-
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pageItems = items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const { page, setPage, pageSize, setPageSize, totalPages, pageItems, totalCount } = usePagination(items)
 
   const openAdd = () => {
     setFormError(null)
@@ -293,48 +277,14 @@ export default function SeatMaster() {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <span className="text-xs text-slate-500">
-              全<strong className="text-slate-700">{items.length}</strong>件中
-              {items.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}〜{Math.min(currentPage * PAGE_SIZE, items.length)}件を表示
-            </span>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setPage(currentPage - 1)}
-                  className="h-7 w-7 rounded border border-slate-500 text-sm disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                {pageNumbers(currentPage, totalPages).map((p, i) =>
-                  p === '…' ? (
-                    <span key={`e${i}`} className="px-1 text-sm text-slate-400">…</span>
-                  ) : (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPage(p)}
-                      className={`h-7 min-w-7 rounded border px-1.5 text-sm ${
-                        p === currentPage ? 'border-blue-800 bg-blue-800 text-white' : 'border-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ),
-                )}
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setPage(currentPage + 1)}
-                  className="h-7 w-7 rounded border border-slate-500 text-sm disabled:opacity-40"
-                >
-                  ›
-                </button>
-              </div>
-            )}
-          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
 
