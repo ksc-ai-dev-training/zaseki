@@ -31,6 +31,24 @@ button:disabled {
   display: none;
 }
 
+/* 「自分の予約」一覧（S-02）の高さ固定スクロール枠（2026-09-30追加）。矢印ボタン非表示
+   （上記::-webkit-scrollbar-button）だけでは環境によって太いクラシック調のスクロールバーの
+   見た目（つまみ部分）が残り「丸で囲った部分を削除してほしい」との指摘を受けたため、
+   つまみ自体を細く目立たない見た目に上書きする */
+.thin-scrollbar {
+  scrollbar-width: thin;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
 /* エリアタブ（S-02、全体表示／NORTH／EAST／WEST）は画面幅が狭いとタブが収まらず横スクロール
    になるが、「このスクロールを削除してほしい」との指摘を受け、スクロールバー自体（見た目）だけを
    非表示にした（スクロール自体はドラッグ・ホイール・スワイプで変わらず可能。タブ数が少ないため
