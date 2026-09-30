@@ -984,7 +984,11 @@ async def bulk_assign_free_seats_by_seat(id: int, body: FreeSeatAssignmentsBody,
         [a.seat_id for a in body.assignments],
     )
     seat_by_id = {s["id"]: s for s in seats}
-    enforce_rule05 = user.role != "admin"
+    # 2026-09-30修正: 「複数人の代理予約（PJメンバー）がフリー座席の予約可能期間（RULE-05）のルールから
+    # 外れている。管理者側も予約できないようにしてほしい」との要望を受け、role='admin'であっても
+    # 常にRULE-05を適用するよう変更した（A-09・A-47等の通常の代理予約はFR-01-7によりadminを除外する
+    # 仕様のままだが、本機能に限っては明示的にこの要望で上書きする）
+    enforce_rule05 = True
 
     # 座席の重複（同じ座席を複数人に割り当てようとした場合）は、ここで一律に弾かず
     # generate_recurring_reservations側の日単位の重複チェック（UNIQUE制約）に委ねる
@@ -1090,7 +1094,9 @@ async def retry_free_seat_assignment(id: int, body: RetryFreeSeatAssignmentBody,
 
     results = await retry_excluded_dates(
         seat["id"], body.member_user_id, body.dates, user.id,
-        enforce_rule05=(user.role != "admin"), check_project_block=True,
+        # 2026-09-30修正: A-75と同じ理由で、振替（除外分の再挑戦）でもrole='admin'を除外しないよう
+        # 変更した（RULE-05を常に適用する）
+        enforce_rule05=True, check_project_block=True,
     )
     created = [r for r in results if r["status"] == "created"]
     excluded = [r for r in results if r["status"] == "excluded"]
