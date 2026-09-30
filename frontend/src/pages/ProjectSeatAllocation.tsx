@@ -634,13 +634,6 @@ export default function ProjectSeatAllocation() {
             全プロジェクトを対象にするため絞り込まない、2026-09-11追加） */}
         {distinctPeriods.length > 1 && (
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setPeriodTab('all')}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${periodTab === 'all' ? 'bg-blue-800 text-white' : 'border border-slate-500 text-slate-600 hover:bg-slate-50'}`}
-            >
-              すべて
-            </button>
             {distinctPeriods.map((per) => (
               <button
                 key={per.key}
