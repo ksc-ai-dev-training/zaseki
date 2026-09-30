@@ -789,9 +789,13 @@ export default function Availability() {
     setPickMemberTarget({ seatId: seat.id, seatNo: seat.seat_no })
   }
   const resetPeriodFilter = () => setPeriodOverride(null)
-  const exitAssignFixedSeatMode = () => navigate('.', { replace: true, state: null })
-  const exitPlaceSeatMode = () => navigate('.', { replace: true, state: null })
-  const exitSeatBlockMode = () => { setSeatBlockSelection(new Set()); navigate('.', { replace: true, state: null }) }
+  // 2026-09-30修正:「キャンセルを押すと前の画面に戻らず空き状況・予約の画面で放置される」との
+  // 指摘を受けた。これらのモードはいずれも他の画面（S-05・S-07・S-09等）から`navigate('/', {state})`
+  // で遷移してきており、`navigate('.', {replace: true, state: null})`はstateを消すだけでこの画面に
+  // 留まってしまっていた。遷移元は必ず直前の履歴のため、`navigate(-1)`でそこへ戻るようにする
+  const exitAssignFixedSeatMode = () => navigate(-1)
+  const exitPlaceSeatMode = () => navigate(-1)
+  const exitSeatBlockMode = () => { setSeatBlockSelection(new Set()); navigate(-1) }
   // 座席の島の割当モードで、ブロックのラベル（「Cブロック」等）をクリックしたときにそのブロック
   // 内の座席をまとめて選択・解除する（2026-09-09追加。「座席タイルを1つずつクリックする必要があり
   // 工数が多すぎる」との指摘を受けた。対象は各ブロックの中で選択可能な座席〔空き、または既に
@@ -954,7 +958,7 @@ export default function Availability() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockCheckKey])
 
-  const exitProxyBookingMode = () => navigate('.', { replace: true, state: null })
+  const exitProxyBookingMode = () => navigate(-1)
   // S-04から遷移してきた場合（座席の島の割当）は従来どおりURLを戻す。S-02のボタンから
   // ローカルstateだけで入った場合（freeSeat）は画面遷移せず、そのstateを消すだけにする
   // （2026-09-07修正、上のmemberSeatAssignOverride参照）
@@ -965,12 +969,12 @@ export default function Availability() {
     setPickMemberConfig(null)
     setPickRecurring(false)
     setMemberAssignResult(null)
-    if (memberSeatAssignFromNav) navigate('.', { replace: true, state: null })
+    if (memberSeatAssignFromNav) navigate(-1)
     else setMemberSeatAssignOverride(null)
   }
   const exitMemberSeatAssignBulkMode = () => {
     setMemberBulkPicks({})
-    navigate('.', { replace: true, state: null })
+    navigate(-1)
   }
 
   const confirmMemberSeatAssign = async () => {
