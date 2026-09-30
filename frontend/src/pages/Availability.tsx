@@ -2496,7 +2496,7 @@ export default function Availability() {
             も兼ねる）と組み合わさって見出しの位置がずれ、不要な横スクロールバーも出てしまう不具合が
             あったため、sticky指定をやめて縦スクロールのみに戻した（見出し行は本文と一緒にスクロール
             される、素朴な形に戻す） */}
-        <div className="thin-scrollbar max-h-[27rem] overflow-y-auto p-4">
+        <div className="scrollbar-hide max-h-[27rem] overflow-y-auto p-4">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-400 text-left text-slate-500">
