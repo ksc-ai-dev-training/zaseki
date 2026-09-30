@@ -430,7 +430,6 @@ export default function Availability() {
   const [assignValidFrom, setAssignValidFrom] = useState(todayStr())
   const [placeSeatTarget, setPlaceSeatTarget] = useState<{ area: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number; zone: PosZone } | null>(null)
   const [newSeatNo, setNewSeatNo] = useState('')
-  const [newSeatType, setNewSeatType] = useState<SeatType>('free')
   // 座席配置編集モードの下書き（未保存）の変更（2026-09-29新設。「完了を押さなくても勝手に
   // 保存されてしまっている。保存していないままページ移動をすると注意勧告が出て、気にせず移動すると
   // 編集データが吹き飛ぶ、というイメージがある」との要望を受けた。従来は新規配置・ドラッグ移動の
@@ -442,7 +441,7 @@ export default function Availability() {
   // 専用プレビュータイルとして描画する
   const [pendingMoves, setPendingMoves] = useState<Map<number, { areaName: 'NORTH' | 'EAST' | 'WEST'; posX: number; posY: number; zone: PosZone }>>(new Map())
   const [pendingNewSeats, setPendingNewSeats] = useState<{
-    tempId: string; area: 'NORTH' | 'EAST' | 'WEST'; zone: PosZone; posX: number; posY: number; seatNo: string; seatType: SeatType
+    tempId: string; area: 'NORTH' | 'EAST' | 'WEST'; zone: PosZone; posX: number; posY: number; seatNo: string
   }[]>([])
   const hasPlaceSeatPendingChanges = pendingMoves.size > 0 || pendingNewSeats.length > 0
   // 座席配置編集モードに未保存の変更がある間、離脱前に確認する（2026-09-29新設）。
@@ -1133,7 +1132,6 @@ export default function Availability() {
     const rect = e.currentTarget.getBoundingClientRect()
     setActionError(null)
     setNewSeatNo('')
-    setNewSeatType('free')
     setPlaceSeatTarget({
       area,
       zone,
@@ -1388,7 +1386,10 @@ export default function Availability() {
 
   // 2026-09-29修正: 以前はここで即座にAPI（POST /api/seats）を呼んでいたが、「完了を押さなくても
   // 勝手に保存されてしまっている」との指摘を受け、下書き（pendingNewSeats）へ追加するだけに変更した。
-  // 実際の保存は「完了」（confirmPlaceSeatModeChanges）でまとめて行う
+  // 実際の保存は「完了」（confirmPlaceSeatModeChanges）でまとめて行う。
+  // 2026-09-30修正: 新規配置時の座席タイプ選択（フリー／固定／プロジェクト）を廃止し、常にフリー
+  // 座席として作成するようにした（バックエンドのSeatCreateも同日、seat_typeを受け取らずfreeで
+  // 固定するよう変更済み）。座席を固定にするにはこの後S-05「固定座席の指定」を使う
   const confirmPlaceSeat = () => {
     if (!placeSeatTarget) return
     if (!newSeatNo.trim()) { setActionError('座席番号を入力してください'); return }
@@ -1397,7 +1398,7 @@ export default function Availability() {
       tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       area: placeSeatTarget.area, zone: placeSeatTarget.zone,
       posX: placeSeatTarget.posX, posY: placeSeatTarget.posY,
-      seatNo: newSeatNo.trim(), seatType: newSeatType,
+      seatNo: newSeatNo.trim(),
     }])
     setPlaceSeatTarget(null)
     // 配置モード自体は続行し、続けて別の座席を配置できるようにする
@@ -1426,7 +1427,7 @@ export default function Availability() {
         await apiFetch('/api/seats', {
           method: 'POST',
           body: JSON.stringify({
-            seat_no: s.seatNo, area_id: area.id, seat_type: s.seatType,
+            seat_no: s.seatNo, area_id: area.id,
             pos_x: s.posX, pos_y: s.posY, pos_zone: s.zone,
           }),
         })
@@ -3322,18 +3323,6 @@ export default function Availability() {
                 className="h-9 w-full rounded border border-slate-500 px-3"
                 autoFocus
               />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-slate-500">座席タイプ</span>
-              <select
-                value={newSeatType}
-                onChange={(e) => setNewSeatType(e.target.value as SeatType)}
-                className="h-9 w-full rounded border border-slate-500 px-2"
-              >
-                <option value="free">フリー</option>
-                <option value="fixed">固定</option>
-                <option value="project">プロジェクト</option>
-              </select>
             </label>
           </div>
           {actionError && <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}

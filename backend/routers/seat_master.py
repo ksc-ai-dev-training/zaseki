@@ -64,11 +64,14 @@ async def list_seat_master(
 class SeatCreate(BaseModel):
     seat_no: str
     area_id: int
-    # DBのCHECK制約は'project'も許容するが、2026-08-28にプロジェクト座席の専有方式を
-    # seats.seat_type恒久変更から四半期計画にもとづく動的判定（database.project_blocked_seats()）
-    # に変更して以降、'project'は使われなくなった。ここで作成・変更できる値をfree/fixedのみに
-    # 制限し、選ぶと二度と予約できなくなる座席が生まれる不具合を防ぐ（2026-09-11修正）
-    seat_type: Literal["free", "fixed"]
+    # DBのCHECK制約はfree/fixed/projectを許容するが、新規作成時にfree以外を選べるようにすると、
+    # 対応する実体（固定座席ならfixed_seat_assignments、プロジェクト座席なら
+    # project_quarter_plans.allocated_seats）を伴わない「誰にも割り当てられていないのに
+    # 二度と予約できない」座席が生まれてしまう。2026-09-11にまず'project'を締め出したが、'fixed'も
+    # 全く同じ理由で危険なため、2026-09-30に新規作成時の座席タイプ選択自体を廃止し、常にfreeで
+    # 作成するよう変更した（「全部フリー座席がデフォルトでもいい」との要望を受けた）。座席を固定に
+    # するには、この後S-05「固定座席の指定」（A-20）を使う（そちらはfixed_seat_assignmentsへの
+    # 記録とseat_type更新を同時に行うため、この問題が起きない）。
     # S-02「座席配置モード」でのクリック位置（所属エリアパネルに対する%、0〜100）。
     # 両方指定するか両方省略する（2026-08-27追加）
     pos_x: float | None = None
@@ -80,7 +83,7 @@ class SeatCreate(BaseModel):
 
 @router.post("")
 async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-23: 座席の新規追加"""
+    """A-23: 座席の新規追加。座席タイプは常にfreeで作成する（SeatCreateのコメント参照）"""
     pool = get_pool()
     seat_no = body.seat_no.strip()
     if not seat_no:
@@ -92,8 +95,8 @@ async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("
     if duplicate:
         raise HTTPException(409, detail="この座席番号は既に使用されています")
     row = await pool.fetchrow(
-        "INSERT INTO seats (seat_no, area_id, seat_type, pos_x, pos_y, pos_zone) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-        seat_no, body.area_id, body.seat_type, body.pos_x, body.pos_y, body.pos_zone,
+        "INSERT INTO seats (seat_no, area_id, seat_type, pos_x, pos_y, pos_zone) VALUES ($1, $2, 'free', $3, $4, $5) RETURNING id",
+        seat_no, body.area_id, body.pos_x, body.pos_y, body.pos_zone,
     )
     return {"id": row["id"], "detail": "座席を追加しました"}
 
@@ -101,16 +104,16 @@ async def create_seat(body: SeatCreate, _: CurrentUser = Depends(require_roles("
 class SeatBulkCreate(BaseModel):
     seat_nos: list[str]
     area_id: int
-    seat_type: Literal["free", "fixed"]
 
 
 @router.post("/bulk")
 async def bulk_create_seats(body: SeatBulkCreate, _: CurrentUser = Depends(require_roles("admin"))):
-    """A-77: 座席の一括追加（S-07）。同一エリア・同一座席タイプの座席をまとめて登録する
+    """A-77: 座席の一括追加（S-07）。同一エリアの座席をまとめて登録する
     （「1件ずつしか登録できず新設フロアの初期投入や増席のたびに工数がかかる」との指摘を受け
     2026-09-09追加）。既存または入力内で重複する座席番号は、1件でも重複があると全体を失敗させて
     やり直させるより、その座席だけスキップして残りを登録する方が手間が少ないため、スキップして
-    処理を続行し、作成できた件数とスキップした座席番号を返す。"""
+    処理を続行し、作成できた件数とスキップした座席番号を返す。座席タイプは常にfreeで作成する
+    （SeatCreateのコメント参照、2026-09-30変更）。"""
     pool = get_pool()
     area = await pool.fetchrow("SELECT id FROM areas WHERE id = $1", body.area_id)
     if area is None:
@@ -131,8 +134,8 @@ async def bulk_create_seats(body: SeatBulkCreate, _: CurrentUser = Depends(requi
             to_create.append(seat_no)
     if to_create:
         await pool.executemany(
-            "INSERT INTO seats (seat_no, area_id, seat_type) VALUES ($1, $2, $3)",
-            [(seat_no, body.area_id, body.seat_type) for seat_no in to_create],
+            "INSERT INTO seats (seat_no, area_id, seat_type) VALUES ($1, $2, 'free')",
+            [(seat_no, body.area_id) for seat_no in to_create],
         )
     return {"created_count": len(to_create), "skipped": skipped}
 
