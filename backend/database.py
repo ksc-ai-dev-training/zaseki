@@ -432,12 +432,19 @@ async def free_seat_open_date(target: Date) -> Date:
 
 
 async def free_seat_bookable_period() -> tuple[Date, Date]:
-    """RULE-05に基づく「現時点で予約可能な期間全体」（期間ビューの既定表示範囲、FR-04-4）。
+    """RULE-05に基づく「現時点で予約可能な期間全体」（期間ビュー・S-11期間ビューの既定表示範囲、FR-04-4）。
     当月分は前月26日時点で常に開放済みのため必ず含まれ、当日が当月の確保開始日（既定26日）
-    以降であれば翌月分も開放されるためそこまで延長する。"""
+    以降であれば翌月分も開放されるためそこまで延長する。
+
+    startは本日とする（2026-09-30修正。「表示期間のデフォルトが予約可能期間（本日から月末または
+    本日から来月末まで）がいいと思います」との要望を受けた。以前はここも技術的な確保開始日
+    （前月26日）を返していたが、過去日は別途RULE-05で常に予約不可のため、実際に予約できる範囲は
+    どのみち本日からであり、前月26日を表示・既定値にする意味がなかった〔A-07の期間ビューは
+    「この日は予約可能期間（{'{'}full_start{'}'}〜{'{'}full_end{'}'}）外のため...」という案内文にも
+    そのままfull_startを使っており、本日より前の日付が表示されるのは紛らわしかった〕）。"""
     today = Date.today()
     open_day = int(await get_setting("free_seat_open_day") or "26")
-    start = await free_seat_open_date(today)
+    start = today
     end_month_date = today
     if today.day >= open_day:
         end_month_date = Date(today.year + 1, 1, 1) if today.month == 12 else Date(today.year, today.month + 1, 1)
