@@ -40,7 +40,6 @@ interface SeatForm {
 // 生成する補助入力（必須ではなく、seatNosTextを直接編集してもよい）
 interface BulkSeatForm {
   areaId: number
-  seatType: SeatType
   seatNosText: string
   rangePrefix: string
   rangeStart: string
@@ -94,7 +93,7 @@ export default function SeatMaster() {
       if (form.id === null) {
         await apiFetch('/api/seats', {
           method: 'POST',
-          body: JSON.stringify({ seat_no: form.seatNo, area_id: form.areaId, seat_type: form.seatType }),
+          body: JSON.stringify({ seat_no: form.seatNo, area_id: form.areaId }),
         })
       } else {
         await apiFetch(`/api/seats/${form.id}`, {
@@ -133,7 +132,7 @@ export default function SeatMaster() {
   const openBulkAdd = () => {
     setBulkError(null)
     setBulkResult(null)
-    setBulkForm({ areaId: areas[0]?.id ?? 0, seatType: 'free', seatNosText: '', rangePrefix: '', rangeStart: '', rangeEnd: '' })
+    setBulkForm({ areaId: areas[0]?.id ?? 0, seatNosText: '', rangePrefix: '', rangeStart: '', rangeEnd: '' })
   }
 
   const applyRangeToText = () => {
@@ -156,7 +155,7 @@ export default function SeatMaster() {
     try {
       const res = await apiFetch<BulkSeatResult>('/api/seats/bulk', {
         method: 'POST',
-        body: JSON.stringify({ seat_nos: seatNos, area_id: bulkForm.areaId, seat_type: bulkForm.seatType }),
+        body: JSON.stringify({ seat_nos: seatNos, area_id: bulkForm.areaId }),
       })
       setBulkResult(res)
       await refresh()
@@ -321,17 +320,24 @@ export default function SeatMaster() {
                   {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </label>
-              <label className="block flex-1">
-                <span className="mb-1 block text-slate-500">座席タイプ</span>
-                <select
-                  value={form.seatType}
-                  onChange={(e) => setForm({ ...form, seatType: e.target.value as SeatType })}
-                  className="h-9 w-full rounded border border-slate-500 px-2"
-                >
-                  <option value="free">フリー</option>
-                  <option value="fixed">固定</option>
-                </select>
-              </label>
+              {/* 座席タイプは新規作成時には選ばせない（2026-09-30変更）。作成時に「固定」を選ぶと、
+                  fixed_seat_assignmentsへの記録を伴わない「誰にも割り当てられていないのに二度と
+                  予約できない」座席が生まれてしまうため（SeatCreateのコメント参照）。座席を固定に
+                  するにはS-05「固定座席の指定」（A-20）を使う。既存座席の編集時のみ、データ不整合の
+                  手動修正手段として引き続き変更できるようにする */}
+              {form.id !== null && (
+                <label className="block flex-1">
+                  <span className="mb-1 block text-slate-500">座席タイプ</span>
+                  <select
+                    value={form.seatType}
+                    onChange={(e) => setForm({ ...form, seatType: e.target.value as SeatType })}
+                    className="h-9 w-full rounded border border-slate-500 px-2"
+                  >
+                    <option value="free">フリー</option>
+                    <option value="fixed">固定</option>
+                  </select>
+                </label>
+              )}
             </div>
             {form.id !== null && (
               <label className="flex items-center gap-2">
@@ -381,29 +387,18 @@ export default function SeatMaster() {
             </div>
           ) : (
             <div className="space-y-3 text-sm">
-              <div className="flex gap-3">
-                <label className="block flex-1">
-                  <span className="mb-1 block text-slate-500">エリア</span>
-                  <select
-                    value={bulkForm.areaId}
-                    onChange={(e) => setBulkForm({ ...bulkForm, areaId: Number(e.target.value) })}
-                    className="h-9 w-full rounded border border-slate-500 px-2"
-                  >
-                    {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </label>
-                <label className="block flex-1">
-                  <span className="mb-1 block text-slate-500">座席タイプ</span>
-                  <select
-                    value={bulkForm.seatType}
-                    onChange={(e) => setBulkForm({ ...bulkForm, seatType: e.target.value as SeatType })}
-                    className="h-9 w-full rounded border border-slate-500 px-2"
-                  >
-                    <option value="free">フリー</option>
-                    <option value="fixed">固定</option>
-                  </select>
-                </label>
-              </div>
+              {/* 座席タイプ欄は新規作成時には出さない（2026-09-30変更、上の単体追加フォームと同じ理由）。
+                  常にfreeで作成する */}
+              <label className="block">
+                <span className="mb-1 block text-slate-500">エリア</span>
+                <select
+                  value={bulkForm.areaId}
+                  onChange={(e) => setBulkForm({ ...bulkForm, areaId: Number(e.target.value) })}
+                  className="h-9 w-full rounded border border-slate-500 px-2"
+                >
+                  {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </label>
 
               <div className="rounded border border-slate-400 bg-slate-50 p-3">
                 <span className="mb-2 block text-xs text-slate-500">連番で入力欄を作成（任意。「プレフィックス＋開始〜終了」の座席番号を下の欄にまとめて入力する）</span>
