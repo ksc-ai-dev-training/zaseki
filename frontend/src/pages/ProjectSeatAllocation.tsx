@@ -1478,10 +1478,7 @@ function ConfirmedWeekdaysTable({ plans, onChanged, showNoteText }: { plans: Qua
             </div>
             {[...cancelSelected].some((id) => unfinalizeCandidates.find((p) => p.id === id)?.status === 'seats_allocated') && (
               <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                割当済みのプロジェクトが含まれています。取り消すとアンケート回答後（出社曜日未確定）の状態まで
-                一気に戻り、出社曜日の確定・座席の島の割当を最初からやり直す必要があります（確定していた曜日・
-                割り当て済みだった座席は初期値として残ります）。メンバー個別の座席予約は自動的には取り消されない
-                ため、必要に応じて別途調整してください。
+                割当済みのプロジェクトは、取り消すと出社曜日未確定の状態に戻ります（内容は初期値として残ります）。メンバー個別の座席予約は自動では取り消されないため、必要に応じて調整してください。
               </p>
             )}
             {cancelError && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">{cancelError}</p>}
