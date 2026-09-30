@@ -414,9 +414,13 @@ export default function ProxyBooking() {
                               <td key={seat.id} className="border-r border-slate-400 px-1 py-1.5 text-center">
                                 {status === 'free' ? (
                                   <span className="whitespace-nowrap text-[11px] text-slate-300">空き</span>
-                                ) : isPast ? (
+                                ) : isPast || cell?.kind === null ? (
+                                  // cell?.kind === null かつ status !== 'free' は自分自身の予約・固定座席
+                                  // （2026-09-30追加。バックエンドがkind/idをNoneにして取消・変更モーダルを
+                                  // 開けないようにしている。過去日と同じ非活性表示にする。自分の予約は通常の
+                                  // 空き状況・予約画面〔S-02〕の「自分の予約」欄から取消・変更してもらう）
                                   <span
-                                    title="過去の日付は取消・変更できません"
+                                    title={isPast ? '過去の日付は取消・変更できません' : 'この画面から自分自身の予約は操作できません（空き状況・予約画面の「自分の予約」から行ってください）'}
                                     className={`whitespace-nowrap text-[11px] opacity-50 ${
                                       status === 'fixed'
                                         ? 'text-violet-700'

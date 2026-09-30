@@ -110,11 +110,18 @@ async def search_reservations(
     seat_type: Literal["all", "free", "fixed", "project"] = "all",
     start: str = "",
     end: str = "",
-    _: CurrentUser = Depends(require_roles("admin")),
+    admin_user: CurrentUser = Depends(require_roles("admin")),
 ):
     """A-46: 代理予約・取消の対象者検索（予約・割当単位の一覧、座席種別を問わず）。
     表示期間（start/end、YYYY-MM）はフリー座席・プロジェクト座席の予約日にのみ適用する
     （固定座席は日付を持たない恒久的な割当のため対象外、基本設計書4.11節）。
+
+    呼び出した管理部利用者自身の予約・割当は一覧から除外する（2026-09-30追加。「名目上自分自身を
+    代理予約できてしまうのがおかしい」との指摘を受けてA-54は既に自分自身を除外していたが、この
+    A-46の一覧からここの「変更する（座席を選び直す）」を経由すると、A-54を通らずに自分自身を対象に
+    S-02の代理予約モードへ遷移でき、同じ問題が別経路で再現していた。「代理」は本人以外のために行う
+    操作であり、自分自身の予約は通常の空き状況・予約画面（S-02）の「自分の予約」欄から直接取消・
+    変更できるため、このA-46の一覧自体から除外する）。
 
     プロジェクト座席の専有は座席自体のseat_typeを変更しない設計（3.3節・3.9節参照）のため、
     reservations行はプロジェクト座席であってもseats.seat_type='free'のまま記録される。
@@ -147,12 +154,12 @@ async def search_reservations(
                JOIN users u ON u.id = r.user_id
                JOIN seats s ON s.id = r.seat_id
                JOIN areas a ON a.id = s.area_id
-               WHERE r.status = 'active' AND s.seat_type = 'free'
+               WHERE r.status = 'active' AND s.seat_type = 'free' AND u.id != $4
                  AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
                  AND ($2::date IS NULL OR r.date >= $2::date)
                  AND ($3::date IS NULL OR r.date <= $3::date)
                ORDER BY r.date, u.last_name, u.first_name""",
-            user_name, period_start, period_end,
+            user_name, period_start, period_end, admin_user.id,
         )
         for r in rows:
             project_name = project_name_for(r["seat_id"], r["date"])
@@ -172,10 +179,10 @@ async def search_reservations(
                JOIN users u ON u.id = fsa.user_id
                JOIN seats s ON s.id = fsa.seat_id
                JOIN areas a ON a.id = s.area_id
-               WHERE fsa.ended_on IS NULL
+               WHERE fsa.ended_on IS NULL AND u.id != $2
                  AND ($1 = '' OR (u.last_name || u.first_name) ILIKE '%' || replace(replace($1, ' ', ''), '　', '') || '%')
                ORDER BY u.last_name, u.first_name""",
-            user_name,
+            user_name, admin_user.id,
         )
         items += [
             {
@@ -194,7 +201,7 @@ async def get_period_grid(
     start: Date | None = None,
     end: Date | None = None,
     area: Literal["all", "north", "east", "west"] = "all",
-    _: CurrentUser = Depends(require_roles("admin")),
+    admin_user: CurrentUser = Depends(require_roles("admin")),
 ):
     """A-69: 代理予約・取消の期間ビュー（S-11）。S-02のA-07（期間ビュー）と同じ座席×日付の
     マトリクス形式だが、管理部が任意の利用者の予約・割当を代理で取消・変更する（A-48・A-21）
@@ -248,6 +255,20 @@ async def get_period_grid(
                 "user_id": None, "user_name": None, "project_name": None,
             }
             continue
+        if r["reserved_user_id"] == admin_user.id:
+            # 呼び出した管理部利用者自身の予約は、kind・idをNoneにしてクリックしても取消・変更
+            # モーダルを開けないようにする（フロントエンドのopenGridCellは既にkind/id/user_id/
+            # user_nameのいずれかがNoneなら何もしない、free枠と同じ仕組み。2026-09-30追加。
+            # 「名目上自分自身を代理予約できてしまうのがおかしい」との指摘を受け、A-46〔一覧検索〕は
+            # 既に自分自身を除外していたが、こちらの期間ビューからも同じ問題が別経路で再現していた。
+            # 自分の予約であることは氏名（自分）で分かるようにしつつ、この画面からは操作できなくし、
+            # 通常の空き状況・予約画面〔S-02〕の「自分の予約」欄から取消・変更してもらう）
+            seat["days"][r["date"].isoformat()] = {
+                "status": "reserved", "kind": None, "id": None,
+                "user_id": None, "user_name": f"{r['last_name']} {r['first_name']}（自分）",
+                "project_name": project_name_for(r["id"], r["date"]),
+            }
+            continue
         seat["days"][r["date"].isoformat()] = {
             "status": "reserved", "kind": "reservation", "id": r["reservation_id"],
             "user_id": r["reserved_user_id"], "user_name": f"{r['last_name']} {r['first_name']}",
@@ -284,10 +305,15 @@ async def get_period_grid(
                 ),
                 None,
             )
+            is_self = match is not None and match["user_id"] == admin_user.id
             if match is not None and (seat_id, d) not in absences:
                 seat["days"][d.isoformat()] = {
-                    "status": "fixed", "kind": "fixed", "id": match["seat_id"],
-                    "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",
+                    "status": "fixed",
+                    "kind": None if is_self else "fixed", "id": None if is_self else match["seat_id"],
+                    "user_id": None if is_self else match["user_id"],
+                    # 自分自身の固定座席は取消・変更モーダルを開けないようにする（2026-09-30追加、
+                    # 上のreservationsループと同じ理由）
+                    "user_name": f"{match['last_name']} {match['first_name']}" + ("（自分）" if is_self else ""),
                     "project_name": None,
                 }
             elif match is not None and seat["days"].get(d.isoformat()) is None:
@@ -296,8 +322,10 @@ async def get_period_grid(
                 # 既に誰かがこの日その座席を予約している場合はreservationsループが設定した
                 # 'reserved'を優先し、ここでは上書きしない（元に戻す操作を提供しないようにするため）。
                 seat["days"][d.isoformat()] = {
-                    "status": "fixed_absent", "kind": "fixed_absent", "id": match["seat_id"],
-                    "user_id": match["user_id"], "user_name": f"{match['last_name']} {match['first_name']}",
+                    "status": "fixed_absent",
+                    "kind": None if is_self else "fixed_absent", "id": None if is_self else match["seat_id"],
+                    "user_id": None if is_self else match["user_id"],
+                    "user_name": f"{match['last_name']} {match['first_name']}" + ("（自分）" if is_self else ""),
                     "project_name": None,
                 }
             d += timedelta(days=1)
@@ -393,11 +421,22 @@ async def create_proxy_reservation(body: ProxyReservationCreate, admin_user: Cur
 
 
 @router.delete("/proxy/{id}")
-async def cancel_proxy_reservation(id: int, _: CurrentUser = Depends(require_roles("admin"))):
+async def cancel_proxy_reservation(id: int, admin_user: CurrentUser = Depends(require_roles("admin"))):
     """A-48: フリー座席の予約を代理で取消する（対象者を問わない）。固定座席の解除は既存の
     A-21（DELETE /fixed-seat-assignments/{seat_id}）をそのまま使う（S-11の一覧はkind='fixed'の
-    行についてA-21を呼ぶ、2026-08-28追加。ロジックの重複を避けるため）。"""
-    row = await get_pool().fetchrow(
+    行についてA-21を呼ぶ、2026-08-28追加。ロジックの重複を避けるため）。
+
+    呼び出した管理部利用者自身の予約は対象外とする（2026-09-30追加。A-46・A-69は既に自分自身を
+    一覧・グリッドから除外しているため通常この経路には来ないが、直接APIを呼ばれた場合の保険。
+    「代理」は本人以外のために行う操作であり、自分自身の予約は通常の予約画面（A-11）から
+    取り消せるため）。"""
+    pool = get_pool()
+    target = await pool.fetchrow("SELECT user_id FROM reservations WHERE id = $1 AND status = 'active'", id)
+    if target is None:
+        raise HTTPException(404, detail="対象が見つかりません")
+    if target["user_id"] == admin_user.id:
+        raise HTTPException(400, detail="自分自身の予約はこちらから取り消せません。通常の予約画面から取り消してください")
+    row = await pool.fetchrow(
         """UPDATE reservations SET status = 'cancelled', updated_at = now()
            WHERE id = $1 AND status = 'active'
            RETURNING id""",
