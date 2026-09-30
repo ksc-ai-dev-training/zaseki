@@ -613,10 +613,21 @@ export default function Availability() {
   // 正しく適用し拒否していたが、選んでから拒否されるのではなく選択肢自体から外してほしいとの要望）。
   // admin（管理部）はFR-01-7によりRULE-05・過去日の制限を一切受けないため、この絞り込みの対象外とし、
   // 従来どおりhistory_min_date（閲覧できる過去日の下限）のみを適用する
+  //
+  // 2026-09-30追加: 「予約可能日を過ぎた分まで予約できてしまう」との指摘は、上記の代理予約（PJメンバー）
+  // モードに限らず、特別なモードを何も経由しない通常の自分自身の予約（本画面を開いた既定の状態）でも
+  // 同様に未来方向の上限が無いままだったため、そちらにも同じ上限（period.full_end）を適用する。
+  // 座席の島の割当（seatBlockFor・seatBlockBulkFor）・メンバーへの座席確保（memberSeatAssignFor、
+  // freeSeatでない場合）・固定座席の指定（assignFixedSeatFor）・座席配置編集（placeSeatMode）・
+  // S-11代理予約（proxyBookingFor）はいずれもRULE-05とは無関係な別の期間（プロジェクトの四半期期間や
+  // admin操作）で日付を選ぶ必要があるため対象外のまま維持する。過去方向（history_min_date）は
+  // このモードでも変更しない（座席状況の履歴照会という別機能のため、予約可否とは独立に維持する）
+  const isDefaultReserveMode = !memberSeatAssignFor && !memberSeatAssignBulkFor
+    && !seatBlockFor && !seatBlockBulkFor && !assignFixedSeatFor && !placeSeatMode && !proxyBookingFor
   const floorMapMinDate = memberSeatAssignFor?.freeSeat && me?.role !== 'admin'
     ? todayStr()
     : availability?.history_min_date ?? ''
-  const floorMapMaxDate = memberSeatAssignFor?.freeSeat && me?.role !== 'admin'
+  const floorMapMaxDate = (memberSeatAssignFor?.freeSeat || isDefaultReserveMode) && me?.role !== 'admin'
     ? period?.full_end
     : undefined
 
