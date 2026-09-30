@@ -2473,7 +2473,7 @@ export default function Availability() {
 
       <div className="rounded border border-slate-400 bg-white">
         <div className="border-b border-slate-400 px-4 py-3 font-semibold">自分の予約</div>
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-400 px-4 pt-2">
+        <div className="scrollbar-hide flex gap-1 overflow-x-auto border-b border-slate-400 px-4 pt-2">
           <button
             type="button"
             onClick={() => setReservationTab('upcoming')}
