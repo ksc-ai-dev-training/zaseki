@@ -61,7 +61,11 @@ class ReservationCreate(BaseModel):
 
 @router.post("")
 async def create_reservation(body: ReservationCreate, user: CurrentUser = Depends(require_auth)):
-    """A-09: 単発予約の登録（FR-01-1）。role='admin'はFR-01-7によりRULE-05（予約可能期間）をスキップするが、
+    """A-09: 単発予約の登録（FR-01-1）。RULE-05（予約可能期間）は自分の予約として登録する限り
+    管理部にも適用される（2026-09-30改定。従来はFR-01-7によりrole='admin'をRULE-05の対象外として
+    いたが、「座席表からフリー座席を予約するときも26日から次の月末のルールから外れている、こちらも
+    ルール適応するようにしてほしい」との指摘を受け、本人自身の予約として登録するこのAPIに限って
+    admin除外を撤廃した。他者を対象にした代理予約（A-47）・FR-01-7の一般規定自体は変更していない）。
     RULE-02（同一日複数予約禁止）は自分の予約として登録する限り管理部にも適用される（詳細設計書6章）。
     RULE-07（固定座席利用者はフリー座席を予約不可）は2026-09-09に廃止した（「固定席の人でもフリー座席の
     予約ができるようにしてほしい」との要望を受けた。続けて「固定席・プロジェクト席・フリー座席は
@@ -88,12 +92,11 @@ async def create_reservation(body: ReservationCreate, user: CurrentUser = Depend
     if seat["id"] in blocked:
         raise HTTPException(400, detail=f"この座席は{blocked[seat['id']]}のプロジェクト座席として確保されているため予約できません")
 
-    if user.role != "admin":
-        if body.date < Date.today():
-            raise HTTPException(400, detail="過去の日付は予約できません")
-        open_date = await free_seat_open_date(body.date)
-        if Date.today() < open_date:
-            raise HTTPException(400, detail=f"この座席は{open_date.month}月{open_date.day}日から予約できます")
+    if body.date < Date.today():
+        raise HTTPException(400, detail="過去の日付は予約できません")
+    open_date = await free_seat_open_date(body.date)
+    if Date.today() < open_date:
+        raise HTTPException(400, detail=f"この座席は{open_date.month}月{open_date.day}日から予約できます")
 
     # RULE-07廃止に伴い、固定座席保有者もここでは拒否しない。ただし同じ日に固定座席とこの新しい
     # 予約を両方保有することになる場合は、本人が気づけるようレスポンスにmulti_seat_warningを含める
@@ -195,8 +198,8 @@ class RecurringReservationCreate(BaseModel):
 
 @router.post("/recurring")
 async def create_recurring_reservation(body: RecurringReservationCreate, user: CurrentUser = Depends(require_auth)):
-    """A-10: 周期予約の登録（FR-01-6・D11）。role='admin'はFR-01-7によりRULE-05等をスキップする
-    （A-09と同様）。3.2節のとおり、ルール違反や座席競合が生じる日のみ除外し、他の日は登録する。
+    """A-10: 周期予約の登録（FR-01-6・D11）。RULE-05は自分の予約として登録する限り管理部にも
+    適用される（2026-09-30改定、A-09と同様の理由）。3.2節のとおり、ルール違反や座席競合が生じる日のみ除外し、他の日は登録する。
     RULE-07廃止（2026-09-09）に伴い、固定座席保有者でも登録できる。登録した日のいずれかで
     固定座席と重複保有になる場合はmulti_seat_warningで本人に知らせる（A-09と同じ考え方）。"""
     if body.start_date > body.end_date:
@@ -216,7 +219,7 @@ async def create_recurring_reservation(body: RecurringReservationCreate, user: C
     await release_expired_fixed_seats()
     result = await generate_recurring_reservations(
         seat["id"], user.id, body.pattern.model_dump(exclude_none=True), body.start_date, body.end_date, user.id,
-        enforce_rule05=(user.role != "admin"), check_project_block=True,
+        enforce_rule05=True, check_project_block=True,
     )
 
     own_fixed_seat = await pool.fetchrow(

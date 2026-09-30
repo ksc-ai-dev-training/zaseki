@@ -621,17 +621,20 @@ export default function Availability() {
   // admin操作）で日付を選ぶ必要があるため対象外のまま維持する。過去方向（history_min_date）は
   // このモードでも変更しない（座席状況の履歴照会という別機能のため、予約可否とは独立に維持する）
   //
-  // 2026-09-30再修正: 「複数人の代理予約（PJメンバー）はadminでも予約できてしまう」との指摘を受け、
+  // 2026-09-30再修正（1）: 「複数人の代理予約（PJメンバー）はadminでも予約できてしまう」との指摘を受け、
   // このモードに限ってはadminも制限の対象に含めるよう変更した（バックエンドのA-75・A-71も同日、
-  // role='admin'を除外せず常にRULE-05を適用するよう修正済み）。通常の自分自身の予約（既定モード）は
-  // 引き続きFR-01-7によりadminを対象外のままとする（今回の指摘は代理予約（PJメンバー）に限定されて
-  // いたため）
+  // role='admin'を除外せず常にRULE-05を適用するよう修正済み）。
+  //
+  // 2026-09-30再修正（2）: 続けて「座席表からフリー座席を予約するときも26日から次の月末のルールから
+  // 外れている、こちらもルール適応するようにしてほしい」との指摘を受け、既定の予約モード（本画面を
+  // 開いた通常の状態、自分自身の予約）についても、上の再修正（1）と同じくadminを対象外とする例外を
+  // 撤廃した（バックエンドのA-09・A-10も同日、role='admin'を除外せず常にRULE-05を適用するよう修正済み）。
   const isDefaultReserveMode = !memberSeatAssignFor && !memberSeatAssignBulkFor
     && !seatBlockFor && !seatBlockBulkFor && !assignFixedSeatFor && !placeSeatMode && !proxyBookingFor
   const floorMapMinDate = memberSeatAssignFor?.freeSeat
     ? todayStr()
     : availability?.history_min_date ?? ''
-  const floorMapMaxDate = memberSeatAssignFor?.freeSeat || (isDefaultReserveMode && me?.role !== 'admin')
+  const floorMapMaxDate = memberSeatAssignFor?.freeSeat || isDefaultReserveMode
     ? period?.full_end
     : undefined
 
