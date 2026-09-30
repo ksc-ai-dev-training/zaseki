@@ -2491,18 +2491,21 @@ export default function Availability() {
         </div>
         {/* 2026-09-30修正:「自分の予約が多すぎる」との指摘を受けた。繰り返し予約（毎週水曜日等）を
             登録していると、その日付の数だけ行が無限に増え続けていた。全件を1画面に表示するのをやめ、
-            テーブル自体の高さを約10行分に固定してその中だけスクロールする形にする
-            （見出し行はscroll中も見えるようsticky指定） */}
-        <div className="max-h-[27rem] overflow-auto p-4">
+            テーブル自体の高さを約10行分に固定してその中だけスクロールする形にする。
+            2026-09-30再修正: 見出し行をsticky指定にしたところ、テーブルのoverflow-auto（横スクロール
+            も兼ねる）と組み合わさって見出しの位置がずれ、不要な横スクロールバーも出てしまう不具合が
+            あったため、sticky指定をやめて縦スクロールのみに戻した（見出し行は本文と一緒にスクロール
+            される、素朴な形に戻す） */}
+        <div className="max-h-[27rem] overflow-y-auto p-4">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-400 bg-white text-left text-slate-500">
-                <th className="sticky top-0 bg-white pb-2 pr-3">予約日</th>
-                <th className="sticky top-0 bg-white pb-2 pr-3">座席</th>
-                <th className="sticky top-0 bg-white pb-2 pr-3">エリア</th>
-                <th className="sticky top-0 bg-white pb-2 pr-3">種別</th>
-                <th className="sticky top-0 bg-white pb-2 pr-3">登録者</th>
-                <th className="sticky top-0 bg-white pb-2">{reservationTab === 'upcoming' ? '操作' : '状態'}</th>
+              <tr className="border-b border-slate-400 text-left text-slate-500">
+                <th className="pb-2 pr-3">予約日</th>
+                <th className="pb-2 pr-3">座席</th>
+                <th className="pb-2 pr-3">エリア</th>
+                <th className="pb-2 pr-3">種別</th>
+                <th className="pb-2 pr-3">登録者</th>
+                <th className="pb-2">{reservationTab === 'upcoming' ? '操作' : '状態'}</th>
               </tr>
             </thead>
             <tbody>
