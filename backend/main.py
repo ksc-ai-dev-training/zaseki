@@ -1,5 +1,4 @@
 # FastAPIアプリ生成、ルーター登録、SPA配信設定（基本設計書1.3節・1.5節）
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,20 +7,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import database
-import sheets_export
-from routers import admin, auth, feedback, fixed_seats, profile, project_pm, project_seats, proxy, reservations, roles, seat_master, seats
+from routers import admin, auth, export, feedback, fixed_seats, profile, project_pm, project_seats, proxy, reservations, roles, seat_master, seats
 from ws_manager import manager as ws_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init_pool()
-    # 障害時バックアップ用のスプレッドシート自動反映（詳細設計書3.14節、2026-10-01追加）。
-    # GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON等が未設定の環境（ローカル開発等）ではタスク内部で
-    # 即座に終了するだけで、アプリ本体の起動は妨げない（sheets_export.daily_export_loop参照）
-    export_task = asyncio.create_task(sheets_export.daily_export_loop())
     yield
-    export_task.cancel()
     await database.close_pool()
 
 
@@ -38,6 +31,7 @@ app.include_router(proxy.router)
 app.include_router(roles.router)
 app.include_router(project_seats.router)
 app.include_router(project_pm.router)
+app.include_router(export.router)
 app.include_router(profile.router)
 app.include_router(profile.public_router)
 app.include_router(feedback.router)
