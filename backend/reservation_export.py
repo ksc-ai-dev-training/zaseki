@@ -18,14 +18,20 @@
 # 自身のGoogleアカウント権限で動作するため）ことが分かり、採用した。この結果、Python側は
 # サービスアカウント鍵・Google Sheets APIへの依存が完全になくなった（GAS側のスクリプトは
 # `gas/reservation_export.gs`参照）。
-import json
+#
+# 表形式への変更（2026-10-02）: 当初は固定座席・プロジェクト座席の島・個別予約を3区分に
+# 分けた1件1行形式だったが、「今のシートだけだとだれがどの席に該当するのかわかりづらい。
+# 既存のスプシの座席表のように視覚化できるとさらにいい」との要望を受けた。縦軸に座席、
+# 横軸に日付を並べたマス目形式（旧・本社座席予約表の運用に近い形）に変更した。これにより
+# A-69（期間ビュー、routers/proxy.py）がS-11向けに持つ「座席×日付ごとの占有状況」をそのまま
+# 再利用できる。
 import os
+from datetime import date as Date
 
-from database import ROOT_ENV, effective_seat_ids, free_seat_bookable_period, get_pool, release_expired_fixed_seats
-from routers.seats import _seat_sort_key
+from auth_helpers import CurrentUser
+from database import ROOT_ENV
 
-_WEEKDAY_JA = {"mon": "月", "tue": "火", "wed": "水", "thu": "木", "fri": "金"}
-_WEEKDAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_WEEKDAY_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
 
 def _env(key: str, default: str = "") -> str:
@@ -39,86 +45,42 @@ def _env(key: str, default: str = "") -> str:
 # 値自体をGitHubへpushしてはならない）
 EXPORT_API_TOKEN = _env("EXPORT_API_TOKEN")
 
-
-async def _fixed_seat_rows() -> list[list[str]]:
-    """現在有効な固定座席の割当（T-04、ended_on IS NULL）を1件1行で返す。固定座席は
-    割当期間中ずっと同じ状態のため、日付ごとに行を増やさず概要（開始日・終了日）だけ持たせる"""
-    rows = await get_pool().fetch(
-        """SELECT s.seat_no, a.name AS area_name, u.last_name, u.first_name, fsa.valid_from, fsa.valid_until
-           FROM fixed_seat_assignments fsa
-           JOIN seats s ON s.id = fsa.seat_id
-           JOIN areas a ON a.id = s.area_id
-           JOIN users u ON u.id = fsa.user_id
-           WHERE fsa.ended_on IS NULL""",
-    )
-    rows = sorted(rows, key=lambda r: _seat_sort_key(r["seat_no"]))
-    return [
-        [
-            r["seat_no"], r["area_name"], f"{r['last_name']} {r['first_name']}",
-            r["valid_from"].isoformat(), r["valid_until"].isoformat() if r["valid_until"] else "無期限",
-        ]
-        for r in rows
-    ]
+# このエクスポート専用の、権限チェックを通過させるためだけのダミー値。id=0は実在のuser.id
+# （IDENTITY列、1始まり）と絶対に一致しないため、get_period_grid内の「自分」ラベル付与
+# ロジックが誤発火することもない（このエクスポートに「呼び出した本人」という概念はない）
+_SYSTEM_USER = CurrentUser(
+    id=0, email="system@zaseki.internal", last_name="システム", first_name="自動反映",
+    role="admin", area_manager_role=None, employment_type="employee",
+    employment_status="active", is_system_operator=False,
+)
 
 
-async def _project_seat_rows() -> list[list[str]]:
-    """確定済み（status='seats_allocated'）のプロジェクト座席の島を、確定曜日×実効座席の
-    単位で1行ずつ返す（曜日ごとに島が異なる場合はeffective_seat_idsで解決する）。
-    座席の島自体は期間中ずっと同じ状態のため、固定座席と同じく日付ごとには展開しない"""
-    pool = get_pool()
-    seat_rows = await pool.fetch("SELECT s.id, s.seat_no, a.name AS area_name FROM seats s JOIN areas a ON a.id = s.area_id")
-    seat_by_id = {r["id"]: (r["seat_no"], r["area_name"]) for r in seat_rows}
-    plan_rows = await pool.fetch(
-        """SELECT p.name AS project_name, pqp.period_start, pqp.period_end,
-                  pqp.allocated_seats, pqp.allocated_seats_overrides, pqp.weekdays_finalized
-           FROM project_quarter_plans pqp
-           JOIN projects p ON p.id = pqp.project_id
-           WHERE pqp.status = 'seats_allocated' AND pqp.period_end >= CURRENT_DATE AND p.deleted_at IS NULL""",
-    )
-    rows: list[list[str]] = []
-    for r in plan_rows:
-        weekdays = json.loads(r["weekdays_finalized"]) if r["weekdays_finalized"] else []
-        period = f"{r['period_start'].isoformat()}〜{r['period_end'].isoformat()}"
-        for weekday in weekdays:
-            for seat_id in effective_seat_ids(r["allocated_seats"], r["allocated_seats_overrides"], weekday):
-                seat_no, area_name = seat_by_id.get(seat_id, (f"id={seat_id}", ""))
-                rows.append([r["project_name"], seat_no, area_name, _WEEKDAY_JA.get(weekday, weekday), period])
-    rows.sort(key=lambda row: _seat_sort_key(row[1]))
-    return rows
-
-
-async def _individual_reservation_rows() -> list[list[str]]:
-    """RULE-05の予約可能期間（本日〜当月末または来月末、free_seat_bookable_period）に
-    含まれる、日付単位の実際の予約（フリー座席の単発・周期予約、プロジェクトメンバーへの
-    座席確保分の両方を含む。T-08）を1件1行で返す。固定座席・座席の島自体は上の2関数で
-    別途扱うためここでは対象にしない"""
-    start, end = await free_seat_bookable_period()
-    rows = await get_pool().fetch(
-        """SELECT r.date, s.seat_no, a.name AS area_name, u.last_name, u.first_name
-           FROM reservations r
-           JOIN seats s ON s.id = r.seat_id
-           JOIN areas a ON a.id = s.area_id
-           JOIN users u ON u.id = r.user_id
-           WHERE r.status = 'active' AND r.date BETWEEN $1 AND $2""",
-        start, end,
-    )
-    rows = sorted(rows, key=lambda r: (r["date"], _seat_sort_key(r["seat_no"])))
-    return [
-        [r["date"].isoformat(), _WEEKDAY_JA.get(_WEEKDAY_CODES[r["date"].weekday()], ""), r["seat_no"], r["area_name"], f"{r['last_name']} {r['first_name']}"]
-        for r in rows
-    ]
+def _date_header(date_iso: str) -> str:
+    d = Date.fromisoformat(date_iso)
+    return f"{d.month}/{d.day}（{_WEEKDAY_JA[d.weekday()]}）"
 
 
 async def build_export_rows() -> list[list[str]]:
-    """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む全行を組み立てる。
-    固定座席・プロジェクト座席の島（どちらも割当期間中ずっと変わらない静的な情報）と、
-    日付ごとの個別予約（毎日変わりうる情報）とで性質が異なるため、1枚のシートの中で
-    3つのセクションに分けて返す（間に空行を挟む）"""
-    await release_expired_fixed_seats()
-    rows: list[list[str]] = [["固定座席（現在有効な割当）"], ["座席番号", "エリア", "利用者", "開始日", "終了日"]]
-    rows += await _fixed_seat_rows()
-    rows += [[], ["プロジェクト座席の島（確定済み、曜日ごと）"], ["プロジェクト名", "座席番号", "エリア", "曜日", "期間"]]
-    rows += await _project_seat_rows()
-    rows += [[], ["個別の予約（フリー座席・プロジェクトメンバーの確保分、本日以降の予約可能期間分）"], ["日付", "曜日", "座席番号", "エリア", "利用者"]]
-    rows += await _individual_reservation_rows()
+    """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む表を組み立てる。
+    1行目が日付の見出し、2行目以降が座席ごとの行で、セルにその日の利用者名が入る
+    （空欄はその日空いていることを表す）。A-69（期間ビュー）と全く同じデータソースを使い、
+    氏名は匿名化しない（障害時に実際に参照できる必要があるため）。表示期間は
+    RULE-05の予約可能期間（本日〜当月末または来月末）と同じ（A-69の既定と同じ考え方）。"""
+    from routers.proxy import get_period_grid  # 循環import回避のため遅延import
+
+    grid = await get_period_grid(start=None, end=None, area="all", admin_user=_SYSTEM_USER)
+    dates = grid["dates"]
+    rows: list[list[str]] = [["エリア", "座席番号"] + [_date_header(d) for d in dates]]
+    for seat in grid["seats"]:
+        row = [seat["area"], seat["seat_no"]]
+        for date_iso in dates:
+            day = seat["days"].get(date_iso)
+            if day is None or day["status"] in ("free", "fixed_absent"):
+                row.append("")
+            else:
+                name = day["user_name"] or ""
+                if day["project_name"]:
+                    name = f"{name}（{day['project_name']}）"
+                row.append(name)
+        rows.append(row)
     return rows

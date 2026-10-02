@@ -2,7 +2,9 @@
  * 座席予約システム（Zaseki）障害時バックアップ用の自動反映スクリプト。詳細設計書3.14節参照。
  * Zaseki側のAPI（GET /api/export/reservations）を定期的に呼び出し、このスプレッドシートの
  * 「Zaseki自動反映」タブへ結果を書き込む（毎回クリアしてから書き直す、DB→スプレッドシートの
- * 一方向・読み取り専用の反映）。
+ * 一方向・読み取り専用の反映）。縦軸に座席、横軸に日付を並べたマス目形式（旧・本社座席予約表の
+ * 運用に近い形、2026-10-02変更）で、セルにその日の利用者名が入る（空欄はその日空いていることを
+ * 表す）。
  *
  * このスクリプトはスプレッドシートの所有者自身のGoogleアカウント権限で動作するため、
  * Zaseki側にサービスアカウント等を別途共有する必要が一切ない（会社のGoogle Workspace規定で
@@ -53,8 +55,8 @@ function exportReservations() {
     return;
   }
 
-  // セクション見出し行（1列のみ）と通常の行で列数が異なるため、setValues()が要求する
-  // 長方形の配列になるよう、最大列数に合わせて空文字で埋める
+  // 念のため、万一行によって列数がずれていてもsetValues()が要求する長方形の配列に
+  // なるよう、最大列数に合わせて空文字で埋めてから書き込む
   const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 1);
   const padded = rows.map((row) => {
     const copy = row.slice();
@@ -62,4 +64,8 @@ function exportReservations() {
     return copy;
   });
   sheet.getRange(1, 1, padded.length, maxCols).setValues(padded);
+  // 1行目（日付の見出し）と左2列（エリア・座席番号）を固定し、横に長い表でも見出しが
+  // 見える状態を保つ
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(2);
 }
