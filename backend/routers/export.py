@@ -14,7 +14,7 @@ async def export_reservations(x_export_token: str | None = Header(default=None))
     対話的ログインが前提のためGASからは使えず、固定の共有トークン（EXPORT_API_TOKEN）で
     認証する。未設定の環境ではエンドポイント自体を404にして存在を隠す（dev-loginと同じ考え方）。
     rowsは複数日分の座席×日付マス目表、floor_sheetsは本日分のみのフロアマップ風の表
-    （エリア名→表、2026-10-02追加）。"""
+    （エリア名→{"rows": 表示文字列の表, "kinds": 色分け用の区分の表}、2026-10-02追加）。"""
     if not reservation_export.EXPORT_API_TOKEN:
         raise HTTPException(404, detail="Not Found")
     if x_export_token != reservation_export.EXPORT_API_TOKEN:
