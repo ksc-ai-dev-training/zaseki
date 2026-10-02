@@ -12,10 +12,13 @@ async def export_reservations(x_export_token: str | None = Header(default=None))
     呼び出し、返ってきた行をスプレッドシートへ書き込む（書き込み自体はGAS側で行う「pull」方式。
     reservation_export.pyのモジュールコメント参照）。通常のセッションCookie認証はブラウザでの
     対話的ログインが前提のためGASからは使えず、固定の共有トークン（EXPORT_API_TOKEN）で
-    認証する。未設定の環境ではエンドポイント自体を404にして存在を隠す（dev-loginと同じ考え方）。"""
+    認証する。未設定の環境ではエンドポイント自体を404にして存在を隠す（dev-loginと同じ考え方）。
+    rowsは複数日分の座席×日付マス目表、floor_sheetsは本日分のみのフロアマップ風の表
+    （エリア名→表、2026-10-02追加）。"""
     if not reservation_export.EXPORT_API_TOKEN:
         raise HTTPException(404, detail="Not Found")
     if x_export_token != reservation_export.EXPORT_API_TOKEN:
         raise HTTPException(403, detail="Forbidden")
     rows = await reservation_export.build_export_rows()
-    return {"rows": rows}
+    floor_sheets = await reservation_export.build_floor_sheets()
+    return {"rows": rows, "floor_sheets": floor_sheets}
