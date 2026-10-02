@@ -25,6 +25,10 @@
 # 横軸に日付を並べたマス目形式（旧・本社座席予約表の運用に近い形）に変更した。これにより
 # A-69（期間ビュー、routers/proxy.py）がS-11向けに持つ「座席×日付ごとの占有状況」をそのまま
 # 再利用できる。
+#
+# セル表示の簡略化（2026-10-02）: 「プロジェクトの名前も表示されている。名前のみでお願いします」
+# との要望を受け、プロジェクト座席のセルに併記していた「（プロジェクト名）」を外し、利用者名のみ
+# を表示するようにした。
 import os
 from datetime import date as Date
 
@@ -62,10 +66,11 @@ def _date_header(date_iso: str) -> str:
 
 async def build_export_rows() -> list[list[str]]:
     """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む表を組み立てる。
-    1行目が日付の見出し、2行目以降が座席ごとの行で、セルにその日の利用者名が入る
-    （空欄はその日空いていることを表す）。A-69（期間ビュー）と全く同じデータソースを使い、
-    氏名は匿名化しない（障害時に実際に参照できる必要があるため）。表示期間は
-    RULE-05の予約可能期間（本日〜当月末または来月末）と同じ（A-69の既定と同じ考え方）。"""
+    1行目が日付の見出し、2行目以降が座席ごとの行で、セルにその日の利用者名のみが入る
+    （プロジェクト座席であってもプロジェクト名は併記しない、空欄はその日空いていることを表す）。
+    A-69（期間ビュー）と全く同じデータソースを使い、氏名は匿名化しない（障害時に実際に参照できる
+    必要があるため）。表示期間はRULE-05の予約可能期間（本日〜当月末または来月末）と同じ
+    （A-69の既定と同じ考え方）。"""
     from routers.proxy import get_period_grid  # 循環import回避のため遅延import
 
     grid = await get_period_grid(start=None, end=None, area="all", admin_user=_SYSTEM_USER)
@@ -78,9 +83,6 @@ async def build_export_rows() -> list[list[str]]:
             if day is None or day["status"] in ("free", "fixed_absent"):
                 row.append("")
             else:
-                name = day["user_name"] or ""
-                if day["project_name"]:
-                    name = f"{name}（{day['project_name']}）"
-                row.append(name)
+                row.append(day["user_name"] or "")
         rows.append(row)
     return rows
