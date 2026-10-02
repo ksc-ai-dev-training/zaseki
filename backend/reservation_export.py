@@ -42,6 +42,12 @@
 # と同様、既存のフロントエンド⇔バックエンド間の重複と同じ考え方）。座席配置編集（S-07）で
 # 自由配置された座席（pos_x設定済み）はこの固定レイアウトに含まれないため、エリアごとの表の末尾に
 # 「追加座席」としてまとめて列挙する。
+#
+# フロアマップ風シートの色分け（2026-10-02）: 「色があるとわかりやすい」との要望を受けた。目的を
+# 確認したところ「空き・使用中を一目で分けたい」「ブロックごとに色を分けたい」の両方との回答を
+# 得た。_build_floor_sheet()が返す"rows"（表示文字列）と同じ形の"kinds"（色分け用の区分文字列）を
+# 新たに追加し、実際の色（16進カラーコード）への変換と彩色（Range.setBackgrounds）はGAS側
+# （gas/reservation_export.gs）で行う。
 import os
 from datetime import date as Date
 
@@ -141,57 +147,75 @@ def _floor_cell_name(seat: dict, today_iso: str) -> str:
     return day["user_name"] or ""
 
 
-def _build_floor_sheet(area: str, seats_by_no: dict[str, dict], today_iso: str) -> list[list[str]]:
+def _build_floor_sheet(area: str, seats_by_no: dict[str, dict], today_iso: str) -> dict:
     """1エリア分のフロアマップ風の表（本日分のみ）を組み立てる。各座席を「座席番号の行」
-    「利用者名の行」の2行1組で、_FLOOR_BLOCKSの配置どおりに並べる。"""
+    「利用者名の行」の2行1組で、_FLOOR_BLOCKSの配置どおりに並べる。"rows"（表示用の文字列）と
+    同じ形の"kinds"（GAS側が色分けに使う区分、2026-10-02追加）を両方返す。kindsの値は
+    ""（空マス）／"label"（ブロック見出し）／"seat:<ブロック番号>"（座席番号のセル）／
+    "free:<ブロック番号>"（空席の氏名セル）／"occupied:<ブロック番号>"（使用中の氏名セル）。
+    ブロック番号はこのエリア内の通し番号で、GAS側がこの番号を使ってブロックごとに異なる色を
+    割り当てる（「使用中かどうか」と「どのブロックか」の両方を色で一目でわかるようにしたいとの
+    要望を受けた）。"""
     cells: dict[tuple[int, int], str] = {}
+    kinds: dict[tuple[int, int], str] = {}
     row_cursor: dict[int, int] = {}
     placed_seat_nos: set[str] = set()
 
-    for block in _FLOOR_BLOCKS[area]:
+    def place_tile(r: int, c: int, seat_no: str, block_idx: int, seat: dict | None) -> None:
+        placed_seat_nos.add(seat_no)
+        cells[(r, c)] = seat_no
+        kinds[(r, c)] = f"seat:{block_idx}"
+        name = _floor_cell_name(seat, today_iso) if seat else ""
+        cells[(r + 1, c)] = name
+        kinds[(r + 1, c)] = f"{'occupied' if name else 'free'}:{block_idx}"
+
+    for block_idx, block in enumerate(_FLOOR_BLOCKS[area]):
         base_col = block["col"] * _FLOOR_COL_GROUP_WIDTH
         r = row_cursor.get(block["col"], 0)
         cells[(r, base_col)] = block["label"]
+        kinds[(r, base_col)] = "label"
         r += 1
         for tile_row in block["rows"]:
             for i, seat_no in enumerate(tile_row):
                 if seat_no is None:
                     continue
-                placed_seat_nos.add(seat_no)
-                seat = seats_by_no.get(seat_no)
-                cells[(r, base_col + i)] = seat_no
-                cells[(r + 1, base_col + i)] = _floor_cell_name(seat, today_iso) if seat else ""
+                place_tile(r, base_col + i, seat_no, block_idx, seats_by_no.get(seat_no))
             r += 2
         row_cursor[block["col"]] = r + 1  # 次のブロックとの間に1行空ける
 
     # 座席配置編集（S-07）で自由配置された座席は固定レイアウトに無いため、列グループ0の末尾に列挙する
     extra_seat_nos = sorted(no for no in seats_by_no if no not in placed_seat_nos)
     if extra_seat_nos:
+        extra_block_idx = len(_FLOOR_BLOCKS[area])
         r = row_cursor.get(0, 0)
         cells[(r, 0)] = "追加座席"
+        kinds[(r, 0)] = "label"
         r += 1
         for i in range(0, len(extra_seat_nos), 2):
             for j, seat_no in enumerate(extra_seat_nos[i:i + 2]):
-                cells[(r, j)] = seat_no
-                cells[(r + 1, j)] = _floor_cell_name(seats_by_no[seat_no], today_iso)
+                place_tile(r, j, seat_no, extra_block_idx, seats_by_no[seat_no])
             r += 2
 
     if not cells:
-        return []
+        return {"rows": [], "kinds": []}
     max_row = max(r for r, _ in cells) + 1
     max_col = max(c for _, c in cells) + 1
-    grid = [["" for _ in range(max_col)] for _ in range(max_row)]
+    rows_grid = [["" for _ in range(max_col)] for _ in range(max_row)]
+    kinds_grid = [["" for _ in range(max_col)] for _ in range(max_row)]
     for (r, c), value in cells.items():
-        grid[r][c] = value
-    return grid
+        rows_grid[r][c] = value
+    for (r, c), kind in kinds.items():
+        kinds_grid[r][c] = kind
+    return {"rows": rows_grid, "kinds": kinds_grid}
 
 
-async def build_floor_sheets() -> dict[str, list[list[str]]]:
+async def build_floor_sheets() -> dict[str, dict]:
     """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む、本日分のみのフロアマップ風の
     表をエリアごとに組み立てる。build_export_rows()と同じデータソース（A-69の期間ビュー）を使うが、
     こちらは複数日分ではなく本日（dates[0]）1日分のみを対象に、座席番号・利用者名を実際の
-    フロアマップの配置（_FLOOR_BLOCKS）どおりに並べる（会議室・ロッカー・柱などの装飾、色分けは
-    含めない）。戻り値は{"NORTH": [[...], ...], "EAST": [...], "WEST": [...]}。"""
+    フロアマップの配置（_FLOOR_BLOCKS）どおりに並べる（会議室・ロッカー・柱などの装飾は含めないが、
+    ブロック・使用中かどうかの色分け用の区分（kinds）は含む、2026-10-02追加）。戻り値は
+    {"NORTH": {"rows": [[...], ...], "kinds": [[...], ...]}, "EAST": {...}, "WEST": {...}}。"""
     from routers.proxy import get_period_grid  # 循環import回避のため遅延import
 
     grid = await get_period_grid(start=None, end=None, area="all", admin_user=_SYSTEM_USER)
