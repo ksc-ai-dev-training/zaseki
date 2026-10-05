@@ -2,14 +2,21 @@
  * 座席予約システム（Zaseki）障害時バックアップ用の自動反映スクリプト。詳細設計書3.14節参照。
  * Zaseki側のAPI（GET /api/export/reservations）を定期的に呼び出し、エリア（NORTH／EAST／WEST、
  * S-02のフロアマップ表示と同じ区分）ごとに分けたタブへ結果を書き込む（毎回クリアしてから
- * 書き直す、DB→スプレッドシートの一方向・読み取り専用の反映）。タブは2種類×3エリア＝計6枚できる。
+ * 書き直す、DB→スプレッドシートの一方向・読み取り専用の反映）。タブは2種類×3エリア＋設定用1枚
+ * ＝計7枚できる。
  *   「Zaseki_NORTH」等: 縦軸に座席番号、横軸に日付を並べたマス目形式（旧・本社座席予約表の
- *     運用に近い形）。本日から月末（または来月末）まで複数日分を一度に見られる。
- *   「Zaseki_フロアマップ_NORTH」等: 本日1日分のみを、実際のフロアマップ（S-02画面）に近い
+ *     運用に近い形）。本日から月末（または来月末）まで複数日分を一度に見られる。日付選択の
+ *     対象ではなく、常に本日から複数日分（固定）。
+ *   「Zaseki_フロアマップ_NORTH」等: 指定した1日分のみを、実際のフロアマップ（S-02画面）に近い
  *     座席の配置で並べたもの（会議室・ロッカー・柱などの装飾は含まない、座席番号と利用者名の
- *     配置のみ）。ブロックごとに背景色を分け、使用中の座席はさらに濃い色で強調する。
- * どちらのタブも、セルにはその日の利用者名のみが入る（プロジェクト座席であってもプロジェクト名は
+ *     配置のみ）。ブロックごとに背景色を分け、使用中の座席はさらに濃い色で強調する。対象日は
+ *     「Zaseki_設定」タブのB1セルで選べる（2026-10-05追加、下記参照）。
+ * どちらの表も、セルにはその日の利用者名のみが入る（プロジェクト座席であってもプロジェクト名は
  * 併記しない、空欄はその日空いていることを表す）。
+ *
+ * 「Zaseki_設定」タブ: B1セルに日付を入力すると、その日付のフロアマップ風シートだけを
+ * 再取得・再描画する（複数日分のマス目表（Zaseki_NORTH等）は対象外、翌日の自動反映で本日に戻る）。
+ * 予約可能期間外の日付を入力した場合は本日にフォールバックし、B2セルにその旨を表示する。
  *
  * このスクリプトはスプレッドシートの所有者自身のGoogleアカウント権限で動作するため、
  * Zaseki側にサービスアカウント等を別途共有する必要が一切ない（会社のGoogle Workspace規定で
@@ -25,21 +32,35 @@
  * 4. 関数選択を「exportReservations」にして一度手動実行し（上部の実行ボタン）、
  *    初回の権限承認ダイアログで「許可」する（このスプレッドシート自体への書き込み権限のみで、
  *    外部アカウントとのやり取りは発生しない）
- * 5. 左側の時計アイコン「トリガー」→右下「トリガーを追加」で以下を設定する
- *      実行する関数: exportReservations
- *      イベントのソース: 時間主導型
- *      時間ベースのトリガーのタイプ: 日付ベースのタイマー
- *      時刻: 午前3時〜4時（Zaseki側も毎日03:00 JSTに合わせて更新しているため、その後の時間帯を推奨）
+ * 5. 左側の時計アイコン「トリガー」→右下「トリガーを追加」で以下を2つとも設定する
+ *      (a) 複数日分のマス目表・フロアマップ風シートの毎日の自動更新用
+ *          実行する関数: exportReservations / イベントのソース: 時間主導型
+ *          時間ベースのトリガーのタイプ: 日付ベースのタイマー
+ *          時刻: 午前3時〜4時（Zaseki側も毎日03:00 JSTに合わせて更新しているため、その後の時間帯を推奨）
+ *      (b) 「Zaseki_設定」タブで日付を選んだときにフロアマップ風シートだけ再取得するための設定
+ *          （2026-10-05追加。これが無いと日付を変えてもシートが更新されない）
+ *          実行する関数: onEditHandler / イベントのソース: スプレッドシートから
+ *          イベントの種類: 編集時
  */
 function exportReservations() {
+  const data = fetchExportData(null);
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  writeDateMatrixSheets(spreadsheet, data.rows);
+  writeFloorSheets(spreadsheet, data.floor_sheets);
+  ensureSettingsSheet(spreadsheet, data.floor_sheets_date);
+}
+
+/** Zaseki側のAPI（GET /api/export/reservations）を呼び出し、JSONをパースして返す。
+ * dateStrを渡すとfloor_sheetsの対象日をその日付にする（nullなら省略＝本日）。 */
+function fetchExportData(dateStr) {
   const props = PropertiesService.getScriptProperties();
   const apiUrl = props.getProperty('API_URL');
   const apiToken = props.getProperty('API_TOKEN');
   if (!apiUrl || !apiToken) {
     throw new Error('スクリプトプロパティに API_URL・API_TOKEN を設定してください（ファイル先頭のコメント参照）');
   }
-
-  const response = UrlFetchApp.fetch(apiUrl, {
+  const url = dateStr ? apiUrl + '?date=' + encodeURIComponent(dateStr) : apiUrl;
+  const response = UrlFetchApp.fetch(url, {
     method: 'get',
     headers: { 'X-Export-Token': apiToken },
     muteHttpExceptions: true,
@@ -47,24 +68,29 @@ function exportReservations() {
   if (response.getResponseCode() !== 200) {
     throw new Error('Zaseki APIの呼び出しに失敗しました: ' + response.getResponseCode() + ' ' + response.getContentText());
   }
-  const data = JSON.parse(response.getContentText());
-  const rows = data.rows;
-  const floorSheets = data.floor_sheets || {};
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  return JSON.parse(response.getContentText());
+}
 
-  if (rows.length > 0) {
-    // APIが返す行は [エリア, 座席番号, 日付1, 日付2, ...] 形式（1行目が見出し）。
-    // エリア列（列0）で振り分け、書き込み先のタブごとにはエリア列自体は不要になるため落とす。
-    const header = rows[0].slice(1);
-    const dataRows = rows.slice(1);
-    ['NORTH', 'EAST', 'WEST'].forEach((area) => {
-      const areaRows = dataRows.filter((row) => row[0] === area).map((row) => row.slice(1));
-      // 複数日分のマス目表は横に長いため、1行目（日付見出し）・左1列（座席番号）を固定する
-      writeAreaSheet(spreadsheet, 'Zaseki_' + area, [header].concat(areaRows), true);
-    });
+/** 複数日分の座席×日付マス目表（rows）を、エリアごとに「Zaseki_<エリア名>」タブへ書き込む */
+function writeDateMatrixSheets(spreadsheet, rows) {
+  if (!rows || rows.length === 0) {
+    return;
   }
+  // APIが返す行は [エリア, 座席番号, 日付1, 日付2, ...] 形式（1行目が見出し）。
+  // エリア列（列0）で振り分け、書き込み先のタブごとにはエリア列自体は不要になるため落とす。
+  const header = rows[0].slice(1);
+  const dataRows = rows.slice(1);
+  ['NORTH', 'EAST', 'WEST'].forEach((area) => {
+    const areaRows = dataRows.filter((row) => row[0] === area).map((row) => row.slice(1));
+    // 複数日分のマス目表は横に長いため、1行目（日付見出し）・左1列（座席番号）を固定する
+    writeAreaSheet(spreadsheet, 'Zaseki_' + area, [header].concat(areaRows), true);
+  });
+}
 
-  Object.keys(floorSheets).forEach((area) => {
+/** 1日分のフロアマップ風の表（floorSheets、build_floor_sheets()のエリア名→{rows,kinds}）を、
+ * エリアごとに「Zaseki_フロアマップ_<エリア名>」タブへ書き込み、色分けも適用する */
+function writeFloorSheets(spreadsheet, floorSheets) {
+  Object.keys(floorSheets || {}).forEach((area) => {
     // フロアマップ風の表は1行目が全体の見出しではない（ブロックの見出しが飛び飛びに入る）ため、
     // 固定表示はしない
     const sheet = writeAreaSheet(spreadsheet, 'Zaseki_フロアマップ_' + area, floorSheets[area].rows, false);
@@ -72,6 +98,61 @@ function exportReservations() {
       applyFloorColors(sheet, floorSheets[area].kinds);
     }
   });
+}
+
+const SETTINGS_SHEET_NAME = 'Zaseki_設定';
+
+/** 「Zaseki_設定」タブが無ければ作り、B1（対象日）・B2（状態表示）の見出し・値を整える。
+ * actualDateIsoを渡すと、B1をその日付に（既存の値があっても）上書きし、
+ * B2に「反映済み: ...」を表示する */
+function ensureSettingsSheet(spreadsheet, actualDateIso) {
+  let sheet = spreadsheet.getSheetByName(SETTINGS_SHEET_NAME);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(SETTINGS_SHEET_NAME);
+    sheet.getRange('A1').setValue('表示する日付（右のセルに日付を入力）');
+    sheet.getRange('A2').setValue('状態');
+    const rule = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).build();
+    sheet.getRange('B1').setDataValidation(rule);
+  }
+  if (actualDateIso) {
+    // 毎日の自動更新では必ず本日の日付に戻す（表示中のセルの値と、実際にフロアマップ風シートに
+    // 反映されている日付がずれたままにならないようにするため。この書き込み自体がonEditHandlerを
+    // 再度呼ぶが、同じ日付への冪等な再取得になるだけなので実害はない）
+    sheet.getRange('B1').setValue(isoStringToDate(actualDateIso));
+    sheet.getRange('B2').setValue('反映済み: ' + actualDateIso);
+  }
+  return sheet;
+}
+
+/** 「Zaseki_設定」タブのB1セル（対象日）が編集されたら、フロアマップ風シートだけをその日付で
+ * 再取得・再描画する（2026-10-05追加。インストール型トリガーとして設定する必要がある、
+ * ファイル先頭のセットアップ手順5-(b)参照）。複数日分のマス目表（Zaseki_NORTH等）はここでは
+ * 更新しない（翌日の自動反映を待つ）。 */
+function onEditHandler(e) {
+  const range = e.range;
+  if (range.getSheet().getName() !== SETTINGS_SHEET_NAME || range.getA1Notation() !== 'B1') {
+    return;
+  }
+  const value = range.getValue();
+  if (!(value instanceof Date)) {
+    return; // 日付以外が入力された・消去された場合は何もしない
+  }
+  const dateStr = Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
+  const spreadsheet = range.getSheet().getParent();
+  const data = fetchExportData(dateStr);
+  writeFloorSheets(spreadsheet, data.floor_sheets);
+  const settingsSheet = spreadsheet.getSheetByName(SETTINGS_SHEET_NAME);
+  if (data.floor_sheets_date === dateStr) {
+    settingsSheet.getRange('B2').setValue('反映済み: ' + data.floor_sheets_date);
+  } else {
+    // 指定した日付が予約可能期間外などの理由で本日にフォールバックされた場合に気づけるようにする
+    settingsSheet.getRange('B2').setValue('指定した日付は表示できないため本日分を表示: ' + data.floor_sheets_date);
+  }
+}
+
+function isoStringToDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 /** 1枚分の表（rows）を、指定した名前のタブへ書き込み、そのシートを返す（colsが空なら何もせず

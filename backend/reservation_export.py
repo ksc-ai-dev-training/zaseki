@@ -48,6 +48,14 @@
 # 得た。_build_floor_sheet()が返す"rows"（表示文字列）と同じ形の"kinds"（色分け用の区分文字列）を
 # 新たに追加し、実際の色（16進カラーコード）への変換と彩色（Range.setBackgrounds）はGAS側
 # （gas/reservation_export.gs）で行う。
+#
+# フロアマップ風シートの日付選択（2026-10-05）: 「今日のみではなく明日や明後日の日にちをみれる
+# ようにしたい」との要望を受けた。build_floor_sheets()が対象日（target_date、ISO形式）を受け取れる
+# ようにし、未指定・範囲外の場合は本日にフォールバックする（RULE-05の予約可能期間に含まれる日付
+# のみ選べる）。GAS側に日付入力用の専用タブ（Zaseki_設定）を新設し、そこへ日付を入力すると
+# インストール型onEditトリガー経由でその日付のフロアマップ風シートだけを再取得・再描画する
+# （gas/reservation_export.gs参照。複数日分のマス目表(rows)自体は従来どおり毎日の自動反映のみで、
+# 日付選択の対象ではない）。
 import os
 from datetime import date as Date
 
@@ -217,22 +225,30 @@ def _build_floor_sheet(area: str, seats_by_no: dict[str, dict], today_iso: str) 
     return {"rows": rows_grid, "kinds": kinds_grid}
 
 
-async def build_floor_sheets() -> dict[str, dict]:
-    """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む、本日分のみのフロアマップ風の
+async def build_floor_sheets(target_date: str | None = None) -> tuple[str, dict[str, dict]]:
+    """GAS（gas/reservation_export.gs）がスプレッドシートへ書き込む、1日分のみのフロアマップ風の
     表をエリアごとに組み立てる。build_export_rows()と同じデータソース（A-69の期間ビュー）を使うが、
-    こちらは複数日分ではなく本日（dates[0]）1日分のみを対象に、座席番号・利用者名を実際の
-    フロアマップの配置（_FLOOR_BLOCKS）どおりに並べる（会議室・ロッカー・柱などの装飾は含めないが、
-    ブロック・使用中かどうかの色分け用の区分（kinds）は含む、2026-10-02追加）。戻り値は
-    {"NORTH": {"rows": [[...], ...], "kinds": [[...], ...]}, "EAST": {...}, "WEST": {...}}。"""
+    こちらは複数日分ではなく1日分のみを対象に、座席番号・利用者名を実際のフロアマップの配置
+    （_FLOOR_BLOCKS）どおりに並べる（会議室・ロッカー・柱などの装飾は含めないが、ブロック・使用中
+    かどうかの色分け用の区分（kinds）は含む、2026-10-02追加）。
+
+    target_dateはISO形式（YYYY-MM-DD）の対象日（2026-10-05追加。「今日のみではなく明日や明後日も
+    見れるようにしてほしい」との要望を受けた）。RULE-05の予約可能期間（本日〜当月末または来月末、
+    A-69の既定と同じ）に含まれる日付のみ指定でき、省略時・範囲外の場合は本日にフォールバックする
+    （GAS側で範囲外の日付が入力された場合もエラーにせず静かに本日分を表示する、という挙動）。
+    戻り値は(実際に使われた日付, {"NORTH": {"rows": [[...], ...], "kinds": [[...], ...]}, "EAST": {...},
+    "WEST": {...}})のタプル。呼び出し側は実際に使われた日付を見て、指定した日付と違う場合は
+    範囲外だったとわかる。"""
     from routers.proxy import get_period_grid  # 循環import回避のため遅延import
 
     grid = await get_period_grid(start=None, end=None, area="all", admin_user=_SYSTEM_USER)
-    today_iso = grid["dates"][0]
+    date_iso = target_date if target_date in grid["dates"] else grid["dates"][0]
     seats_by_no_by_area: dict[str, dict[str, dict]] = {"NORTH": {}, "EAST": {}, "WEST": {}}
     for seat in grid["seats"]:
         seats_by_no_by_area.setdefault(seat["area"], {})[seat["seat_no"]] = seat
 
-    return {
-        area: _build_floor_sheet(area, seats_by_no_by_area.get(area, {}), today_iso)
+    sheets = {
+        area: _build_floor_sheet(area, seats_by_no_by_area.get(area, {}), date_iso)
         for area in _FLOOR_BLOCKS
     }
+    return date_iso, sheets
