@@ -113,16 +113,21 @@ async def build_export_rows() -> list[list[str]]:
 # 列グループ0＝lockLの右隣、1＝中央の縦長ブロック、2＝lockRの左隣。NORTHはロッカー・柱など
 # 座席以外の装飾が多いため列グループ0のみを使い、Bブロックの下にAブロックを積む）。
 # "rows"は1マス目＝座席番号, 2マス目＝座席番号というように、1行に2席ずつ並べる（Noneは空マス）。
+# "anchor"（任意、(行, 列)の0始まり座標）を指定すると、そのブロックの見出し行をその位置に
+# 直接配置する（省略時は列グループの自動積み上げ位置）。スプレッドシート上の実際の見た目を
+# 微調整したい、という要望（2026-10-05、Bブロック→E2:F9、EAST/WESTのFブロック・Mブロック→
+# D7:E14）に対応するために追加した。anchorを指定しても、他のブロックの自動積み上げ位置
+# （row_cursor）には影響しない（そのブロックが元の位置にあったものとして計算する）。
 _FLOOR_BLOCKS: dict[str, list[dict]] = {
     "NORTH": [
-        {"label": "Bブロック（ロッカー）", "col": 0, "rows": [["B1", "B5"], ["B2", "B6"], ["B3", "B7"], ["B4", "B8"]]},
+        {"label": "Bブロック（ロッカー）", "col": 0, "anchor": (0, 4), "rows": [["B1", "B5"], ["B2", "B6"], ["B3", "B7"], ["B4", "B8"]]},
         {"label": "Aブロック", "col": 0, "rows": [["A1", "A2", "A3", "A4", "A5", "A6"], [None, "A7", "A8", "A9", "A10", "A11"]]},
     ],
     "EAST": [
         {"label": "Cブロック", "col": 0, "rows": [["C1", "C2"], ["C3", "C4"]]},
         {"label": "Dブロック", "col": 0, "rows": [["D1", "D2"], ["D3", "D4"]]},
         {"label": "Eブロック", "col": 0, "rows": [["E1", "E2"], ["E3", "E4"]]},
-        {"label": "Fブロック", "col": 1, "rows": [["F1", "F5"], ["F2", "F6"], ["F3", "F7"], ["F4", "F8"]]},
+        {"label": "Fブロック", "col": 1, "anchor": (5, 3), "rows": [["F1", "F5"], ["F2", "F6"], ["F3", "F7"], ["F4", "F8"]]},
         {"label": "Gブロック", "col": 2, "rows": [["G1", "G2"], ["G3", "G4"]]},
         {"label": "Hブロック", "col": 2, "rows": [["H1", "H2"], ["H3", "H4"]]},
         {"label": "Iブロック", "col": 2, "rows": [["I1", "I2"], ["I3", "I4"]]},
@@ -131,7 +136,7 @@ _FLOOR_BLOCKS: dict[str, list[dict]] = {
         {"label": "Jブロック", "col": 0, "rows": [["J1", "J2"], ["J3", "J4"]]},
         {"label": "Kブロック", "col": 0, "rows": [["K1", "K2"], ["K3", "K4"]]},
         {"label": "Lブロック", "col": 0, "rows": [["L1", "L2"], ["L3", "L4"]]},
-        {"label": "Mブロック", "col": 1, "rows": [["M1", "M5"], ["M2", "M6"], ["M3", "M7"], ["M4", "M8"]]},
+        {"label": "Mブロック", "col": 1, "anchor": (5, 3), "rows": [["M1", "M5"], ["M2", "M6"], ["M3", "M7"], ["M4", "M8"]]},
         {"label": "Nブロック", "col": 2, "rows": [["N1", "N2"], ["N3", "N4"]]},
         {"label": "Oブロック", "col": 2, "rows": [["O1", "O2"], ["O3", "O4"]]},
         {"label": "Pブロック", "col": 2, "rows": [["P1", "P2"], ["P3", "P4"]]},
@@ -171,17 +176,20 @@ def _build_floor_sheet(area: str, seats_by_no: dict[str, dict], today_iso: str) 
 
     for block_idx, block in enumerate(_FLOOR_BLOCKS[area]):
         base_col = block["col"] * _FLOOR_COL_GROUP_WIDTH
-        r = row_cursor.get(block["col"], 0)
-        cells[(r, base_col)] = block["label"]
-        kinds[(r, base_col)] = "label"
-        r += 1
+        auto_r = row_cursor.get(block["col"], 0)
+        label_r, label_c = block.get("anchor", (auto_r, base_col))
+        cells[(label_r, label_c)] = block["label"]
+        kinds[(label_r, label_c)] = "label"
+        r = label_r + 1
         for tile_row in block["rows"]:
             for i, seat_no in enumerate(tile_row):
                 if seat_no is None:
                     continue
-                place_tile(r, base_col + i, seat_no, block_idx, seats_by_no.get(seat_no))
+                place_tile(r, label_c + i, seat_no, block_idx, seats_by_no.get(seat_no))
             r += 2
-        row_cursor[block["col"]] = r + 1  # 次のブロックとの間に1行空ける
+        # anchor指定の有無にかかわらず、次のブロックの自動積み上げ位置はこのブロックが元々の
+        # 自動位置にあったものとして計算する（anchorでの移動が他のブロックに影響しないように）
+        row_cursor[block["col"]] = auto_r + 1 + 2 * len(block["rows"]) + 1  # 次のブロックとの間に1行空ける
 
     # 座席配置編集（S-07）で自由配置された座席は固定レイアウトに無いため、列グループ0の末尾に列挙する
     extra_seat_nos = sorted(no for no in seats_by_no if no not in placed_seat_nos)
