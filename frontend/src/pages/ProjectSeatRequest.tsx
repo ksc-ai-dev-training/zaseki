@@ -56,6 +56,12 @@ const STATUS_BADGE_CLASS: Record<QuarterPlanStatus, string> = {
   seats_allocated: 'bg-green-50 text-green-700',
 }
 
+// 希望曜日アンケート（A-16）が編集できるステータス（2026-10-09追加。「席決め担当もアンケート
+// 終了後に希望を直せるようにしてほしい」との要望を受け、survey_open限定だったものを、座席の島が
+// 実際に割り当てられる前（weekdays_finalized・seats_tentative）までは編集可能に拡張した。
+// バックエンド（A-16、project_pm.py）の許可ステータスと必ず一致させること）
+const SURVEY_EDITABLE_STATUSES = new Set<QuarterPlanStatus>(['survey_open', 'weekdays_finalized', 'seats_tentative'])
+
 function WeekdayCheckboxGroup({ label, value, onChange }: { label: string; value: Set<Weekday>; onChange: (v: Set<Weekday>) => void }) {
   const toggle = (day: Weekday) => {
     const next = new Set(value)
@@ -583,7 +589,11 @@ function PlanPanel({ planId, summaryStatus, seatAssignerName, hasProjectTitle }:
         </p>
       )}
 
-      {plan.is_seat_assigner && plan.status === 'survey_open' && (
+      {/* アンケート受付中（survey_open）に加え、曜日確定後・仮の座席割り当て中（weekdays_finalized・
+          seats_tentative）も引き続き希望曜日・備考を編集できる（2026-10-09追加。「席決め担当も
+          アンケート終了後に希望を直せるようにしてほしい」との要望を受けた）。座席の島が実際に
+          割り当てられた後（seats_allocated）はロックする */}
+      {plan.is_seat_assigner && SURVEY_EDITABLE_STATUSES.has(plan.status) && (
         <SurveyPanel plan={plan} onSubmitted={refresh} />
       )}
 
@@ -762,6 +772,11 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
         )}
       </div>
       <div className="space-y-4 p-4">
+        {plan.status !== 'survey_open' && (
+          <p className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            アンケートの受付期間は終了していますが、座席の島が割り当てられるまでは、希望曜日・備考を引き続き修正できます。
+          </p>
+        )}
         <WeekdayCheckboxGroup label="第一希望" value={choice1} onChange={setChoice1} />
         <WeekdayCheckboxGroup label="第二希望" value={choice2} onChange={setChoice2} />
         <label className="block">
@@ -775,17 +790,21 @@ function SurveyForm({ plan, onSubmitted, onCancel }: { plan: ProjectPlanDetail; 
             className="w-full rounded border border-slate-500 px-3 py-2 text-sm"
           />
         </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-slate-500">必要座席数の変更希望（現在: {plan.required_seats}名）</span>
-          <input
-            type="number"
-            min={0}
-            value={requestedSeats}
-            onChange={(e) => setRequestedSeats(e.target.value)}
-            placeholder="変更後の人数（変更がなければ空欄のまま）"
-            className="h-9 w-56 rounded border border-slate-500 px-3 text-sm"
-          />
-        </label>
+        {/* 必要座席数は、曜日確定後はエリア担当の「人数を修正」機能だけが変更できる（survey_open限定の
+            まま、2026-10-09の拡張対象外）。食い違いを防ぐため、ここでは受付期間中のみ表示する */}
+        {plan.status === 'survey_open' && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-500">必要座席数の変更希望（現在: {plan.required_seats}名）</span>
+            <input
+              type="number"
+              min={0}
+              value={requestedSeats}
+              onChange={(e) => setRequestedSeats(e.target.value)}
+              placeholder="変更後の人数（変更がなければ空欄のまま）"
+              className="h-9 w-56 rounded border border-slate-500 px-3 text-sm"
+            />
+          </label>
+        )}
         {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2">
           {onCancel && (

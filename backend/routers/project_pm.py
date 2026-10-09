@@ -523,9 +523,16 @@ async def submit_survey_response(id: int, body: SurveyResponseBody, user: Curren
     席決め担当になった人がアンケートなどに回答できる」との指摘を受け、P-PROXY（T-05.proxy_user_id＝
     PJ席決担当）基準に戻した。role='admin'は引き続き対象外にはしない（他のAPIと同様の管理部
     バイパス、ただしA-13の一覧が自分がメンバーのプロジェクトのみを返すため、admin自身がメンバー
-    でない限りこの画面には辿り着けない＝API直叩き向けの保険）。"""
-    if body.requested_seats is not None and body.requested_seats < 0:
-        raise HTTPException(400, detail="必要座席数は0以上を指定してください")
+    でない限りこの画面には辿り着けない＝API直叩き向けの保険）。
+
+    2026-10-09拡張:「席決め担当もアンケート終了後に希望を直せるようにしてほしい」との要望を受け、
+    survey_open以降もstatus='weekdays_finalized'・'seats_tentative'の間は、希望曜日
+    （choice1_weekdays・choice2_weekdays）・備考（note）に限り引き続き編集できるようにした
+    （座席の島が実際に割り当てられるseats_allocatedになった時点でロックする）。必要座席数
+    （requested_seats・T-07.required_seats）は、この時点以降に変更すると既に割り当て済みの
+    座席数と食い違いうるため、エリア担当の「人数を修正」機能が引き続き唯一の変更手段のままとし、
+    survey_open以外ではbody.requested_seatsを受け取っても無視する（T-11.requested_seats列・
+    T-07.required_seats列のどちらも更新しない）。"""
     if body.note is not None and len(body.note) > 500:
         raise HTTPException(400, detail="備考は500文字以内で入力してください")
 
@@ -540,24 +547,42 @@ async def submit_survey_response(id: int, body: SurveyResponseBody, user: Curren
         raise HTTPException(404, detail="対象が見つかりません")
     if user.role != "admin" and plan["proxy_user_id"] != user.id:
         raise HTTPException(403, detail="この操作を行う権限がありません")
-    if plan["status"] != "survey_open":
+    if plan["status"] not in ("survey_open", "weekdays_finalized", "seats_tentative"):
         raise HTTPException(400, detail="現在はアンケートに回答できません")
+
+    is_survey_open = plan["status"] == "survey_open"
+    if is_survey_open and body.requested_seats is not None and body.requested_seats < 0:
+        raise HTTPException(400, detail="必要座席数は0以上を指定してください")
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute(
-                """INSERT INTO project_weekday_responses (plan_id, responded_by, choice1_weekdays, choice2_weekdays, note, requested_seats)
-                   VALUES ($1, $2, $3, $4, $5, $6)
-                   ON CONFLICT (plan_id) DO UPDATE SET
-                       responded_by = $2, choice1_weekdays = $3, choice2_weekdays = $4, note = $5,
-                       requested_seats = $6, responded_at = now()""",
-                id, user.id, json.dumps(body.choice1_weekdays), json.dumps(body.choice2_weekdays),
-                body.note, body.requested_seats,
-            )
-            if body.requested_seats is not None:
+            if is_survey_open:
                 await conn.execute(
-                    "UPDATE project_quarter_plans SET required_seats = $1, updated_at = now() WHERE id = $2",
-                    body.requested_seats, id,
+                    """INSERT INTO project_weekday_responses (plan_id, responded_by, choice1_weekdays, choice2_weekdays, note, requested_seats)
+                       VALUES ($1, $2, $3, $4, $5, $6)
+                       ON CONFLICT (plan_id) DO UPDATE SET
+                           responded_by = $2, choice1_weekdays = $3, choice2_weekdays = $4, note = $5,
+                           requested_seats = $6, responded_at = now()""",
+                    id, user.id, json.dumps(body.choice1_weekdays), json.dumps(body.choice2_weekdays),
+                    body.note, body.requested_seats,
+                )
+                if body.requested_seats is not None:
+                    await conn.execute(
+                        "UPDATE project_quarter_plans SET required_seats = $1, updated_at = now() WHERE id = $2",
+                        body.requested_seats, id,
+                    )
+            else:
+                # アンケート終了後（weekdays_finalized・seats_tentative）は希望曜日・備考のみ更新する。
+                # requested_seats列はSET句に含めないため、以前の値（survey_open時点の申告）が
+                # そのまま残る
+                await conn.execute(
+                    """INSERT INTO project_weekday_responses (plan_id, responded_by, choice1_weekdays, choice2_weekdays, note)
+                       VALUES ($1, $2, $3, $4, $5)
+                       ON CONFLICT (plan_id) DO UPDATE SET
+                           responded_by = $2, choice1_weekdays = $3, choice2_weekdays = $4, note = $5,
+                           responded_at = now()""",
+                    id, user.id, json.dumps(body.choice1_weekdays), json.dumps(body.choice2_weekdays),
+                    body.note,
                 )
     return {"detail": "回答しました"}
 
